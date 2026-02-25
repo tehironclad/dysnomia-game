@@ -1,0 +1,22 @@
+# Godot 4+
+.godot/
+/android/
+
+# Reference codebases (extracted zips, not game code)
+_extracted_*/
+
+# Dependencies
+node_modules/
+
+# Local config
+.claude/
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
+nul
+
+# Build exports
+/build/
+/exports/

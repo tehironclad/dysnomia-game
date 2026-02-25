@@ -1,0 +1,487 @@
+[gd_scene load_steps=4 format=3 uid="uid://hud_scene"]
+
+[ext_resource type="Script" path="res://scripts/ui/hud_controller.gd" id="1_hud"]
+[ext_resource type="Script" path="res://scripts/ui/world_map.gd" id="2_worldmap"]
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="FPSLabel" type="Label" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -150.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 35.0
+horizontal_alignment = 2
+text = "FPS: 60"
+
+[node name="ModeLabel" type="Label" parent="."]
+anchors_preset = 0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 250.0
+offset_bottom = 35.0
+text = "GROUND | 3RD"
+
+[node name="TerritoryPanel" type="VBoxContainer" parent="."]
+anchors_preset = 0
+offset_left = 10.0
+offset_top = 40.0
+offset_right = 340.0
+offset_bottom = 200.0
+visible = false
+
+[node name="TerritoryLabel" type="RichTextLabel" parent="TerritoryPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+selection_enabled = true
+context_menu_enabled = true
+theme_override_font_sizes/normal_font_size = 13
+text = "Territory Info"
+
+[node name="LifecycleRow" type="HBoxContainer" parent="TerritoryPanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="LeaveBtn" type="Button" parent="TerritoryPanel/LifecycleRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 20)
+text = "Leave"
+theme_override_font_sizes/font_size = 9
+
+[node name="VoidBtn" type="Button" parent="TerritoryPanel/LifecycleRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 20)
+text = "Void"
+theme_override_font_sizes/font_size = 9
+theme_override_colors/font_color = Color(1, 0.3, 0.3, 1)
+
+[node name="CoordsLabel" type="Label" parent="."]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = -30.0
+offset_right = 350.0
+offset_bottom = -10.0
+theme_override_colors/font_color = Color(0.6, 0.65, 0.7, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "X: 0.0  Y: 0.0  Z: 0.0"
+
+[node name="SeedLabel" type="Label" parent="."]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = -48.0
+offset_right = 350.0
+offset_bottom = -30.0
+theme_override_colors/font_color = Color(0.6, 0.65, 0.7, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "Seed: 42"
+
+[node name="IdentityPanel" type="VBoxContainer" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -400.0
+offset_top = 35.0
+offset_right = -10.0
+offset_bottom = 250.0
+visible = false
+
+[node name="IdentityLabel" type="RichTextLabel" parent="IdentityPanel"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+selection_enabled = true
+context_menu_enabled = true
+theme_override_font_sizes/normal_font_size = 13
+text = "Anonymous"
+
+[node name="TerraformActionsPanel" type="PanelContainer" parent="."]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -350.0
+offset_top = -450.0
+offset_right = -10.0
+offset_bottom = -205.0
+visible = false
+
+[node name="ActionsVBox" type="VBoxContainer" parent="TerraformActionsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="HeaderLabel" type="Label" parent="TerraformActionsPanel/ActionsVBox"]
+layout_mode = 2
+text = "Terraform [T]"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 16
+
+[node name="BatchRow" type="HBoxContainer" parent="TerraformActionsPanel/ActionsVBox"]
+layout_mode = 2
+visible = false
+
+[node name="BatchCheckBox" type="CheckBox" parent="TerraformActionsPanel/ActionsVBox/BatchRow"]
+layout_mode = 2
+text = "Batch"
+button_pressed = true
+
+[node name="BatchCountLabel" type="Label" parent="TerraformActionsPanel/ActionsVBox/BatchRow"]
+layout_mode = 2
+text = "x"
+
+[node name="BatchCountInput" type="SpinBox" parent="TerraformActionsPanel/ActionsVBox/BatchRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(80, 0)
+min_value = 1.0
+max_value = 100.0
+value = 3.0
+rounded = true
+alignment = 1
+
+[node name="BatchStatus" type="Label" parent="TerraformActionsPanel/ActionsVBox/BatchRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+horizontal_alignment = 2
+theme_override_colors/font_color = Color(0.5, 1.0, 0.5, 1)
+
+[node name="SeedRow" type="HBoxContainer" parent="TerraformActionsPanel/ActionsVBox"]
+layout_mode = 2
+
+[node name="SeedInput" type="LineEdit" parent="TerraformActionsPanel/ActionsVBox/SeedRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "seed (uint64)"
+alignment = 1
+
+[node name="RandomSeedButton" type="Button" parent="TerraformActionsPanel/ActionsVBox/SeedRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(55, 0)
+text = "Rand"
+
+[node name="ButtonRow1" type="HBoxContainer" parent="TerraformActionsPanel/ActionsVBox"]
+layout_mode = 2
+
+[node name="AlphaButton" type="Button" parent="TerraformActionsPanel/ActionsVBox/ButtonRow1"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Alpha"
+
+[node name="BetaButton" type="Button" parent="TerraformActionsPanel/ActionsVBox/ButtonRow1"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Beta"
+
+[node name="ButtonRow2" type="HBoxContainer" parent="TerraformActionsPanel/ActionsVBox"]
+layout_mode = 2
+
+[node name="PiButton" type="Button" parent="TerraformActionsPanel/ActionsVBox/ButtonRow2"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Pi"
+
+[node name="RhoButton" type="Button" parent="TerraformActionsPanel/ActionsVBox/ButtonRow2"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Rho"
+
+[node name="ButtonRow3" type="HBoxContainer" parent="TerraformActionsPanel/ActionsVBox"]
+layout_mode = 2
+
+[node name="UpsilonButton" type="Button" parent="TerraformActionsPanel/ActionsVBox/ButtonRow3"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Upsilon"
+
+[node name="PhiToggle" type="CheckBox" parent="TerraformActionsPanel/ActionsVBox/ButtonRow3"]
+layout_mode = 2
+text = "Fwd"
+button_pressed = true
+
+[node name="GenerateButton" type="Button" parent="TerraformActionsPanel/ActionsVBox"]
+layout_mode = 2
+text = "Generate"
+
+[node name="BeatSeparator" type="HSeparator" parent="TerraformActionsPanel/ActionsVBox"]
+layout_mode = 2
+
+[node name="BeatRow" type="HBoxContainer" parent="TerraformActionsPanel/ActionsVBox"]
+layout_mode = 2
+
+[node name="BeatButton" type="Button" parent="TerraformActionsPanel/ActionsVBox/BeatRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Beat"
+tooltip_text = "META.Beat — Advanced state operation. Requires terraformed territory with non-zero Waat, entropy, bars, and charge."
+
+[node name="BeatStatusLabel" type="Label" parent="TerraformActionsPanel/ActionsVBox/BeatRow"]
+layout_mode = 2
+text = ""
+
+[node name="TerraformPanel" type="VBoxContainer" parent="."]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -350.0
+offset_top = -200.0
+offset_right = -10.0
+offset_bottom = -65.0
+visible = false
+
+[node name="TerraformLabel" type="Label" parent="TerraformPanel"]
+layout_mode = 2
+horizontal_alignment = 2
+autowrap_mode = 3
+text = "Territory State"
+
+[node name="ChatPanel" type="PanelContainer" parent="."]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = -350.0
+offset_right = 300.0
+offset_bottom = -35.0
+visible = false
+mouse_filter = 1
+
+[node name="ChatVBox" type="VBoxContainer" parent="ChatPanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ChatHeader" type="HBoxContainer" parent="ChatPanel/ChatVBox"]
+layout_mode = 2
+
+[node name="GlobalTabBtn" type="Button" parent="ChatPanel/ChatVBox/ChatHeader"]
+layout_mode = 2
+custom_minimum_size = Vector2(80, 24)
+text = "Global"
+theme_override_font_sizes/font_size = 12
+flat = true
+
+[node name="TerritoryTabBtn" type="Button" parent="ChatPanel/ChatVBox/ChatHeader"]
+layout_mode = 2
+custom_minimum_size = Vector2(80, 24)
+text = "Territory"
+theme_override_font_sizes/font_size = 12
+flat = true
+
+[node name="ChatTabSpacer" type="Control" parent="ChatPanel/ChatVBox/ChatHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ChatCloseBtn" type="Button" parent="ChatPanel/ChatVBox/ChatHeader"]
+layout_mode = 2
+custom_minimum_size = Vector2(24, 24)
+text = "X"
+theme_override_font_sizes/font_size = 12
+
+[node name="ChatHistory" type="RichTextLabel" parent="ChatPanel/ChatVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+text = ""
+scroll_following = true
+autowrap_mode = 3
+theme_override_font_sizes/normal_font_size = 13
+
+[node name="ChatInputRow" type="HBoxContainer" parent="ChatPanel/ChatVBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ChatInput" type="LineEdit" parent="ChatPanel/ChatVBox/ChatInputRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 30)
+placeholder_text = "Type a message..."
+theme_override_font_sizes/font_size = 13
+
+[node name="ChatSendBtn" type="Button" parent="ChatPanel/ChatVBox/ChatInputRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(60, 30)
+text = "Send"
+theme_override_font_sizes/font_size = 12
+
+[node name="TxStatus" type="Label" parent="."]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -250.0
+offset_top = -30.0
+offset_right = 250.0
+offset_bottom = -10.0
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.9, 0.8, 0.3, 1)
+
+[node name="GuestPanel" type="PanelContainer" parent="."]
+anchors_preset = 0
+offset_left = 10.0
+offset_top = 170.0
+offset_right = 320.0
+offset_bottom = 470.0
+visible = false
+mouse_filter = 1
+
+[node name="GuestVBox" type="VBoxContainer" parent="GuestPanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="GuestHeader" type="HBoxContainer" parent="GuestPanel/GuestVBox"]
+layout_mode = 2
+
+[node name="GuestTitle" type="Label" parent="GuestPanel/GuestVBox/GuestHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Admitted [G]"
+theme_override_font_sizes/font_size = 14
+
+[node name="GuestRefreshBtn" type="Button" parent="GuestPanel/GuestVBox/GuestHeader"]
+layout_mode = 2
+custom_minimum_size = Vector2(24, 24)
+text = "R"
+tooltip_text = "Rescan admitted territories"
+theme_override_font_sizes/font_size = 12
+
+[node name="GuestCloseBtn" type="Button" parent="GuestPanel/GuestVBox/GuestHeader"]
+layout_mode = 2
+custom_minimum_size = Vector2(24, 24)
+text = "X"
+theme_override_font_sizes/font_size = 12
+
+[node name="GuestList" type="RichTextLabel" parent="GuestPanel/GuestVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+text = ""
+scroll_following = false
+autowrap_mode = 3
+theme_override_font_sizes/normal_font_size = 13
+
+[node name="DebugPanel" type="VBoxContainer" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -350.0
+offset_top = 160.0
+offset_right = -10.0
+offset_bottom = 400.0
+visible = false
+
+[node name="DebugLabel" type="Label" parent="DebugPanel"]
+layout_mode = 2
+horizontal_alignment = 2
+autowrap_mode = 3
+text = "Debug info..."
+
+[node name="LocationLabel" type="Label" parent="."]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -250.0
+offset_top = 8.0
+offset_right = 250.0
+offset_bottom = 35.0
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.8, 0.9, 1.0, 0.9)
+theme_override_font_sizes/font_size = 16
+text = ""
+
+[node name="InteractPrompt" type="Label" parent="."]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -250.0
+offset_top = -90.0
+offset_right = 250.0
+offset_bottom = -65.0
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.7, 0.9, 1.0, 1)
+theme_override_font_sizes/font_size = 18
+text = ""
+visible = false
+
+[node name="InventoryPanel" type="PanelContainer" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -320.0
+offset_top = 260.0
+offset_right = -10.0
+offset_bottom = 460.0
+visible = false
+mouse_filter = 1
+
+[node name="InventoryVBox" type="VBoxContainer" parent="InventoryPanel"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="InventoryHeader" type="HBoxContainer" parent="InventoryPanel/InventoryVBox"]
+layout_mode = 2
+
+[node name="InventoryTitle" type="Label" parent="InventoryPanel/InventoryVBox/InventoryHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Inventory [I]"
+theme_override_font_sizes/font_size = 14
+
+[node name="InventoryRefreshBtn" type="Button" parent="InventoryPanel/InventoryVBox/InventoryHeader"]
+layout_mode = 2
+custom_minimum_size = Vector2(24, 24)
+text = "R"
+tooltip_text = "Refresh balances"
+theme_override_font_sizes/font_size = 12
+
+[node name="InventoryCloseBtn" type="Button" parent="InventoryPanel/InventoryVBox/InventoryHeader"]
+layout_mode = 2
+custom_minimum_size = Vector2(24, 24)
+text = "X"
+theme_override_font_sizes/font_size = 12
+
+[node name="InventoryList" type="RichTextLabel" parent="InventoryPanel/InventoryVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+text = ""
+scroll_following = false
+selection_enabled = true
+context_menu_enabled = true
+theme_override_font_sizes/normal_font_size = 13
+
+[node name="WorldMap" type="Control" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+visible = false
+mouse_filter = 0
+script = ExtResource("2_worldmap")
+
+[node name="ControlsButton" type="Button" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -260.0
+offset_top = 10.0
+offset_right = -155.0
+offset_bottom = 35.0
+text = "[H] Help"
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.7, 0.8, 0.9, 0.85)

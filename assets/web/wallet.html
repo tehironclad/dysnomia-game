@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dysnomia Wallet Bridge</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .container {
+    background: rgba(28, 28, 46, 0.95);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 400px;
+    width: 100%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(139, 92, 246, 0.05);
+  }
+  h1 {
+    font-size: 22px;
+    margin-bottom: 2px;
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .subtitle { font-size: 12px; color: #64748b; margin-bottom: 16px; }
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #ef4444;
+    flex-shrink: 0;
+  }
+  .dot.ok { background: #22c55e; }
+  .dot.warn { background: #eab308; }
+  .status-text { font-size: 14px; color: #94a3b8; }
+  button {
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s, opacity 0.15s;
+  }
+  button:hover:not(:disabled) { transform: translateY(-1px); opacity: 0.95; }
+  button:active:not(:disabled) { transform: translateY(0); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .address {
+    font-family: 'Cascadia Code', 'Fira Code', 'Monaco', monospace;
+    font-size: 12px;
+    color: #71717a;
+    margin-top: 16px;
+    word-break: break-all;
+    text-align: center;
+  }
+  .chain-badge {
+    display: inline-block;
+    background: rgba(139, 92, 246, 0.15);
+    color: #a78bfa;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    margin-top: 8px;
+  }
+  .tx-list {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .tx-list h3 {
+    font-size: 13px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+  }
+  .tx-item {
+    background: rgba(24, 24, 27, 0.8);
+    padding: 12px 14px;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tx-fn { color: #c4b5fd; font-weight: 500; }
+  .tx-status { font-size: 11px; }
+  .tx-status.pending { color: #eab308; }
+  .tx-status.sent { color: #38bdf8; }
+  .tx-status.confirmed { color: #22c55e; }
+  .tx-status.failed { color: #ef4444; }
+  .tx-hash {
+    font-family: monospace;
+    font-size: 10px;
+    color: #52525b;
+    margin-top: 4px;
+  }
+  .no-mm {
+    text-align: center;
+    padding: 20px;
+    color: #94a3b8;
+    font-size: 14px;
+  }
+  .no-mm a { color: #8b5cf6; text-decoration: none; }
+  .no-mm a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Dysnomia</h1>
+  <div class="subtitle">Wallet Bridge</div>
+
+  <div class="status-row">
+    <div class="dot" id="wsDot"></div>
+    <span class="status-text" id="wsStatus">Connecting to game...</span>
+  </div>
+  <div class="status-row">
+    <div class="dot" id="walletDot"></div>
+    <span class="status-text" id="walletStatus">Wallet not connected</span>
+  </div>
+
+  <div id="noWallet" class="no-mm" style="display:none;">
+    No EIP-1193 wallet detected.<br>
+    Install <a href="https://rabby.io/" target="_blank">Rabby</a> or
+    <a href="https://metamask.io/download/" target="_blank">MetaMask</a> and refresh this page.
+  </div>
+
+  <button id="connectBtn" disabled>Connect Wallet</button>
+  <div id="addressDisplay" class="address"></div>
+
+  <div id="txList" class="tx-list" style="display:none;">
+    <h3>Transactions</h3>
+    <div id="txItems"></div>
+  </div>
+
+  <div id="debugLog" style="margin-top:10px; max-height:150px; overflow-y:auto; font-family:monospace; font-size:10px; color:#ef4444; background:rgba(0,0,0,0.3); border-radius:6px; padding:8px; display:none; word-break:break-all;"></div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var WS_PORT = '{{PORT}}';
+  var PULSECHAIN_ID = 369;
+  var PULSECHAIN_HEX = '0x171';
+  var RECONNECT_DELAY = 3000;
+
+  // ABI fragments for known contract functions
+  var ABI_REGISTRY = {
+    'Username': ['function Username(string newUsername)'],
+    'Chat':     ['function Chat(address qing, string message)'],
+    'Leave':    ['function Leave()'],
+    'Void':     ['function Void(bool really1, bool really2)'],
+    'Join':     ['function Join(address UserToken)'],
+    'Alpha':    ['function Alpha(uint64)'],
+    'Beta':     ['function Beta(uint64)'],
+    'Pi':       ['function Pi()'],
+    'Rho':      ['function Rho()'],
+    'Generate': ['function Generate()'],
+    'Upsilon':  ['function Upsilon(uint64, bool)'],
+    'Beat':     ['function Beat(uint256) returns (uint256,uint256,uint256,uint256)'],
+  };
+
+  var ws = null;
+  var provider = null;
+  var signer = null;
+  var connectedAddress = null;
+  var wsConnected = false;
+  var walletDetected = false;
+
+  // ── Elements ──
+  var wsDot = document.getElementById('wsDot');
+  var wsStatus = document.getElementById('wsStatus');
+  var walletDot = document.getElementById('walletDot');
+  var walletStatusEl = document.getElementById('walletStatus');
+  var connectBtn = document.getElementById('connectBtn');
+  var addressDisplay = document.getElementById('addressDisplay');
+  var noWallet = document.getElementById('noWallet');
+  var txList = document.getElementById('txList');
+  var txItems = document.getElementById('txItems');
+
+  // ── Deferred Wallet Detection ──
+  // Rabby and some wallets inject window.ethereum after DOM load.
+  // We retry a few times before giving up.
+  var WALLET_DETECT_RETRIES = 10;
+  var WALLET_DETECT_INTERVAL = 300; // ms
+
+  function detectWallet(retriesLeft) {
+    if (window.ethereum) {
+      walletDetected = true;
+      setupWalletListeners();
+      connectBtn.disabled = !wsConnected;
+      walletStatusEl.textContent = 'Wallet detected — click Connect';
+      return;
+    }
+    if (retriesLeft > 0) {
+      setTimeout(function() { detectWallet(retriesLeft - 1); }, WALLET_DETECT_INTERVAL);
+    } else {
+      // No wallet found after all retries
+      noWallet.style.display = 'block';
+      connectBtn.style.display = 'none';
+    }
+  }
+
+  function setupWalletListeners() {
+    window.ethereum.on('accountsChanged', function(accounts) {
+      if (accounts.length === 0) {
+        connectedAddress = null;
+        signer = null;
+        updateWalletUI(false);
+        sendToGodot({ type: 'disconnected' });
+      } else if (accounts[0] !== connectedAddress) {
+        connectedAddress = accounts[0];
+        updateWalletUI(true);
+        sendToGodot({ type: 'accounts_changed', address: connectedAddress });
+      }
+    });
+
+    window.ethereum.on('chainChanged', function(chainIdHex) {
+      var cid = parseInt(chainIdHex, 16);
+      sendToGodot({ type: 'chain_changed', chainId: cid });
+    });
+  }
+
+  detectWallet(WALLET_DETECT_RETRIES);
+
+  // ── Connect Button ──
+  connectBtn.addEventListener('click', connectWallet);
+
+  // ── WebSocket ──
+  function connectWebSocket() {
+    try {
+      ws = new WebSocket('ws://localhost:' + WS_PORT);
+    } catch (e) {
+      scheduleReconnect();
+      return;
+    }
+
+    ws.onopen = function() {
+      wsConnected = true;
+      wsDot.classList.add('ok');
+      wsStatus.textContent = 'Connected to game';
+      connectBtn.disabled = !walletDetected;
+      // If wallet was already connected before WS dropped, re-announce
+      if (connectedAddress) {
+        sendToGodot({
+          type: 'connected',
+          address: connectedAddress,
+          chainId: PULSECHAIN_ID,
+        });
+      }
+      // Flush any queued messages from when WS was down
+      flushPendingMessages();
+    };
+
+    ws.onmessage = function(event) {
+      try {
+        var msg = JSON.parse(event.data);
+        handleGodotMessage(msg);
+      } catch (e) {
+        console.error('Error handling message:', e);
+      }
+    };
+
+    ws.onclose = function() {
+      wsConnected = false;
+      wsDot.classList.remove('ok');
+      wsStatus.textContent = 'Disconnected from game \u2014 reconnecting...';
+      connectBtn.disabled = true;
+      scheduleReconnect();
+    };
+
+    ws.onerror = function() {};
+  }
+
+  function scheduleReconnect() {
+    setTimeout(connectWebSocket, RECONNECT_DELAY);
+  }
+
+  // Message queue for when WebSocket is temporarily down
+  var pendingMessages = [];
+
+  function sendToGodot(data) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(data));
+    } else {
+      // Queue critical messages (tx results) for retry when WS reconnects
+      var critical = ['tx_confirmed', 'tx_reverted', 'tx_error', 'tx_result'];
+      if (critical.indexOf(data.type) >= 0) {
+        console.warn('[WalletBridge] WS not open, queuing ' + data.type + ' (id=' + data.id + ')');
+        pendingMessages.push(data);
+      }
+    }
+  }
+
+  function flushPendingMessages() {
+    if (pendingMessages.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
+      console.log('[WalletBridge] Flushing ' + pendingMessages.length + ' queued messages');
+      var toSend = pendingMessages.slice();
+      pendingMessages = [];
+      for (var i = 0; i < toSend.length; i++) {
+        ws.send(JSON.stringify(toSend[i]));
+      }
+    }
+  }
+
+  // ── Godot Messages ──
+  function handleGodotMessage(msg) {
+    switch (msg.type) {
+      case 'request_accounts':
+        if (connectedAddress) {
+          sendToGodot({
+            type: 'connected',
+            address: connectedAddress,
+            chainId: PULSECHAIN_ID,
+          });
+        }
+        break;
+
+      case 'send_transaction':
+        handleSendTransaction(msg);
+        break;
+
+      case 'focus':
+        // Godot asked us to come to front (e.g., before checking status)
+        window.focus();
+        break;
+
+      case 'switch_chain':
+        ensurePulseChain();
+        break;
+
+      case 'ping':
+        sendToGodot({ type: 'pong' });
+        break;
+
+      // ── Multiplayer messages ──
+      case 'mp_join':
+        mpJoinTerritory(msg.qing, msg.wallet, msg.username, msg.tier);
+        break;
+
+      case 'mp_leave':
+        mpLeaveTerritory();
+        break;
+
+      case 'mp_position':
+        mpBroadcastPos(msg);
+        break;
+
+      // ── Voice chat messages ──
+      case 'vc_start':
+        vcStart();
+        break;
+
+      case 'vc_stop':
+        vcStop();
+        break;
+
+      case 'vc_mute':
+        vcToggleMute();
+        break;
+    }
+  }
+
+  // ── Wallet Connection ──
+  async function connectWallet() {
+    if (!window.ethereum) return;
+    if (typeof ethers === 'undefined') {
+      walletStatusEl.textContent = 'Loading ethers.js... please wait';
+      setTimeout(connectWallet, 1000);
+      return;
+    }
+
+    try {
+      connectBtn.disabled = true;
+      connectBtn.textContent = 'Approve in wallet popup...';
+
+      // Briefly blur this window so Rabby/MetaMask popup appears in front
+      window.blur();
+
+      var accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts',
+      });
+
+      // Switch to PulseChain BEFORE creating provider — avoids ethers.js
+      // NETWORK_ERROR when it detects chain change from 1 to 369
+      await ensurePulseChain_raw();
+
+      // Create provider with "any" network to prevent chain-change errors
+      // during long-running tx.wait() calls
+      provider = new ethers.BrowserProvider(window.ethereum, 'any');
+      signer = await provider.getSigner();
+      connectedAddress = accounts[0];
+
+      updateWalletUI(true);
+
+      sendToGodot({
+        type: 'connected',
+        address: connectedAddress,
+        chainId: PULSECHAIN_ID,
+      });
+
+    } catch (error) {
+      console.error('Wallet connection failed:', error);
+      walletStatusEl.textContent = 'Connection failed: ' + error.message;
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect Wallet';
+    }
+  }
+
+  async function ensurePulseChain_raw() {
+    // Switch chain using raw window.ethereum — called BEFORE provider is created
+    // to avoid ethers.js detecting a chain change and throwing NETWORK_ERROR
+    try {
+      var currentChainHex = await window.ethereum.request({ method: 'eth_chainId' });
+      var currentChain = parseInt(currentChainHex, 16);
+      if (currentChain === PULSECHAIN_ID) return;
+
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: PULSECHAIN_HEX }],
+        });
+      } catch (switchError) {
+        if (switchError.code === 4902) {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: PULSECHAIN_HEX,
+              chainName: 'PulseChain',
+              nativeCurrency: { name: 'Pulse', symbol: 'PLS', decimals: 18 },
+              rpcUrls: ['https://rpc.pulsechain.com'],
+              blockExplorerUrls: ['https://scan.pulsechain.com'],
+            }],
+          });
+        } else {
+          throw switchError;
+        }
+      }
+      // Small delay to let wallet settle after chain switch
+      await new Promise(function(resolve) { setTimeout(resolve, 500); });
+    } catch (e) {
+      console.warn('Chain switch failed:', e);
+    }
+  }
+
+  async function ensurePulseChain() {
+    // Called from Godot's switch_chain message — uses existing provider
+    if (!provider) {
+      await ensurePulseChain_raw();
+      return;
+    }
+
+    try {
+      var network = await provider.getNetwork();
+      if (Number(network.chainId) === PULSECHAIN_ID) return;
+
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: PULSECHAIN_HEX }],
+        });
+      } catch (switchError) {
+        if (switchError.code === 4902) {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: PULSECHAIN_HEX,
+              chainName: 'PulseChain',
+              nativeCurrency: { name: 'Pulse', symbol: 'PLS', decimals: 18 },
+              rpcUrls: ['https://rpc.pulsechain.com'],
+              blockExplorerUrls: ['https://scan.pulsechain.com'],
+            }],
+          });
+        } else {
+          throw switchError;
+        }
+      }
+    } catch (e) {
+      console.warn('Chain switch failed:', e);
+      walletStatusEl.textContent = 'Please switch to PulseChain in your wallet';
+    }
+  }
+
+  // ── Transaction Handling ──
+
+  // Custom receipt poller — bypasses ethers.js tx.wait() which is unreliable
+  // on PulseChain (throws NETWORK_ERROR, times out, etc.)
+  // Uses raw JSON-RPC via fetch() to poll eth_getTransactionReceipt directly
+  async function pollForReceipt(txHash, maxSeconds) {
+    var POLL_INTERVAL = 5000;  // 5s between polls
+    var maxAttempts = Math.ceil((maxSeconds * 1000) / POLL_INTERVAL);
+    var rpcUrl = 'https://rpc.pulsechain.com';
+
+    console.log('[Poll] Starting receipt polling for ' + txHash.substring(0, 18) + '... (' + maxAttempts + ' attempts)');
+
+    for (var i = 0; i < maxAttempts; i++) {
+      await new Promise(function(resolve) { setTimeout(resolve, POLL_INTERVAL); });
+      try {
+        var resp = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0', id: 1,
+            method: 'eth_getTransactionReceipt',
+            params: [txHash],
+          }),
+        });
+        var json = await resp.json();
+        if (json.result && json.result.status != null) {
+          // status can be "0x1" (success) or "0x0" (revert)
+          var statusVal = parseInt(json.result.status, 16);
+          console.log('[Poll] Receipt found! status=' + statusVal + ' (attempt ' + (i + 1) + ')');
+          return {
+            status: statusVal,
+            hash: txHash,
+          };
+        }
+        // null result = tx still pending, keep polling
+        if ((i + 1) % 6 === 0) {
+          console.log('[Poll] Still waiting... attempt ' + (i + 1) + '/' + maxAttempts);
+        }
+      } catch (fetchErr) {
+        console.warn('[Poll] Fetch error (attempt ' + (i + 1) + '):', fetchErr.message);
+        // Network blip — keep trying
+      }
+    }
+    console.warn('[Poll] Timed out after ' + maxAttempts + ' attempts for ' + txHash.substring(0, 18));
+    return null;  // Timed out
+  }
+
+  async function handleSendTransaction(msg) {
+    var id = msg.id;
+    var to = msg.to;
+    var fnName = msg['function'];
+    var params = msg.params;
+
+    if (!signer) {
+      sendToGodot({ type: 'tx_error', id: id, error: 'Wallet not connected' });
+      return;
+    }
+
+    var abi = ABI_REGISTRY[fnName];
+    if (!abi) {
+      sendToGodot({ type: 'tx_error', id: id, error: 'Unknown function: ' + fnName });
+      return;
+    }
+
+    addTxToUI(id, fnName, 'pending');
+
+    // Pre-flight: simulate via eth_call to catch revert reasons before Rabby
+    var dbg = document.getElementById('debugLog');
+    dbg.style.display = 'block';
+    dbg.innerHTML = '<b>TX Request received:</b> ' + fnName + ' → ' + to.substring(0, 10) + '... params: ' + JSON.stringify(params).substring(0, 100) + '<br>Running simulation...';
+    try {
+      var iface = new ethers.Interface(abi);
+      var calldata = iface.encodeFunctionData(fnName, params || []);
+      var fromAddr = connectedAddress || await signer.getAddress();
+      dbg.style.display = 'block';
+      dbg.innerHTML = '<b>Debug ' + fnName + ':</b><br>from: ' + fromAddr + '<br>to: ' + to + '<br>data: ' + calldata.substring(0, 74) + '...<br>Simulating...';
+
+      // Raw eth_call via fetch to PulseChain RPC
+      var simResult = await fetch('https://rpc.pulsechain.com', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'eth_call',
+          params: [{ from: fromAddr, to: to, data: calldata }, 'latest']
+        })
+      }).then(function(r) { return r.json(); });
+
+      if (simResult.error) {
+        dbg.innerHTML += '<br><b style="color:#ef4444">REVERT:</b> ' + JSON.stringify(simResult.error);
+        // Try to decode revert reason
+        var errData = simResult.error.data || '';
+        if (errData && errData.length > 2) {
+          try {
+            // Standard Error(string) revert: 0x08c379a2
+            if (errData.startsWith('0x08c379a2')) {
+              var decoded = ethers.AbiCoder.defaultAbiCoder().decode(['string'], '0x' + errData.substring(10));
+              dbg.innerHTML += '<br><b>Revert reason:</b> ' + decoded[0];
+            } else {
+              dbg.innerHTML += '<br><b>Revert data:</b> ' + errData;
+              // Try to decode known custom errors
+              var sel = errData.substring(0, 10);
+              dbg.innerHTML += '<br>Error selector: ' + sel;
+            }
+          } catch(decErr) {
+            dbg.innerHTML += '<br>Could not decode: ' + errData.substring(0, 100);
+          }
+        }
+        sendToGodot({ type: 'tx_error', id: id, error: 'Simulation reverted: ' + JSON.stringify(simResult.error) });
+        updateTxUI(id, 'failed');
+        return;
+      } else {
+        dbg.innerHTML += '<br><b style="color:#22c55e">Simulation OK</b> result: ' + (simResult.result || '').substring(0, 66) + '...';
+      }
+    } catch(simErr) {
+      if (dbg) {
+        dbg.style.display = 'block';
+        dbg.innerHTML += '<br>Sim fetch error: ' + simErr.message;
+      }
+      // Continue anyway — simulation failure doesn't mean tx will fail
+    }
+
+    try {
+      // Use ethers Contract instance — lets Rabby handle gas estimation
+      var contract = new ethers.Contract(to, abi, signer);
+
+      // Bring this window to front briefly so Rabby sees it as the active context,
+      // then blur so Rabby's approval popup appears on top of us
+      window.focus();
+      await new Promise(function(r) { setTimeout(r, 150); });
+      window.blur();
+
+      var tx = await contract[fnName].apply(contract, params || []);
+
+      updateTxUI(id, 'sent', tx.hash);
+      sendToGodot({ type: 'tx_result', id: id, hash: tx.hash });
+
+      // Poll for receipt directly via RPC — bypasses ethers.js tx.wait()
+      // which throws NETWORK_ERROR on PulseChain chain ID mismatches
+      var MAX_WAIT_SECONDS = 300;  // 5 minutes max
+      var receipt = await pollForReceipt(tx.hash, MAX_WAIT_SECONDS);
+
+      if (receipt && receipt.status === 1) {
+        updateTxUI(id, 'confirmed', tx.hash);
+        sendToGodot({ type: 'tx_confirmed', id: id, hash: tx.hash });
+      } else if (receipt && receipt.status === 0) {
+        updateTxUI(id, 'failed', tx.hash);
+        sendToGodot({ type: 'tx_reverted', id: id, hash: tx.hash, error: 'Transaction reverted' });
+      } else {
+        // Timed out — don't report as failed, tx may still confirm later
+        updateTxUI(id, 'sent', tx.hash);
+        console.warn('Receipt poll timed out for tx ' + tx.hash);
+        // Send a timeout so the game can unlock buttons, but not treat as failure
+        sendToGodot({ type: 'tx_error', id: id, error: 'Confirmation timed out — tx may still confirm. Check explorer.' });
+      }
+
+    } catch (error) {
+      // Extract deepest error info for debugging
+      var errorMsg = 'Transaction failed';
+      var debugInfo = {};
+      try {
+        debugInfo.code = error.code || '';
+        debugInfo.reason = error.reason || '';
+        debugInfo.message = error.message || '';
+        debugInfo.shortMessage = error.shortMessage || '';
+        if (error.info) {
+          debugInfo.infoError = error.info.error ? JSON.stringify(error.info.error) : '';
+          debugInfo.infoPayload = error.info.payload ? JSON.stringify(error.info.payload).substring(0, 500) : '';
+        }
+        if (error.error) {
+          debugInfo.innerError = error.error.message || JSON.stringify(error.error);
+        }
+        if (error.data) {
+          debugInfo.revertData = typeof error.data === 'string' ? error.data : JSON.stringify(error.data);
+        }
+        if (error.transaction) {
+          debugInfo.txTo = error.transaction.to || '';
+          debugInfo.txData = (error.transaction.data || '').substring(0, 80) + '...';
+        }
+        errorMsg = error.shortMessage || error.reason || (error.info && error.info.error && error.info.error.message) || error.message || 'Transaction failed';
+      } catch(e2) {}
+      console.error('[WalletBridge] TX ERROR:', JSON.stringify(debugInfo, null, 2));
+      console.error('[WalletBridge] Full error:', error);
+      // Show debug info in wallet bridge window
+      var dbg = document.getElementById('debugLog');
+      if (dbg) {
+        dbg.style.display = 'block';
+        dbg.innerHTML = '<b>TX Error (' + fnName + '):</b><br>' +
+          'code: ' + (debugInfo.code || 'none') + '<br>' +
+          'reason: ' + (debugInfo.reason || 'none') + '<br>' +
+          'msg: ' + (debugInfo.shortMessage || debugInfo.message || 'none') + '<br>' +
+          (debugInfo.revertData ? 'revert data: ' + debugInfo.revertData + '<br>' : '') +
+          (debugInfo.infoError ? 'rpc error: ' + debugInfo.infoError + '<br>' : '') +
+          (debugInfo.innerError ? 'inner: ' + debugInfo.innerError + '<br>' : '') +
+          'to: ' + (debugInfo.txTo || to) + '<br>' +
+          'data: ' + (debugInfo.txData || '') + '<br>';
+      }
+      updateTxUI(id, 'failed');
+      sendToGodot({ type: 'tx_error', id: id, error: errorMsg, debug: debugInfo });
+    }
+  }
+
+  // ── UI Updates ──
+  function updateWalletUI(connected) {
+    if (connected) {
+      walletDot.classList.add('ok');
+      walletStatusEl.textContent = 'Wallet connected';
+      connectBtn.textContent = 'Connected';
+      connectBtn.disabled = true;
+      addressDisplay.innerHTML = connectedAddress +
+        '<br><span class="chain-badge">PulseChain (369)</span>';
+    } else {
+      walletDot.classList.remove('ok');
+      walletStatusEl.textContent = 'Wallet not connected';
+      connectBtn.textContent = 'Connect Wallet';
+      connectBtn.disabled = !wsConnected;
+      addressDisplay.textContent = '';
+    }
+  }
+
+  function addTxToUI(id, fnName, status) {
+    txList.style.display = 'block';
+    var item = document.createElement('div');
+    item.className = 'tx-item';
+    item.id = 'tx-' + id;
+    item.innerHTML =
+      '<div>' +
+        '<span class="tx-fn">' + fnName + '()</span>' +
+        '<div class="tx-hash" id="tx-hash-' + id + '"></div>' +
+      '</div>' +
+      '<span class="tx-status ' + status + '" id="tx-status-' + id + '">' + status + '</span>';
+    txItems.insertBefore(item, txItems.firstChild);
+  }
+
+  function updateTxUI(id, status, hash) {
+    var statusEl = document.getElementById('tx-status-' + id);
+    var hashEl = document.getElementById('tx-hash-' + id);
+    if (statusEl) {
+      statusEl.textContent = status;
+      statusEl.className = 'tx-status ' + status;
+    }
+    if (hashEl && hash) {
+      hashEl.textContent = hash.substring(0, 18) + '...';
+    }
+  }
+
+  // ── Auto-resize for --app popup mode ──
+  // Chrome --app=URL windows support resizeTo/moveTo (regular tabs don't).
+  // Always try — worst case it's a no-op in a regular browser tab.
+  function autoResizePopup() {
+    var popupWidth = 400;
+    var popupHeight = 520;
+    // Position at the right edge of the screen, vertically centered
+    var left = Math.max(0, screen.availWidth - popupWidth - 30);
+    var top = Math.max(0, Math.floor((screen.availHeight - popupHeight) / 2));
+    try {
+      window.resizeTo(popupWidth, popupHeight);
+      window.moveTo(left, top);
+    } catch (e) {
+      // Regular browser tabs block resizeTo — that's fine
+    }
+  }
+  // Run resize after a brief delay so Chrome --app window is fully initialized
+  setTimeout(autoResizePopup, 200);
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ── Supabase Multiplayer ──
+  // ══════════════════════════════════════════════════════════════════════
+
+  var SUPABASE_URL = 'https://tftfafepodpolrufefrt.supabase.co';
+  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmdGZhZmVwb2Rwb2xydWZlZnJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzODMzOTksImV4cCI6MjA4Njk1OTM5OX0.yv0xiZrI7oyZpeq6lCZ6XqOkGhE5ZPuWd4rbL2EfnN8';
+
+  var supabaseClient = null;
+  var mpChannel = null;
+  var _mpInited = false;
+  var _mpWallet = '';
+  var _mpUsername = '';
+  var _mpTier = 0;
+
+  function initMultiplayer() {
+    if (_mpInited) return;
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return;
+    try {
+      if (typeof window.supabase === 'undefined') {
+        console.warn('[MP] Supabase JS not loaded');
+        return;
+      }
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      _mpInited = true;
+      console.log('[MP] Supabase initialized');
+    } catch (e) {
+      console.warn('[MP] Supabase init failed:', e.message);
+    }
+  }
+
+  async function mpJoinTerritory(qingAddress, wallet, username, tier) {
+    if (!qingAddress || !wallet) return;
+    initMultiplayer();
+    if (!_mpInited) return;
+
+    // Leave any previous channel first
+    await mpLeaveTerritory();
+
+    _mpWallet = wallet.toLowerCase();
+    _mpUsername = username || (_mpWallet.slice(0, 6) + '..' + _mpWallet.slice(-4));
+    _mpTier = tier || 0;
+
+    var channelName = 'qing:' + qingAddress.toLowerCase().slice(0, 12);
+    mpChannel = supabaseClient.channel(channelName, {
+      config: { presence: { key: _mpWallet } }
+    });
+
+    // Presence sync — full state of all players in channel
+    mpChannel.on('presence', { event: 'sync' }, function() {
+      _mpHandleSync(mpChannel.presenceState());
+    });
+
+    // Player joined
+    mpChannel.on('presence', { event: 'join' }, function(ev) {
+      _mpHandleJoin(ev.key, ev.newPresences);
+    });
+
+    // Player left
+    mpChannel.on('presence', { event: 'leave' }, function(ev) {
+      _mpHandleLeave(ev.key);
+    });
+
+    // Position broadcasts (high frequency, not presence)
+    mpChannel.on('broadcast', { event: 'pos' }, function(ev) {
+      _mpHandlePositionBroadcast(ev.payload);
+    });
+
+    // Voice chat signaling (Phase 12C stubs)
+    mpChannel.on('broadcast', { event: 'vc-ready' }, function(ev) {
+      _vcHandleReady(ev.payload);
+    });
+    mpChannel.on('broadcast', { event: 'vc-offer' }, function(ev) {
+      _vcHandleOffer(ev.payload);
+    });
+    mpChannel.on('broadcast', { event: 'vc-answer' }, function(ev) {
+      _vcHandleAnswer(ev.payload);
+    });
+    mpChannel.on('broadcast', { event: 'vc-ice' }, function(ev) {
+      _vcHandleIce(ev.payload);
+    });
+
+    try {
+      await mpChannel.subscribe(async function(status) {
+        if (status === 'SUBSCRIBED') {
+          await mpChannel.track({
+            wallet: _mpWallet,
+            username: _mpUsername,
+            tier: _mpTier,
+            x: 0, y: 1.3, z: 0,
+            yaw: 0, vx: 0, vz: 0,
+            ts: Date.now()
+          }).catch(function() {});
+          console.log('[MP] Joined channel: ' + channelName);
+          sendToGodot({ type: 'mp_joined', channel: channelName });
+        }
+      });
+    } catch (err) {
+      console.warn('[MP] Subscribe error:', err.message);
+      try { await supabaseClient.removeChannel(mpChannel); } catch (e2) {}
+      mpChannel = null;
+    }
+  }
+
+  async function mpLeaveTerritory() {
+    if (!mpChannel) return;
+    // Stop voice chat on territory leave
+    vcStop();
+    try {
+      await mpChannel.untrack();
+      await supabaseClient.removeChannel(mpChannel);
+    } catch (e) {
+      console.warn('[MP] Leave error:', e.message);
+    }
+    mpChannel = null;
+    sendToGodot({ type: 'mp_left' });
+    console.log('[MP] Left territory channel');
+  }
+
+  function mpBroadcastPos(msg) {
+    if (!mpChannel || !_mpWallet) return;
+    mpChannel.send({
+      type: 'broadcast',
+      event: 'pos',
+      payload: {
+        w: _mpWallet,
+        x: msg.x, y: msg.y, z: msg.z,
+        r: msg.r,
+        vx: msg.vx, vz: msg.vz
+      }
+    }).catch(function() {});
+  }
+
+  function _mpHandleSync(presenceState) {
+    // presenceState is { wallet: [presence], ... }
+    var players = [];
+    for (var key in presenceState) {
+      if (!presenceState.hasOwnProperty(key)) continue;
+      if (key === _mpWallet) continue;
+      var pList = presenceState[key];
+      if (pList && pList.length > 0) {
+        players.push(pList[0]);
+      }
+    }
+    sendToGodot({ type: 'mp_sync', players: players });
+  }
+
+  function _mpHandleJoin(key, newPresences) {
+    if (key === _mpWallet) return;
+    if (newPresences && newPresences.length > 0) {
+      sendToGodot({ type: 'mp_player_join', wallet: key, presence: newPresences[0] });
+    }
+  }
+
+  function _mpHandleLeave(key) {
+    if (key === _mpWallet) return;
+    sendToGodot({ type: 'mp_player_leave', wallet: key });
+  }
+
+  function _mpHandlePositionBroadcast(payload) {
+    if (!payload || payload.w === _mpWallet) return;
+    sendToGodot({
+      type: 'mp_position_update',
+      wallet: payload.w,
+      x: payload.x, y: payload.y, z: payload.z,
+      r: payload.r,
+      vx: payload.vx, vz: payload.vz
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ── Voice Chat (Phase 12C — WebRTC stubs) ──
+  // ══════════════════════════════════════════════════════════════════════
+
+  var vcEnabled = false;
+  var vcLocalStream = null;
+  var vcPeers = {};       // wallet → RTCPeerConnection
+  var vcMuted = false;
+  var vcSpeaking = {};    // wallet → bool
+
+  var VC_ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
+  ];
+
+  async function vcStart() {
+    if (vcEnabled || !mpChannel) return;
+    try {
+      vcLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      vcEnabled = true;
+      vcMuted = false;
+      console.log('[VC] Voice chat enabled');
+
+      // Broadcast readiness to others in channel
+      mpChannel.send({
+        type: 'broadcast', event: 'vc-ready',
+        payload: { from: _mpWallet }
+      }).catch(function() {});
+
+      sendToGodot({ type: 'vc_started' });
+    } catch (err) {
+      console.warn('[VC] getUserMedia failed:', err.message);
+      sendToGodot({ type: 'vc_error', error: err.message });
+    }
+  }
+
+  function vcStop() {
+    if (!vcEnabled) return;
+    vcEnabled = false;
+    // Close all peer connections
+    for (var w in vcPeers) {
+      _vcClosePeer(w);
+    }
+    vcPeers = {};
+    // Stop local audio tracks
+    if (vcLocalStream) {
+      vcLocalStream.getTracks().forEach(function(t) { t.stop(); });
+      vcLocalStream = null;
+    }
+    vcSpeaking = {};
+    vcMuted = false;
+    console.log('[VC] Voice chat disabled');
+    sendToGodot({ type: 'vc_stopped' });
+  }
+
+  function vcToggleMute() {
+    if (!vcEnabled || !vcLocalStream) return;
+    vcMuted = !vcMuted;
+    vcLocalStream.getAudioTracks().forEach(function(t) {
+      t.enabled = !vcMuted;
+    });
+    console.log('[VC] Mute:', vcMuted);
+    sendToGodot({ type: 'vc_mute_changed', muted: vcMuted });
+  }
+
+  function _vcClosePeer(wallet) {
+    var pc = vcPeers[wallet];
+    if (!pc) return;
+    try { pc.close(); } catch (e) {}
+    delete vcPeers[wallet];
+  }
+
+  async function _vcMakePeer(wallet) {
+    if (vcPeers[wallet]) return vcPeers[wallet];
+    var pc = new RTCPeerConnection({ iceServers: VC_ICE_SERVERS });
+    vcPeers[wallet] = pc;
+
+    // Add local audio tracks
+    if (vcLocalStream) {
+      vcLocalStream.getTracks().forEach(function(track) {
+        pc.addTrack(track, vcLocalStream);
+      });
+    }
+
+    // When remote audio arrives, play it
+    pc.ontrack = function(event) {
+      var audio = new Audio();
+      audio.srcObject = event.streams[0];
+      audio.play().catch(function() {});
+
+      // Speaking detection via AnalyserNode
+      try {
+        var ctx = new AudioContext();
+        var source = ctx.createMediaStreamSource(event.streams[0]);
+        var analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        var data = new Uint8Array(analyser.frequencyBinCount);
+        var speakInterval = setInterval(function() {
+          if (!vcPeers[wallet]) { clearInterval(speakInterval); ctx.close(); return; }
+          analyser.getByteFrequencyData(data);
+          var sum = 0;
+          for (var i = 0; i < data.length; i++) sum += data[i];
+          var avg = sum / data.length;
+          var isSpeaking = avg > 15;
+          if (vcSpeaking[wallet] !== isSpeaking) {
+            vcSpeaking[wallet] = isSpeaking;
+            sendToGodot({ type: 'vc_speaking', wallet: wallet, speaking: isSpeaking });
+          }
+        }, 250);
+      } catch (e) {
+        console.warn('[VC] AnalyserNode failed:', e.message);
+      }
+    };
+
+    // ICE candidate relay
+    pc.onicecandidate = function(event) {
+      if (event.candidate && mpChannel) {
+        mpChannel.send({
+          type: 'broadcast', event: 'vc-ice',
+          payload: { from: _mpWallet, to: wallet, candidate: event.candidate }
+        }).catch(function() {});
+      }
+    };
+
+    pc.onconnectionstatechange = function() {
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+        _vcClosePeer(wallet);
+      }
+    };
+
+    return pc;
+  }
+
+  async function _vcCreateOffer(wallet) {
+    var pc = await _vcMakePeer(wallet);
+    var offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    if (mpChannel) {
+      mpChannel.send({
+        type: 'broadcast', event: 'vc-offer',
+        payload: { from: _mpWallet, to: wallet, sdp: pc.localDescription }
+      }).catch(function() {});
+    }
+  }
+
+  function _vcHandleReady(payload) {
+    if (!vcEnabled || !vcLocalStream) return;
+    if (payload.from === _mpWallet) return;
+    // Close existing peer and create new offer
+    if (vcPeers[payload.from]) _vcClosePeer(payload.from);
+    _vcCreateOffer(payload.from).catch(function(e) {
+      console.warn('[VC] Offer creation failed:', e.message);
+    });
+  }
+
+  async function _vcHandleOffer(payload) {
+    if (!vcEnabled || !vcLocalStream) return;
+    if (payload.to !== _mpWallet) return;
+
+    // Glare resolution: lower wallet string creates offer
+    if (vcPeers[payload.from] && vcPeers[payload.from].signalingState !== 'stable') {
+      if (_mpWallet < payload.from) {
+        // We win — ignore their offer, they'll accept ours
+        return;
+      }
+      // They win — close our peer and accept theirs
+      _vcClosePeer(payload.from);
+    }
+
+    var pc = await _vcMakePeer(payload.from);
+    await pc.setRemoteDescription(payload.sdp);
+    var answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    if (mpChannel) {
+      mpChannel.send({
+        type: 'broadcast', event: 'vc-answer',
+        payload: { from: _mpWallet, to: payload.from, sdp: pc.localDescription }
+      }).catch(function() {});
+    }
+  }
+
+  async function _vcHandleAnswer(payload) {
+    if (payload.to !== _mpWallet) return;
+    var pc = vcPeers[payload.from];
+    if (!pc) return;
+    try {
+      await pc.setRemoteDescription(payload.sdp);
+    } catch (e) {
+      console.warn('[VC] Set answer failed:', e.message);
+    }
+  }
+
+  async function _vcHandleIce(payload) {
+    if (payload.to !== _mpWallet) return;
+    var pc = vcPeers[payload.from];
+    if (!pc) return;
+    try {
+      await pc.addIceCandidate(payload.candidate);
+    } catch (e) {
+      // Benign — ICE candidate may arrive before remote description
+    }
+  }
+
+  // ── Start ──
+  connectWebSocket();
+
+})();
+</script>
+</body>
+</html>

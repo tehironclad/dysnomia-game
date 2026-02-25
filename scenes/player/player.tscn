@@ -1,0 +1,22 @@
+[gd_scene load_steps=5 format=3 uid="uid://player_scene"]
+
+[ext_resource type="Script" path="res://scripts/player/player_controller.gd" id="1_player"]
+[ext_resource type="PackedScene" uid="uid://camera_rig" path="res://scenes/player/camera_rig.tscn" id="2_camera"]
+[ext_resource type="Script" path="res://scripts/player/player_model.gd" id="3_model"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
+radius = 0.3
+height = 1.8
+
+[node name="Player" type="CharacterBody3D"]
+script = ExtResource("1_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_1")
+
+[node name="PlayerModel" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
+script = ExtResource("3_model")
+
+[node name="CameraRig" parent="." instance=ExtResource("2_camera")]
