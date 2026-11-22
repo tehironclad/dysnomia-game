@@ -35,6 +35,11 @@ func height_at(x: float, z: float) -> float:
 	return heightfield.height_at(x, z) if heightfield else 0.0
 
 
+## The player controller's height query.
+func get_height_at(x: float, z: float) -> float:
+	return height_at(x, z)
+
+
 func _build_material() -> void:
 	material = ShaderMaterial.new()
 	material.shader = SHADER

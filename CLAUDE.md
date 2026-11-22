@@ -34,8 +34,7 @@
 - `node tools/golden/gen.js <entropy-ai-pulse> <qing-registry.json>` regenerates the test goldens.
 - `godot --headless --path . -s res://tools/boot_territory.gd` loads a real territory from the chain
   (read-only), enters the world headlessly and prints the HUD territory card. It catches runtime
-  errors. The props cut in WP 2.6 still print ~44 `look_at` "Node not inside tree" errors; that is
-  known.
+  errors, and should print none.
 - `godot --headless --path . -s res://tools/preview_emblems.gd -- --out=<abs dir>` CPU-renders Deep
   Field pictures to PNG. You can view them without a GPU.
 - `godot --headless --path . -s res://tools/preview_terrain.gd -- --out=<abs dir>` writes Julia-heightfield
@@ -50,6 +49,7 @@
 - **Screenshots (the user OK'd this route, 2026-11-22):**
   `VK_ICD_FILENAMES=/opt/lavapipe/lvp_icd.json xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --resolution 1280x720 -s res://tools/screenshot.gd -- --out=<abs png> --scene=res://scenes/territory/territory_v2.tscn --view=aerial|ground`
   - It renders on the CPU (lavapipe) in about 20 s. Look at the PNG with the Read tool.
-  - The *old* world (`scenes/main.tscn`) segfaults under lavapipe; it is replaced in WP 2.6.
+  - `--view=aerial|ground|core|sky|hud` gives a fixed camera. With no `--view` you see the player's own
+    third-person camera.
 
 **Research source:** `tehironclad/entropy-ai-pulse`. Attach it read-only when a WP says "port from …".

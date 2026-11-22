@@ -26,7 +26,7 @@ func _run() -> void:
 	if not done["ok"]:
 		quit(1)
 		return
-	change_scene_to_file("res://scenes/main.tscn")
+	Travel.go(self, _qing)
 	for i in 300:
 		await process_frame
 	var card = _find(root, "TerritoryCard")

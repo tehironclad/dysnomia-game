@@ -26,11 +26,6 @@ signal token_balances_updated(balances: Dictionary)
 
 const ContractReaderScript = preload("res://scripts/chain/contract_reader.gd")
 const WalletBridgeScript = preload("res://scripts/chain/wallet_bridge.gd")
-const AchievementClientScript = preload("res://scripts/chain/achievement_client.gd")
-const DailyChallengesScript = preload("res://scripts/chain/daily_challenges.gd")
-const AllianceClientScript = preload("res://scripts/chain/alliance_client.gd")
-const EmoteClientScript = preload("res://scripts/chain/emote_client.gd")
-const FlagClientScript = preload("res://scripts/chain/flag_client.gd")
 
 const CACHE_DURATION: float = 300.0 # 5 minutes
 const CHAIN_ID_PULSECHAIN: int = 369
@@ -120,30 +115,10 @@ func _ready() -> void:
 	_global_chat_poll_timer.timeout.connect(_poll_global_chat)
 	add_child(_global_chat_poll_timer)
 
-	# Achievement client
-	achievement_client = AchievementClientScript.new()
-	achievement_client.name = "AchievementClient"
-	add_child(achievement_client)
-
-	# Daily challenges client
-	daily_challenges = DailyChallengesScript.new()
-	daily_challenges.name = "DailyChallenges"
-	add_child(daily_challenges)
-
-	# Alliance client
-	alliance_client = AllianceClientScript.new()
-	alliance_client.name = "AllianceClient"
-	add_child(alliance_client)
-
-	# Emote client
-	emote_client = EmoteClientScript.new()
-	emote_client.name = "EmoteClient"
-	add_child(emote_client)
-
-	# Flag/guestbook client
-	flag_client = FlagClientScript.new()
-	flag_client.name = "FlagClient"
-	add_child(flag_client)
+	# Achievements, daily challenges, alliances, emotes and flags were backed by
+	# the site's Redis, which production never had; their clients are removed
+	# (docs/REWORK_PLAN.md WP 7.2). The *_client vars stay null, so every guarded
+	# use below is inert until this file is retired in Phase 4.
 
 	# HTTP request nodes for entropy API chat
 	_chat_api_http = HTTPRequest.new()

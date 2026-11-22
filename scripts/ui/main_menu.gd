@@ -20,8 +20,8 @@ extends Control
 
 func _ready() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	seed_input.text = "42"
-	seed_input.placeholder_text = "Enter terrain seed..."
+	seed_input.text = ""
+	seed_input.placeholder_text = "Territory name, symbol or #n…"
 	generate_button.pressed.connect(_on_generate)
 	random_button.pressed.connect(_on_random)
 	seed_input.text_submitted.connect(_on_seed_submitted)
@@ -84,29 +84,26 @@ func _ready() -> void:
 
 
 func _on_generate() -> void:
-	if GameManager.is_chain_sourced:
-		# Territory already loaded from chain — just enter the game
-		get_tree().change_scene_to_file("res://scenes/main.tscn")
-		return
-	_start_game(seed_input.text)
+	# Every world is a real territory: the box takes a name, a symbol or "#n"
+	# (founding order); empty enters the territory already chosen, if any.
+	var text: String = seed_input.text.strip_edges()
+	var addr := ""
+	if text.is_empty() and GameManager.is_chain_sourced:
+		addr = GameManager.territory_address
+	elif not text.is_empty():
+		addr = Travel.resolve(get_tree(), text)
+	if addr == "" or not Travel.go(get_tree(), addr):
+		status_label.text = "No territory matches \"%s\"" % text
 
 
 func _on_random() -> void:
-	var random_seed: int = randi()
-	seed_input.text = str(random_seed)
-	_start_game(str(random_seed))
+	var addr := Travel.random_address(get_tree())
+	if addr != "":
+		Travel.go(get_tree(), addr)
 
 
-func _on_seed_submitted(text: String) -> void:
-	_start_game(text)
-
-
-func _start_game(seed_text: String) -> void:
-	var seed_value: int = seed_text.to_int() if seed_text.is_valid_int() else seed_text.hash()
-	GameManager.is_chain_sourced = false
-	GameManager.territory_address = "0x0"
-	GameManager.set_terrain_seed(seed_value)
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+func _on_seed_submitted(_text: String) -> void:
+	_on_generate()
 
 
 func _on_chain_load() -> void:
@@ -114,12 +111,15 @@ func _on_chain_load() -> void:
 	if address_text.is_empty():
 		status_label.text = "Enter a QING contract address"
 		return
-	if HexUtils.is_valid_address(address_text):
-		ChainManager.load_territory(address_text)
-	elif address_text.is_valid_int():
-		ChainManager.load_territory_by_waat(address_text.to_int())
-	else:
-		status_label.text = "Invalid address format (expected 0x... or a number)"
+	if not HexUtils.is_valid_address(address_text):
+		status_label.text = "Invalid address format (expected 0x followed by 40 hex characters)"
+		return
+	if Travel.go(get_tree(), address_text):
+		return
+	status_label.text = "Not in the territory list yet; checking the chain…"
+	await Registry.catch_up()
+	if not Travel.go(get_tree(), address_text):
+		status_label.text = "No QING at %s (not in MAP's NewQing logs)" % _truncate_address(address_text)
 
 
 func _on_territory_submitted(_text: String) -> void:
@@ -127,14 +127,7 @@ func _on_territory_submitted(_text: String) -> void:
 
 
 func _on_territory_loaded(_data: Dictionary) -> void:
-	if ChainManager.is_wallet_connected():
-		# Wallet connected — stay on menu so user can set username, etc.
-		status_label.text = "Territory loaded! Click Generate World to enter."
-		generate_button.text = "Enter World"
-	else:
-		status_label.text = "Territory loaded! Generating world..."
-		await get_tree().create_timer(0.5).timeout
-		get_tree().change_scene_to_file("res://scenes/main.tscn")
+	pass  # territory data now comes from the Registry; see Travel.go()
 
 
 func _on_territory_load_failed(message: String) -> void:

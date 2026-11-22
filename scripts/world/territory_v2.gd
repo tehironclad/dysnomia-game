@@ -8,6 +8,8 @@ extends Node3D
 @onready var camera: Camera3D = $PreviewCamera
 @onready var sky: DeepFieldSky = $Sky
 @onready var core: TerritoryCore = $Core
+@onready var player: CharacterBody3D = $Player
+@onready var hud: HudV2 = $Hud
 
 var territory: Dictionary = {}
 var state: TerritoryState
@@ -15,7 +17,7 @@ var state: TerritoryState
 
 func _ready() -> void:
 	var addr := ""
-	var view := "aerial"
+	var view := ""
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--qing="):
 			addr = a.substr(7)
@@ -37,12 +39,37 @@ func _ready() -> void:
 	add_child(state)
 	state.changed.connect(_on_state_changed)
 	state.setup(territory)
-	_frame(view)
+	hud.bind(String(territory["address"]), state, sky)
+	GameManager.territory_address = String(territory["address"])
+	GameManager.territory_name = String(territory.get("name", ""))
+	# The player arrives in front of the Room's door.
+	var core_h := terrain.heightfield.core_height
+	player.position = Vector3(0.0, core_h + 1.0, 16.0)
+	player.rotation.y = 0.0
+	if player.has_method("set_terrain_generator"):
+		player.set_terrain_generator(terrain)
+	if view == "":
+		# Play: the player's camera. (With no current camera, Godot would pick
+		# the first in tree order: the preview camera, under the ground.)
+		camera.queue_free()
+		var pc: Camera3D = player.get_node_or_null("CameraRig/SpringArm3D/Camera3D")
+		if pc:
+			pc.current = true
+	else:
+		_frame(view)  # screenshot/preview: fixed camera, no player
+		camera.current = true
+		player.process_mode = Node.PROCESS_MODE_DISABLED
+		player.visible = false
+		hud.visible = view == "hud"
 
 
 func _frame(view: String) -> void:
 	var core_h := terrain.heightfield.core_height
-	if view == "ground":
+	if view == "hud":
+		camera.position = Vector3(0.0, core_h + 2.5, 34.0)
+		camera.look_at(Vector3(0.0, core_h + 6.0, 0.0))
+		camera.fov = 65.0
+	elif view == "ground":
 		camera.position = Vector3(0.0, core_h + 2.0, 40.0)
 		camera.look_at(Vector3(0.0, core_h + 40.0, -120.0))
 		camera.fov = 70.0
@@ -81,3 +108,27 @@ static func _dec(v) -> String:
 
 static func _tok(v) -> String:
 	return TokenFormat.wei_to_tokens(BigInt.coerce(v))
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
+		_open_map()
+		get_viewport().set_input_as_handled()
+
+
+var _map: Control = null
+
+
+## The Field map (to be replaced by the globe in Phase 3): choose a territory → travel.
+func _open_map() -> void:
+	if _map == null:
+		_map = load("res://scripts/ui/world_map.gd").new()
+		_map.set_anchors_preset(Control.PRESET_FULL_RECT)
+		hud.add_child(_map)
+		_map.territory_selected.connect(func(addr): Travel.go(get_tree(), addr))
+		_map.map_closed.connect(func():
+			_map.visible = false
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED))
+	_map.visible = true
+	_map.initialize(ChainManager.get_all_qings(), String(territory.get("address", "")))
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
