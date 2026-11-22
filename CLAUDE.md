@@ -24,9 +24,16 @@
 **Verify:**
 - Godot 4.6.1 is not installed. Download it into the scratchpad:
   `https://github.com/godotengine/godot/releases/download/4.6.1-stable/Godot_v4.6.1-stable_linux.x86_64.zip`
-- `godot --headless --import --path .`. Per-script `--check-only` gives false "Identifier not found"
-  errors for autoloads; ignore it.
-- `godot --headless --path . -s res://tests/run.gd`, once WP 0.1 lands.
+- `GODOT=<path> tools/check.sh` runs three steps: import; `tools/compile_check.gd`, which compiles
+  every script with the autoloads present; and `tests/run.gd`, the unit tests (no network).
+  Per-script `--check-only` gives false "Identifier not found" errors for autoloads; don't use it.
+- `godot --headless --path . -s res://tools/live_smoke.gd` runs read-only live chain checks. It also
+  prints the deployer nonce, which is the WORLD launch signal.
+- `godot --headless --path . -s res://tools/update_snapshot.gd` refreshes
+  `assets/data/territories.json` from the chain.
+- `node tools/golden/gen.js <entropy-ai-pulse> <qing-registry.json>` regenerates the test goldens.
+- A headless boot (`godot --headless --path . res://scenes/main.tscn --quit-after 400`) catches runtime
+  errors. The props cut in WP 2.6 still print 44 `look_at` "Node not inside tree" errors; that is known.
 - Rendering screenshots (Xvfb + lavapipe) needs the user's OK. Otherwise ask the user for local screenshots.
 
 **Research source:** `tehironclad/entropy-ai-pulse`. Attach it read-only when a WP says "port from …".

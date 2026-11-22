@@ -8,7 +8,14 @@ signal achievement_unlocked(id: String, data: Dictionary)
 signal achievement_failed(id: String, reason: String)
 signal tier_changed(tier: int, title: String)
 
-const ENTROPY_API_BASE: String = "https://entropy-dysnomia.vercel.app"
+## The Entropy site's Redis-backed endpoints (achievements, XP, flags, alliances,
+## daily/challenges, presence, online players, leaderboard) are empty in
+## production and their old host is gone (docs/LEARNINGS.md §8). Requests are
+## switched off and report "unavailable" through the normal failure path until
+## Phase 7 removes these features.
+const LEGACY_API_ENABLED := false
+const ENTROPY_API_BASE: String = ""  # old host is gone
+const API_BASE: String = ""
 const CACHE_PATH: String = "user://achievements.json"
 
 # ── All 43 achievement definitions (mirrors api/achievements.js) ────────
@@ -153,6 +160,9 @@ func _process_queue() -> void:
 
 	var body := JSON.stringify({"wallet": _wallet, "id": _pending_id})
 	var headers := PackedStringArray(["Content-Type: application/json"])
+	if not LEGACY_API_ENABLED:
+		_on_post_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
 	var url := ENTROPY_API_BASE + "/api/achievements"
 	var err := _http.request(url, headers, HTTPClient.METHOD_POST, body)
 	if err != OK:

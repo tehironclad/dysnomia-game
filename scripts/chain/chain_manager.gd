@@ -58,7 +58,12 @@ var _global_chat_last_ts: int = 0  # Track highest timestamp (ms) for global pol
 var _global_chat_poll_timer: Timer
 
 # Entropy API chat system — cached endpoints, much faster than eth_getLogs
-const ENTROPY_API_BASE: String = "https://entropy-dysnomia.vercel.app"
+## The Entropy site's Redis-backed endpoints (achievements, XP, flags, alliances,
+## daily/challenges, presence, online players, leaderboard) are empty in
+## production and their old host is gone (docs/LEARNINGS.md §8). Requests are
+## switched off and report "unavailable" through the normal failure path until
+## Phase 7 removes these features.
+const LEGACY_API_ENABLED := false
 const CHAT_API_LIMIT: int = 100
 var _chat_api_http: HTTPRequest  # For territory chat API calls
 var _global_chat_api_http: HTTPRequest  # For global chat API calls
@@ -183,7 +188,8 @@ func load_territory(qing_address: String) -> void:
 		var age: float = Time.get_unix_time_from_system() - cached.get("timestamp", 0.0)
 		if age < CACHE_DURATION:
 			_apply_territory_data(cached)
-			territory_loaded.emit(cached)
+			# Deferred: callers connect/await after calling load_territory().
+			territory_loaded.emit.call_deferred(cached)
 			return
 
 	# Make chain read
@@ -559,7 +565,7 @@ func load_chat_history() -> void:
 	## Load territory chat via entropy API. Falls back to chain on failure.
 	if GameManager.territory_address.is_empty():
 		return
-	var url := ENTROPY_API_BASE + "/api/qing-chat?qing=%s&limit=%d" % [
+	var url := Config.site_api_base + "/api/qing-chat?qing=%s&limit=%d" % [
 		GameManager.territory_address, CHAT_API_LIMIT]
 	if _chat_last_ts > 0:
 		url += "&after=%d" % _chat_last_ts
@@ -751,7 +757,7 @@ func clear_chat() -> void:
 
 func load_global_chat() -> void:
 	## Load global chat via entropy API (all QINGs). Falls back to chain on failure.
-	var url := ENTROPY_API_BASE + "/api/qing-chat?limit=%d" % CHAT_API_LIMIT
+	var url := Config.site_api_base + "/api/qing-chat?limit=%d" % CHAT_API_LIMIT
 	if _global_chat_last_ts > 0:
 		url += "&after=%d" % _global_chat_last_ts
 	var err := _global_chat_api_http.request(url)
@@ -1175,7 +1181,10 @@ func load_player_progression() -> void:
 		add_child(_progression_http)
 		_progression_http.request_completed.connect(_on_progression_response)
 
-	var url := ENTROPY_API_BASE + "/api/player/" + connected_wallet
+	if not LEGACY_API_ENABLED:
+		_on_progression_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
+	var url := "" # legacy, disabled + "/api/player/" + connected_wallet
 	var err := _progression_http.request(url)
 	if err != OK:
 		push_error("[ChainManager] Progression request failed: %d" % err)
@@ -1225,7 +1234,10 @@ func load_achievements() -> void:
 		add_child(_achievements_http)
 		_achievements_http.request_completed.connect(_on_achievements_response)
 
-	var url := ENTROPY_API_BASE + "/api/achievements?wallet=" + connected_wallet
+	if not LEGACY_API_ENABLED:
+		_on_achievements_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
+	var url := "" # legacy, disabled + "/api/achievements?wallet=" + connected_wallet
 	var err := _achievements_http.request(url)
 	if err != OK:
 		push_error("[ChainManager] Achievements request failed: %d" % err)
@@ -1259,7 +1271,10 @@ func load_activity_feed() -> void:
 		add_child(_activity_http)
 		_activity_http.request_completed.connect(_on_activity_response)
 
-	var url := ENTROPY_API_BASE + "/api/activity"
+	if not LEGACY_API_ENABLED:
+		_on_activity_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
+	var url := "" # legacy, disabled + "/api/activity"
 	var err := _activity_http.request(url)
 	if err != OK:
 		push_error("[ChainManager] Activity request failed: %d" % err)
@@ -1289,7 +1304,10 @@ func load_online_players() -> void:
 		add_child(_online_http)
 		_online_http.request_completed.connect(_on_online_response)
 
-	var url := ENTROPY_API_BASE + "/api/online-players"
+	if not LEGACY_API_ENABLED:
+		_on_online_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
+	var url := "" # legacy, disabled + "/api/online-players"
 	var err := _online_http.request(url)
 	if err != OK:
 		push_error("[ChainManager] Online players request failed: %d" % err)
@@ -1383,7 +1401,9 @@ func send_presence_heartbeat() -> void:
 		add_child(_presence_http)
 		# We don't need to handle the response
 
-	var url := ENTROPY_API_BASE + "/api/online-players"
+	if not LEGACY_API_ENABLED:
+		return
+	var url := "" # legacy, disabled + "/api/online-players"
 	var body_data := {
 		"wallet": connected_wallet,
 		"username": GameManager.player_identity,
@@ -1608,7 +1628,10 @@ func load_leaderboard() -> void:
 		add_child(_leaderboard_http)
 		_leaderboard_http.request_completed.connect(_on_leaderboard_response)
 
-	var url := ENTROPY_API_BASE + "/api/leaderboard"
+	if not LEGACY_API_ENABLED:
+		_on_leaderboard_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
+	var url := "" # legacy, disabled + "/api/leaderboard"
 	var err := _leaderboard_http.request(url)
 	if err != OK:
 		push_error("[ChainManager] Leaderboard request failed: %d" % err)
@@ -1642,7 +1665,10 @@ func load_player_stats(wallet_address: String) -> void:
 		add_child(_player_stats_http)
 		_player_stats_http.request_completed.connect(_on_player_stats_response)
 
-	var url := ENTROPY_API_BASE + "/api/player/" + wallet_address
+	if not LEGACY_API_ENABLED:
+		_on_player_stats_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
+	var url := "" # legacy, disabled + "/api/player/" + wallet_address
 	var err := _player_stats_http.request(url)
 	if err != OK:
 		push_error("[ChainManager] Player stats request failed: %d" % err)

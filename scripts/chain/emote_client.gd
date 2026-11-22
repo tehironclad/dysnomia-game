@@ -5,7 +5,14 @@ extends Node
 signal emote_sent(emote_id: int)
 signal emote_received(wallet: String, emote_id: int)
 
-const ENTROPY_API_BASE: String = "https://entropy-dysnomia.vercel.app"
+## The Entropy site's Redis-backed endpoints (achievements, XP, flags, alliances,
+## daily/challenges, presence, online players, leaderboard) are empty in
+## production and their old host is gone (docs/LEARNINGS.md §8). Requests are
+## switched off and report "unavailable" through the normal failure path until
+## Phase 7 removes these features.
+const LEGACY_API_ENABLED := false
+const ENTROPY_API_BASE: String = ""  # old host is gone
+const API_BASE: String = ""
 
 const EMOTES: Array[String] = [
 	"wave", "salute", "dance", "sit",
@@ -57,6 +64,9 @@ func send_emote(wallet: String, emote_id: int, territory: String = "") -> void:
 	}
 	var body := JSON.stringify(payload)
 	var headers := PackedStringArray(["Content-Type: application/json"])
+	if not LEGACY_API_ENABLED:
+		_on_send_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
 	var url := ENTROPY_API_BASE + "/api/presence"
 	var err := _http.request(url, headers, HTTPClient.METHOD_POST, body)
 	if err != OK:

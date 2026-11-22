@@ -7,7 +7,14 @@ extends Node
 signal alliance_loaded(data: Dictionary)
 signal alliance_action_result(success: bool, data: Dictionary)
 
-const ENTROPY_API_BASE: String = "https://entropy-dysnomia.vercel.app"
+## The Entropy site's Redis-backed endpoints (achievements, XP, flags, alliances,
+## daily/challenges, presence, online players, leaderboard) are empty in
+## production and their old host is gone (docs/LEARNINGS.md §8). Requests are
+## switched off and report "unavailable" through the normal failure path until
+## Phase 7 removes these features.
+const LEGACY_API_ENABLED := false
+const ENTROPY_API_BASE: String = ""  # old host is gone
+const API_BASE: String = ""
 
 # ── State ───────────────────────────────────────────────────────────────
 var _http_get: HTTPRequest
@@ -40,6 +47,9 @@ func fetch_alliance(wallet: String) -> void:
 		alliance_loaded.emit({})
 		return
 
+	if not LEGACY_API_ENABLED:
+		_on_get_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
 	var url := ENTROPY_API_BASE + "/api/alliance?wallet=" + wallet.to_lower()
 	var err := _http_get.request(url)
 	if err != OK:
@@ -78,6 +88,9 @@ func _process_post_queue() -> void:
 	var payload: Dictionary = _post_queue.pop_front()
 	var body := JSON.stringify(payload)
 	var headers := PackedStringArray(["Content-Type: application/json"])
+	if not LEGACY_API_ENABLED:
+		_on_post_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
 	var url := ENTROPY_API_BASE + "/api/alliance"
 	var err := _http_post.request(url, headers, HTTPClient.METHOD_POST, body)
 	if err != OK:

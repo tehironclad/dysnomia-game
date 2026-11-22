@@ -147,47 +147,47 @@ void fragment() {
 	// Early out if no atmosphere
 	if (atmo_activity < 0.01) {
 		ALPHA = 0.0;
-		return;
-	}
+	} else {
 
-	float depth_raw = texture(DEPTH_TEXTURE, SCREEN_UV).r;
+		float depth_raw = texture(DEPTH_TEXTURE, SCREEN_UV).r;
 
-	// Renderer-specific depth handling
-	#ifndef CURRENT_RENDERER
-		depth_raw = PROJECTION_MATRIX[3][2] > PROJECTION_MATRIX[2][2] ? depth_raw : depth_raw * 2.0 - 1.0;
-	#else
-		#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
-			depth_raw = depth_raw * 2.0 - 1.0;
+		// Renderer-specific depth handling
+		#ifndef CURRENT_RENDERER
+			depth_raw = PROJECTION_MATRIX[3][2] > PROJECTION_MATRIX[2][2] ? depth_raw : depth_raw * 2.0 - 1.0;
+		#else
+			#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+				depth_raw = depth_raw * 2.0 - 1.0;
+			#endif
 		#endif
-	#endif
 
-	// Exclude sky pixels (depth ≈ 1.0) — fog only on geometry
-	if (depth_raw > 0.9999) {
-		ALPHA = 0.0;
-		return;
+		// Exclude sky pixels (depth ≈ 1.0) — fog only on geometry
+		if (depth_raw > 0.9999) {
+			ALPHA = 0.0;
+		} else {
+
+			vec3 view; vec3 world_pos;
+			calc_coords(SCREEN_UV, depth_raw, camera_matrix, INV_PROJECTION_MATRIX, view, world_pos);
+			world_pos = normalize(world_pos);
+
+			float linear_depth = -view.z;
+
+			// Fog factor — density scales with atmo_activity
+			float effective_density = fog_density * atmo_activity;
+			float fog_factor = calc_fog_exp(linear_depth, effective_density);
+			fog_factor *= calc_fog_falloff(world_pos.y, fog_falloff);
+			fog_factor *= calc_fog_distance(linear_depth);
+
+			// Atmospheric scattering color
+			float sun_mu = dot(sun_direction, world_pos);
+			float sr, sm;
+			calc_simple_optical_depth(world_pos.y, sr, sm);
+			vec3 scatter = calc_atmospheric_scatter(sr, sm, sun_mu, angle_mult.xyz, linear_depth);
+
+			// Tonemap
+			vec3 fog_color = apply_photo_tonemap(scatter, 1.0, 0.5);
+
+			ALBEDO = fog_color;
+			ALPHA = clamp_to_unit(fog_factor);
+		}
 	}
-
-	vec3 view; vec3 world_pos;
-	calc_coords(SCREEN_UV, depth_raw, camera_matrix, INV_PROJECTION_MATRIX, view, world_pos);
-	world_pos = normalize(world_pos);
-
-	float linear_depth = -view.z;
-
-	// Fog factor — density scales with atmo_activity
-	float effective_density = fog_density * atmo_activity;
-	float fog_factor = calc_fog_exp(linear_depth, effective_density);
-	fog_factor *= calc_fog_falloff(world_pos.y, fog_falloff);
-	fog_factor *= calc_fog_distance(linear_depth);
-
-	// Atmospheric scattering color
-	float sun_mu = dot(sun_direction, world_pos);
-	float sr, sm;
-	calc_simple_optical_depth(world_pos.y, sr, sm);
-	vec3 scatter = calc_atmospheric_scatter(sr, sm, sun_mu, angle_mult.xyz, linear_depth);
-
-	// Tonemap
-	vec3 fog_color = apply_photo_tonemap(scatter, 1.0, 0.5);
-
-	ALBEDO = fog_color;
-	ALPHA = clamp_to_unit(fog_factor);
 }

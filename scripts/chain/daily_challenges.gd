@@ -6,7 +6,14 @@ extends Node
 signal daily_loaded(data: Dictionary)
 signal challenges_loaded(challenges: Array)
 
-const ENTROPY_API_BASE: String = "https://entropy-dysnomia.vercel.app"
+## The Entropy site's Redis-backed endpoints (achievements, XP, flags, alliances,
+## daily/challenges, presence, online players, leaderboard) are empty in
+## production and their old host is gone (docs/LEARNINGS.md §8). Requests are
+## switched off and report "unavailable" through the normal failure path until
+## Phase 7 removes these features.
+const LEGACY_API_ENABLED := false
+const ENTROPY_API_BASE: String = ""  # old host is gone
+const API_BASE: String = ""
 
 # ── State ───────────────────────────────────────────────────────────────
 var _http_daily: HTTPRequest
@@ -48,6 +55,9 @@ func fetch_daily() -> void:
 		daily_loaded.emit(_daily_cache)
 		return
 
+	if not LEGACY_API_ENABLED:
+		_on_daily_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
 	var url := ENTROPY_API_BASE + "/api/daily"
 	if not _wallet.is_empty():
 		url += "?wallet=" + _wallet
@@ -64,6 +74,9 @@ func fetch_challenges() -> void:
 		challenges_loaded.emit(_challenges_cache)
 		return
 
+	if not LEGACY_API_ENABLED:
+		_on_challenges_response(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
 	var url := ENTROPY_API_BASE + "/api/challenges"
 	if not _wallet.is_empty():
 		url += "?wallet=" + _wallet

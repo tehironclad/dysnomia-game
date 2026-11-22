@@ -367,12 +367,33 @@ func _on_map_territory_selected(qing_address: String) -> void:
 	print("[Main] Map travel to QING: %s" % qing_address.left(14))
 	hud.show_interact_prompt("Traveling to %s..." % qing_address.left(10))
 	# Load the territory data — this will trigger territory_data_changed, then scene reload
+	# Wait for success OR failure (a failed load used to hang travel forever).
+	var outcome := {"done": false, "ok": false, "error": ""}
+	var on_ok := func(_data: Dictionary) -> void:
+		outcome["done"] = true
+		outcome["ok"] = true
+	var on_fail := func(err) -> void:
+		outcome["done"] = true
+		outcome["error"] = str(err)
+	ChainManager.territory_loaded.connect(on_ok, CONNECT_ONE_SHOT)
+	ChainManager.territory_load_failed.connect(on_fail, CONNECT_ONE_SHOT)
 	GameManager.territory_address = qing_address
 	GameManager.is_chain_sourced = true
 	ChainManager.load_territory(qing_address)
-	# Wait for territory data, then reload the scene
-	await ChainManager.territory_loaded
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	var t0 := Time.get_ticks_msec()
+	while not outcome["done"] and Time.get_ticks_msec() - t0 < 60000:
+		await get_tree().process_frame
+	if ChainManager.territory_loaded.is_connected(on_ok):
+		ChainManager.territory_loaded.disconnect(on_ok)
+	if ChainManager.territory_load_failed.is_connected(on_fail):
+		ChainManager.territory_load_failed.disconnect(on_fail)
+	if outcome["ok"]:
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		return
+	var reason: String = outcome["error"] if outcome["done"] else "timed out after 60 s"
+	hud.show_interact_prompt("Travel failed: %s" % reason)
+	await get_tree().create_timer(3.0).timeout
+	hud.hide_interact_prompt()
 
 
 func _on_territory_entered(direction: int, territory_name: String, address: String) -> void:

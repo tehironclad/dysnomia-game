@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Dysnomia Wallet Bridge</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -773,8 +772,11 @@
   // ── Supabase Multiplayer ──
   // ══════════════════════════════════════════════════════════════════════
 
-  var SUPABASE_URL = 'https://tftfafepodpolrufefrt.supabase.co';
-  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmdGZhZmVwb2Rwb2xydWZlZnJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzODMzOTksImV4cCI6MjA4Njk1OTM5OX0.yv0xiZrI7oyZpeq6lCZ6XqOkGhE5ZPuWd4rbL2EfnN8';
+  // The Supabase project behind realtime multiplayer and voice no longer exists
+  // (its host does not resolve). Left blank so initMultiplayer() is a no-op;
+  // the bridge is rewritten in Phase 4 (docs/REWORK_PLAN.md WP 4.1).
+  var SUPABASE_URL = '';
+  var SUPABASE_ANON_KEY = '';
 
   var supabaseClient = null;
   var mpChannel = null;

@@ -3,7 +3,14 @@ extends Node
 ## GET /api/flags?qing=ADDRESS → load flags for a territory
 ## POST /api/flags {wallet, message, position, territory} → plant a new flag
 
-const API_BASE: String = "https://entropy-dysnomia.vercel.app"
+## The Entropy site's Redis-backed endpoints (achievements, XP, flags, alliances,
+## daily/challenges, presence, online players, leaderboard) are empty in
+## production and their old host is gone (docs/LEARNINGS.md §8). Requests are
+## switched off and report "unavailable" through the normal failure path until
+## Phase 7 removes these features.
+const LEGACY_API_ENABLED := false
+const ENTROPY_API_BASE: String = ""  # old host is gone
+const API_BASE: String = ""
 const CACHE_TTL: float = 60.0  # Cache flags for 60s
 
 signal flags_loaded(flags: Array)
@@ -43,6 +50,9 @@ func load_flags(territory_address: String) -> void:
 		flags_loaded.emit(_cached_flags)
 		return
 
+	if not LEGACY_API_ENABLED:
+		_on_get_completed(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
 	var url := "%s/api/flags?qing=%s" % [API_BASE, territory_address]
 	var err := _http_get.request(url)
 	if err != OK:
@@ -72,6 +82,9 @@ func _process_post_queue() -> void:
 	var payload: Dictionary = _post_queue.pop_front()
 	var json_str := JSON.stringify(payload)
 	var headers := ["Content-Type: application/json"]
+	if not LEGACY_API_ENABLED:
+		_on_post_completed(HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray())
+		return
 	var url := "%s/api/flags" % API_BASE
 	var err := _http_post.request(url, headers, HTTPClient.METHOD_POST, json_str)
 	if err != OK:
