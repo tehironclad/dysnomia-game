@@ -25,7 +25,7 @@ varying vec3 world_pos;
 
 const float TAU_ = 6.28318530718;
 const vec3 GOLD = vec3(1.0, 0.78, 0.4);
-const vec3 GROUND = vec3(0.043, 0.055, 0.086);   // #0b0e16
+const vec3 GROUND = vec3(0.032, 0.040, 0.062);   // a shade under #0b0e16
 
 vec3 color_of(float t) {
 	return vec3(0.55) + 0.45 * cos(TAU_ * (vec3(t) + vec3(0.0, 0.33, 0.67)));
@@ -96,7 +96,7 @@ void fragment() {
 		if (style == 4) { rings = pow(max(0.0, cos(st * 34.0)), 14.0); }
 		if (style == 5) { rings = pow(max(0.0, cos(st * 46.0)), 10.0); }
 		if (style == 3) { rings = 0.5 * exp(-st * 4.0); }
-		albedo = GROUND * 1.15 * grain + tint * 0.035;
+		albedo = GROUND * 1.15 * grain;
 		light = tint * (0.025 * v + 0.10 * contour + 0.28 * rings) * glow;
 	} else {
 		float rr = sqrt(m);
@@ -120,6 +120,6 @@ void fragment() {
 	}
 	ALBEDO = albedo;
 	ROUGHNESS = 0.92;
-	SPECULAR = 0.2;
+	SPECULAR = 0.05;
 	EMISSION = light;
 }
