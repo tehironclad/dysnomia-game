@@ -42,6 +42,10 @@
   previews and prints slope stats per territory.
 - If a headless run hangs with no output, a script probably failed to parse: run `tools/check.sh`
   first. A class that doesn't compile makes `-s` tools hang instead of erroring.
+- In `-s` tool scripts, don't reference by name any class that uses autoloads (Chain, Registry…). At
+  the tool's parse time the autoloads aren't registered yet, so it fails with "Identifier not found".
+  Use `load("res://…").new()` inside a deferred function instead. Godot's stdout is buffered when piped:
+  redirect to a file to see errors from killed runs.
 - Deep Field goldens: `node tools/golden/deepfield.js <entropy-ai-pulse>` reruns the site's real JS.
 - **Screenshots (the user OK'd this route, 2026-11-22):**
   `VK_ICD_FILENAMES=/opt/lavapipe/lvp_icd.json xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --resolution 1280x720 -s res://tools/screenshot.gd -- --out=<abs png> --scene=res://scenes/territory/territory_v2.tscn --view=aerial|ground`

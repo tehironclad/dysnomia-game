@@ -212,6 +212,33 @@ static func divmod_small(a: PackedInt64Array, d: int) -> Array:
 	return [_trim(q), r]
 
 
+## Returns [quotient, remainder] for arbitrary non-zero divisors (shift-subtract
+## long division; fine for 256-bit values).
+static func divmod(a: PackedInt64Array, b: PackedInt64Array) -> Array:
+	a = _trim(a.duplicate())
+	b = _trim(b.duplicate())
+	assert(not b.is_empty(), "BigInt.divmod: division by zero")
+	if cmp(a, b) < 0:
+		return [PackedInt64Array(), a]
+	if b.size() == 1 and b[0] < (1 << 31):
+		var qr := divmod_small(a, b[0])
+		return [qr[0], from_int(qr[1])]
+	var q := PackedInt64Array()
+	var r := PackedInt64Array()
+	for i in range(bit_length(a) - 1, -1, -1):
+		r = shl(r, 1)
+		if (a[i / LIMB_BITS] >> (i % LIMB_BITS)) & 1:
+			r = add(r, from_int(1))
+		if cmp(r, b) >= 0:
+			r = sub(r, b)
+			q = add(q, shl(from_int(1), i))
+	return [_trim(q), r]
+
+
+static func div(a: PackedInt64Array, b: PackedInt64Array) -> PackedInt64Array:
+	return divmod(a, b)[0]
+
+
 ## a mod m for m up to 2^59 (e.g. the Motzkin prime, 360e6). Works hex digit
 ## by hex digit: r = (r*16 + d) % m never exceeds 2^63.
 static func mod_int(a: PackedInt64Array, m: int) -> int:

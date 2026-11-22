@@ -1,0 +1,282 @@
+{
+ "generatedAt": "2026-11-22T11:59:43.067Z",
+ "block": 28122418,
+ "count": 55,
+ "players": [
+  {
+   "yue": "0xb80d2e294cf410e5d31a320b2de450907bf065c3",
+   "wallet": "0x6d936484072482335a7a479f92a6d3cd7979829e",
+   "last": 28101755
+  },
+  {
+   "yue": "0x852dbb06f8049b570b4436ef722f5223578b850b",
+   "wallet": "0x5d606355faf9aadc2bd8878e049030259880db9c",
+   "last": 28100387
+  },
+  {
+   "yue": "0x59b1053f656ed839d3cd9587b6364cd7e86207dd",
+   "wallet": "0x18f621662d6a1f23700ea32d146b32195dc33111",
+   "last": 28026611
+  },
+  {
+   "yue": "0xcd873645ae1f30364f281afc8331b29d78b33e59",
+   "wallet": "0xb46bd3b3750ee5e8244a9acab6974781dd4bf769",
+   "last": 27939281
+  },
+  {
+   "yue": "0x4f94f27d9655411927e72799c6e797989a86f2d4",
+   "wallet": "0xb644ba4797c8eab1c5a33c41e00096eb4e06d465",
+   "last": 27786929
+  },
+  {
+   "yue": "0x855715fcc8ec59add353ca9bf5bf4dbd0049ee2c",
+   "wallet": "0xba01c8f0b9bc4e0198cf0e1f6eb7ff1f95268d85",
+   "last": 27516706
+  },
+  {
+   "yue": "0x6742c7b7326b6ffb8b761f43ac04f603b256dbec",
+   "wallet": "0x47305c1b2f99d66df8790b2213cacff61abf1f47",
+   "last": 27511779
+  },
+  {
+   "yue": "0xd7f3c65e2bb560fae07a7b233f9ed0964773e6fc",
+   "wallet": "0xde4f369ef04ddfffc0e18da261d971ff0d8d1f69",
+   "last": 27468369
+  },
+  {
+   "yue": "0x2ac5e8dafa8dbb5dad204b83acf7309337c947cb",
+   "wallet": "0x04a17db2a721d55dcd91068a70920d6ccea02211",
+   "last": 27419720
+  },
+  {
+   "yue": "0x82bb468aa1b2825c7e3c2f42d82d67f6794a8a26",
+   "wallet": "0xbda9b349d3f11815e6080a8797eb61a3b9e31b33",
+   "last": 27273257
+  },
+  {
+   "yue": "0x998db66c7601eab9aad4f948ee339d497f8c3874",
+   "wallet": "0x5e44cc5f4b9c72da141e425f11a2cc0111baeb58",
+   "last": 27168643
+  },
+  {
+   "yue": "0x550a78f5915c7f41b7af42f15f59bf8b230b145b",
+   "wallet": "0xb3d08a184e4bff273f2ac451a2871a37cb3e70d0",
+   "last": 26954032
+  },
+  {
+   "yue": "0x91072e20b61e7236b821a60d54891517f884cd33",
+   "wallet": "0xf67d5de18b4957cd7cbeacad203fff8f2e8fe96f",
+   "last": 26947069
+  },
+  {
+   "yue": "0x92501b284b29e4e57c8172ed59afff254dd0c228",
+   "wallet": "0xb15cdd0084e492ebe16a1858e8c578c3c369cd99",
+   "last": 26896965
+  },
+  {
+   "yue": "0xcda0c40f7f27f5e9992af7812538b1c0c16e7645",
+   "wallet": "0xcf3e503a49b352a11033dcdf2091ec42edb3afec",
+   "last": 26728954
+  },
+  {
+   "yue": "0x04a9f45db8a32395a31ddb31c7989b2a75e79094",
+   "wallet": "0xcec3cdcbaad459b2b7bee596ea70a5300e5aa834",
+   "last": 26720560
+  },
+  {
+   "yue": "0x7b6db85444aceda91b5447dd68074c48628b6a0b",
+   "wallet": "0x711f36141a24008606682732844bf573c2c50b02",
+   "last": 26356544
+  },
+  {
+   "yue": "0x02ad3d32094043e424ea8a5dd6867141e98adfe3",
+   "wallet": "0xde7decc5b14aa743440fd6ad602623e3fae77aac",
+   "last": 26336159
+  },
+  {
+   "yue": "0x1058d2b915463b0796695a0ce91236cc2d1e3c5c",
+   "wallet": "0x530c8ce74897805a4612eaff07972d049acaf95f",
+   "last": 26329662
+  },
+  {
+   "yue": "0x562ce8d502eea57ff1ee62d74f4d3cecfe560452",
+   "wallet": "0x771a6f6ebe92fe647e657b8cefc58faaf1778a65",
+   "last": 26329227
+  },
+  {
+   "yue": "0x4a32b4391db5771a3a3682183a6b109d516f723f",
+   "wallet": "0x0d6d5aedfa65f0a3c7ad976ec971b62e5daa3122",
+   "last": 26328690
+  },
+  {
+   "yue": "0x3d7d155313acc824931595328fff9be5eadda7ab",
+   "wallet": "0xe0b78ec09b839439203b360ef8071078ce845411",
+   "last": 26319957
+  },
+  {
+   "yue": "0x8f11dc9fd8cd52b692324a771c79310915907121",
+   "wallet": "0x7784de42abde8b37e9036b246b53acb8d97b3b0c",
+   "last": 26319458
+  },
+  {
+   "yue": "0x3c8b32cf886d4f8af2c845a05e650b6615252e5e",
+   "wallet": "0xe0fbb4b8e5395e6f2d31f7c09d67ce0bc37396d7",
+   "last": 26317188
+  },
+  {
+   "yue": "0x4a96566460a9f93ce800a102fd9ebbb2fa41d1fc",
+   "wallet": "0x75f17e59ef0c97fde04d79f48dcfc444f48885a5",
+   "last": 26312097
+  },
+  {
+   "yue": "0x6aa65142248f268c423ce526058dedc18a490945",
+   "wallet": "0xf61fb22b777877608d78b9d9e529cf44615c52c5",
+   "last": 26303927
+  },
+  {
+   "yue": "0xa6b3999eda3f913107c73fab5bd2777b016ee7a9",
+   "wallet": "0xaeef117467d6bd21e7ac882410adbc6e51fe9708",
+   "last": 26303875
+  },
+  {
+   "yue": "0xb33195c4928e509cdd5517347fbc4ee58a1e241c",
+   "wallet": "0x0ed7a1394de4bbbf6693ea7d6c21a88d3bd7c3f4",
+   "last": 26265760
+  },
+  {
+   "yue": "0xa966d7d4feb0bec326e40229fa2eb8b952293cd0",
+   "wallet": "0xb900a201a508ac479192be0ce3ec428beb256343",
+   "last": 26226098
+  },
+  {
+   "yue": "0x6ca95110abe0aa29ee1f4891c8df2f1a3e610bb7",
+   "wallet": "0x4fc58f16344b81ef3ee58880c5e0ca26a368aabe",
+   "last": 26196990
+  },
+  {
+   "yue": "0x897eefc7f3b5bd3e163c928acc82fd142d1b8688",
+   "wallet": "0x1209c951fdfb5875e2990061bcc155e986583e51",
+   "last": 26153793
+  },
+  {
+   "yue": "0xe8c737cb6913ad10226c55fe91a54d0577848dfc",
+   "wallet": "0xde74fe2d87755284a97042b75a1ee286ea4ef185",
+   "last": 26152023
+  },
+  {
+   "yue": "0xa13174572b07df9c88a83a15d8afe3512acf4859",
+   "wallet": "0xc53debe2be2f49983cff7d44ad1efffa290a83dc",
+   "last": 26139429
+  },
+  {
+   "yue": "0x935a694377cf48d8fc934f17db289774f0ce7075",
+   "wallet": "0xebe9b8673d7096dcee26da7d9eaf6fc4ebe30980",
+   "last": 26117110
+  },
+  {
+   "yue": "0xa5f4559967f35e964fa89a83d55b407a867f77ad",
+   "wallet": "0x5de9a3dc322eb92e8d45fe35910227a9bb4bc85d",
+   "last": 26094665
+  },
+  {
+   "yue": "0x744d22897bf3e0ca6f554f73fcb307a3f3f56f75",
+   "wallet": "0x18d58f910053842d1faac7986f7b5db1ea6b91bd",
+   "last": 26038440
+  },
+  {
+   "yue": "0x8e666227b0c5a42075a4f9bdf5d2176f287a9cf0",
+   "wallet": "0x17367877af5a8d0eb33ba5689a880f696386e24d",
+   "last": 26016364
+  },
+  {
+   "yue": "0x81e529459651cbfb1b9dca4a1c614861c8d58f98",
+   "wallet": "0xb351f6cd7066bd44557f5f37236d0e0a5533c8c3",
+   "last": 25925720
+  },
+  {
+   "yue": "0x235ab4be60f8a96eb07a0b6273eb214d17144888",
+   "wallet": "0xe26009a420f21048eed184ff9146d88fde00d0d0",
+   "last": 25918208
+  },
+  {
+   "yue": "0x213c730c6b8186c62aa1f5638514d36c0bddf9ac",
+   "wallet": "0xffe9560d9e14a7744db4becce72d434162903f41",
+   "last": 25875842
+  },
+  {
+   "yue": "0xce579451961ca37511d1eb3666f7b296887503e3",
+   "wallet": "0x11ba31b11cf18b16b7aab882f0cfbd30c90b9fa5",
+   "last": 25859645
+  },
+  {
+   "yue": "0xdc59540282de090901be983dbdab7512b749130a",
+   "wallet": "0x9d7377a9cffcc1650e186ba75070781967838982",
+   "last": 25856952
+  },
+  {
+   "yue": "0x937a3829e683c96d5b8a3986e73e5ed915ad0417",
+   "wallet": "0xd84d1f2009c0abbae5ebe8187a5010cc3247f2dc",
+   "last": 25851460
+  },
+  {
+   "yue": "0x711cfc1e793e5f224def8cd0fea6344dc36be9c0",
+   "wallet": "0x364344a6f7809eda5b3a470789789faaa6628f07",
+   "last": 25845131
+  },
+  {
+   "yue": "0x68c066f41d2713c10d2234b4d1921254da856a12",
+   "wallet": "0xe3562f7cc05108bf105433a9af65978d497d9966",
+   "last": 25826245
+  },
+  {
+   "yue": "0x6666a06e89cd42a6e08d0c2ab20c64580c41cbfc",
+   "wallet": "0x1b64aaa7eb2a8356bb257fb806ecdb3f965e4f7b",
+   "last": 25806945
+  },
+  {
+   "yue": "0x7800e58e52d2b617feb4425ffc9c43d594a15e55",
+   "wallet": "0x2705edc48eadbe0854651cd7890913375fac7373",
+   "last": 25803557
+  },
+  {
+   "yue": "0xc2b6e025a7c52cb3ad353407714a84f517b43bd3",
+   "wallet": "0x747334054bceb5859d6a265444fb7ad7d2c4809f",
+   "last": 25769386
+  },
+  {
+   "yue": "0xe29aeec5be7d7d6c45d776eca36c325fc44b6069",
+   "wallet": "0x56d9bd3bed6db29a9fddb7b56050e0ec95462b57",
+   "last": 25750132
+  },
+  {
+   "yue": "0x7aab9a24f67bfccc2e2f4a986ffe1994a461c72d",
+   "wallet": "0x6757e889cbaf232d869e8af1a8312c5c8dd9891c",
+   "last": 25748145
+  },
+  {
+   "yue": "0xa78193b4f957b17f31583ba455d5b969f0e910b8",
+   "wallet": "0x999208a2c838ba63e31671b93a3ddecffec38ecd",
+   "last": 25742302
+  },
+  {
+   "yue": "0xd181b40574344cd155c999a9741ef50529af9432",
+   "wallet": "0x7720a7af5ca035702495403191a1024db9a9b9b7",
+   "last": 25731943
+  },
+  {
+   "yue": "0x424d379cfee2b79b9d66bf9f94cc51ae0165554b",
+   "wallet": "0x765414e37d836d3efde7613d2c576d063a8340be",
+   "last": 25679725
+  },
+  {
+   "yue": "0x32d074a2015ff7d159e18f86f12fc28c308afca7",
+   "wallet": "0xd65d81085d1966c188f09798bf5e13800ff78e8a",
+   "last": 25464120
+  },
+  {
+   "yue": "0xc7c28ea0e31afb45dff27ca79b498dabba7c9cf8",
+   "wallet": "0x0474606332105a1da6fc8ef7de2470551d389cb9",
+   "last": 23730519
+  }
+ ]
+}

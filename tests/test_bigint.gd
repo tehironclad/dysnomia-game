@@ -75,3 +75,13 @@ func test_log10() -> void:
 	near(BigInt.log10(BigInt.from_int(1000)), 3.0, 1e-9)
 	near(BigInt.log10(BigInt.from_decimal("378814830703436350975436945425663138519237484768630413256454076449062763743")), 74.578, 0.001)
 	check(is_inf(BigInt.log10(BigInt.zero())))
+
+
+func test_divmod_big() -> void:
+	var a := BigInt.from_decimal("50977000000000000000000")  # 50,977 Fornax in wei
+	var b := BigInt.from_decimal("393752164582214")  # an Entropy
+	var qr := BigInt.divmod(a, b)
+	eq(BigInt.to_decimal(qr[0]), "129464685")  # floor(5.0977e22 / 3.9375e14)
+	eq(BigInt.to_decimal(BigInt.add(BigInt.mul(qr[0], b), qr[1])), "50977000000000000000000")
+	check(BigInt.cmp(qr[1], b) < 0, "remainder < divisor")
+	eq(BigInt.to_decimal(BigInt.div(BigInt.from_int(7), BigInt.from_int(9))), "0")

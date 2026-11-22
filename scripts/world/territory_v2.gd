@@ -10,6 +10,7 @@ extends Node3D
 @onready var core: TerritoryCore = $Core
 
 var territory: Dictionary = {}
+var state: TerritoryState
 
 
 func _ready() -> void:
@@ -31,6 +32,11 @@ func _ready() -> void:
 	terrain.build(territory)
 	sky.setup(terrain.params, String(territory["address"]))
 	core.build(terrain.params, territory, terrain.heightfield.core_height)
+	state = TerritoryState.new()
+	state.name = "State"
+	add_child(state)
+	state.changed.connect(_on_state_changed)
+	state.setup(territory)
 	_frame(view)
 
 
@@ -52,3 +58,26 @@ func _frame(view: String) -> void:
 		camera.position = Vector3(0.0, 330.0, 330.0)
 		camera.look_at(Vector3(0.0, 0.0, 10.0))
 		camera.fov = 55.0
+
+
+## Shared territory state → the world (same for every viewer).
+func _on_state_changed() -> void:
+	core.set_well("fornax", state.fornax)
+	core.set_well("eris", state.eris)
+	core.set_well("tethys", state.tethys)
+	if state.cover_charge.has_value():
+		core.set_door_closed(not BigInt.is_zero(BigInt.coerce(state.cover_charge.value)))
+	var reactors: int = int(state.reactors.value) if state.reactors.has_value() else 0
+	terrain.set_activity(0.85 + 0.15 * minf(1.0, reactors / 8.0), state.lit_bands())
+	Inspector.register(state, "Territory state (block %d)" % state.block,
+		"Ω, Hypobar per Su here: %s\nHypobar total %s · Epibar total %s\nReactors: %s\nLit bands on the ground: %d (one per power of ten of the Hypobar total).\nWells: Fornax %s · Eris %s · Tethys %s" % [
+			state.omega.display(), state.total_hypobar.display(_dec), state.total_epibar.display(_dec), state.reactors.display(),
+			int(state.lit_bands()), state.fornax.display(_tok), state.eris.display(_tok), state.tethys.display(_tok)])
+
+
+static func _dec(v) -> String:
+	return TokenFormat.group(BigInt.to_decimal(BigInt.coerce(v)))
+
+
+static func _tok(v) -> String:
+	return TokenFormat.wei_to_tokens(BigInt.coerce(v))
