@@ -1,8 +1,9 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/territory_v2.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/world/terrain/deep_field_terrain.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/world/sky/deep_field_sky.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/world/core/territory_core.gd" id="4"]
 
 [sub_resource type="Environment" id="env"]
 background_mode = 1
@@ -43,3 +44,6 @@ far = 2000.0
 script = ExtResource("3")
 environment_path = NodePath("../WorldEnvironment")
 sun_path = NodePath("../Sun")
+
+[node name="Core" type="Node3D" parent="."]
+script = ExtResource("4")

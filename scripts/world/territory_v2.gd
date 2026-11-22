@@ -7,6 +7,7 @@ extends Node3D
 @onready var terrain: DeepFieldTerrain = $Terrain
 @onready var camera: Camera3D = $PreviewCamera
 @onready var sky: DeepFieldSky = $Sky
+@onready var core: TerritoryCore = $Core
 
 var territory: Dictionary = {}
 
@@ -29,6 +30,7 @@ func _ready() -> void:
 		return
 	terrain.build(territory)
 	sky.setup(terrain.params, String(territory["address"]))
+	core.build(terrain.params, territory, terrain.heightfield.core_height)
 	_frame(view)
 
 
@@ -38,6 +40,10 @@ func _frame(view: String) -> void:
 		camera.position = Vector3(0.0, core_h + 2.0, 40.0)
 		camera.look_at(Vector3(0.0, core_h + 40.0, -120.0))
 		camera.fov = 70.0
+	elif view == "core":
+		camera.position = Vector3(6.0, core_h + 4.0, 34.0)
+		camera.look_at(Vector3(0.0, core_h + 8.0, 0.0))
+		camera.fov = 60.0
 	elif view == "sky":
 		camera.position = Vector3(0.0, core_h + 2.0, 0.0)
 		camera.look_at(camera.position + Vector3(-0.55, 0.62, 0.55))

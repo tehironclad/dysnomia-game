@@ -1,0 +1,297 @@
+class_name TerritoryCore
+extends Node3D
+## The Core at a territory's centre (WP 2.4), built from its numbers:
+## - Rod & Cone: twin pylons; each carries a plate drawing the territory's
+##   Julia set, the Rod for c and the Cone for its mirror c̄ (the Rod/Cone
+##   pairing that must mirror or a reaction reverts). Inscribed with the values.
+## - The Room: a ring wall between them with a door (the QING's chat room;
+##   admission rules bind to the door in WP 5.3).
+## - The Heart: floating above, where Beat happens.
+## - Three wells: what the territory itself holds of Fornax (Hypobar per Su),
+##   Eris (Charge base) and Tethys (VITUS per future Code). Levels are Facts.
+
+const DOOR_SHADER := preload("res://assets/shaders/door_field.gdshader")
+const PYLON_GAP := 9.0
+const ROOM_RADIUS := 6.0
+const WELL_RADIUS := 17.0
+const WELLS := [
+	{"key": "fornax", "label": "FORNAX", "what": "Hypobar per Su (Ω)", "color": Color("#ffb070"), "angle": 210.0},
+	{"key": "eris", "label": "ERIS", "what": "Charge base (QI)", "color": Color("#e9edf4"), "angle": 270.0},
+	{"key": "tethys", "label": "TETHYS", "what": "VITUS per Code (Dione)", "color": Color("#64e3a8"), "angle": 330.0},
+]
+
+var params: Dictionary = {}
+var territory: Dictionary = {}
+var base_y := 0.0
+var heart: MeshInstance3D
+var door_material: ShaderMaterial
+var _wells := {}  # key → {column: MeshInstance3D, label: Label3D, mat: StandardMaterial3D}
+var _t := 0.0
+var _pulse := 0.0
+
+
+func build(p: Dictionary, q: Dictionary, ground_y: float) -> void:
+	params = p
+	territory = q
+	base_y = ground_y
+	position = Vector3(0.0, ground_y, 0.0)
+	var col := DeepField.to_color(p["color"])
+	var col2 := DeepField.to_color(p["color2"])
+	_build_pylon("Rod", Vector3(-PYLON_GAP, 0, 0), false, col)
+	_build_pylon("Cone", Vector3(PYLON_GAP, 0, 0), true, col2)
+	_build_room(col)
+	_build_heart(col)
+	for w in WELLS:
+		_build_well(w)
+	var c: Array = p["c"]
+	Inspector.register(self, "The Core",
+		"Rod plate: Julia set at c = %.6f %+.6fi; Cone plate: its mirror c̄ = %.6f %+.6fi (Rod and Cone must mirror).\nPylon height from log10(Entropy) = %.2f; %d-sided from the set's %d arms.\nWells: Fornax, Eris and Tethys held by this QING (balanceOf(QING)); '—' until read." % [
+			c[0], c[1], c[0], -c[1], _log_entropy(), _sides(), int(p["arms"])])
+
+
+func _log_entropy() -> float:
+	return BigInt.log10(BigInt.from_decimal(String(territory.get("entropy", "1"))))
+
+
+func _sides() -> int:
+	return clampi(int(params.get("arms", 0)), 3, 9) if int(params.get("arms", 0)) > 0 else 6
+
+
+static func _glass(tint: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.02, 0.025, 0.04)
+	m.metallic = 0.6
+	m.roughness = 0.18
+	m.rim_enabled = true
+	m.rim = 0.35
+	m.emission_enabled = true
+	m.emission = tint * 0.08
+	return m
+
+
+static func _glow(tint: Color, energy: float = 2.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = tint
+	m.emission_enabled = true
+	m.emission = tint
+	m.emission_energy_multiplier = energy
+	return m
+
+
+func _label(text: String, size: int = 64) -> Label3D:
+	var l := Label3D.new()
+	l.text = text
+	l.font = DeepFieldTheme.mono_font()
+	l.font_size = size
+	l.pixel_size = 0.01
+	l.modulate = DeepFieldTheme.INK
+	l.outline_size = 0
+	l.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	return l
+
+
+func _build_pylon(pname: String, at: Vector3, mirror: bool, tint: Color) -> void:
+	var height := clampf(10.0 + (_log_entropy() - 11.0) * 2.5, 10.0, 22.0)
+	var root := Node3D.new()
+	root.name = pname
+	root.position = at
+	add_child(root)
+	var body := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.radial_segments = _sides()
+	cyl.rings = 1
+	cyl.top_radius = 0.55
+	cyl.bottom_radius = 1.1
+	cyl.height = height
+	body.mesh = cyl
+	body.material_override = _glass(tint)
+	body.position.y = height * 0.5
+	root.add_child(body)
+	# Edge light running up the pylon.
+	var seam := MeshInstance3D.new()
+	var bx := BoxMesh.new()
+	bx.size = Vector3(0.06, height, 0.06)
+	seam.mesh = bx
+	seam.material_override = _glow(tint, 3.0)
+	seam.position = Vector3(0.0, height * 0.5, 0.95 if not mirror else -0.95)
+	root.add_child(seam)
+	# The plate: the territory's Julia set (c on the Rod, c̄ on the Cone).
+	var vp := SubViewport.new()
+	vp.size = Vector2i(256, 256)
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	vp.transparent_bg = false
+	var view := DeepFieldView.new()
+	view.size = Vector2(256, 256)
+	view.max_iter = 120
+	vp.add_child(view)
+	root.add_child(vp)
+	view.apply_params(params)
+	view.set_mirror(mirror)
+	var plate := MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2(5.0, 5.0)
+	plate.mesh = quad
+	var pm := StandardMaterial3D.new()
+	pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pm.albedo_texture = vp.get_texture()
+	pm.emission_enabled = true
+	pm.emission_texture = vp.get_texture()
+	pm.emission_energy_multiplier = 1.6
+	pm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	plate.material_override = pm
+	plate.position = Vector3(0.0, height + 3.4, 0.0)
+	plate.rotation_degrees.y = 18.0 if not mirror else -18.0  # face the approach (+Z), turned slightly inward
+	root.add_child(plate)
+	var c: Array = params["c"]
+	var tag := "ROD · c\n%.5f %+.5fi" % [c[0], c[1]] if not mirror else "CONE · c̄\n%.5f %+.5fi" % [c[0], -c[1]]
+	var lab := _label(tag, 72)
+	lab.position = Vector3(0.0, height + 6.4, 0.0)
+	root.add_child(lab)
+
+
+func _build_room(tint: Color) -> void:
+	var room := Node3D.new()
+	room.name = "Room"
+	add_child(room)
+	# Ring wall from short segments, with a gap (the door) facing +Z.
+	var segments := 28
+	var door_half := deg_to_rad(16.0)
+	var mat := _glass(tint)
+	for i in segments:
+		var a := TAU * (i + 0.5) / segments
+		var off := wrapf(a - PI * 0.5, -PI, PI)  # 0 at +Z
+		if absf(off) < door_half:
+			continue
+		var seg := MeshInstance3D.new()
+		var b := BoxMesh.new()
+		b.size = Vector3(TAU * ROOM_RADIUS / segments * 0.96, 2.8, 0.35)
+		seg.mesh = b
+		seg.material_override = mat
+		seg.position = Vector3(cos(a) * ROOM_RADIUS, 1.4, sin(a) * ROOM_RADIUS)
+		seg.rotation.y = -a + PI * 0.5
+		room.add_child(seg)
+	# Lintel light ring.
+	var ring := MeshInstance3D.new()
+	var tor := TorusMesh.new()
+	tor.inner_radius = ROOM_RADIUS - 0.08
+	tor.outer_radius = ROOM_RADIUS + 0.08
+	tor.rings = 48
+	ring.mesh = tor
+	ring.material_override = _glow(tint, 1.5)
+	ring.position.y = 2.85
+	room.add_child(ring)
+	# The door field.
+	var door := MeshInstance3D.new()
+	door.name = "Door"
+	var q := QuadMesh.new()
+	q.size = Vector2(2.0 * ROOM_RADIUS * sin(door_half), 2.8)
+	door.mesh = q
+	door_material = ShaderMaterial.new()
+	door_material.shader = DOOR_SHADER
+	door_material.set_shader_parameter("color", Vector3(tint.r, tint.g, tint.b))
+	door.material_override = door_material
+	door.position = Vector3(0.0, 1.4, ROOM_RADIUS * cos(door_half))
+	room.add_child(door)
+	var sign := _label(String(territory.get("name", "")).to_upper(), 56)
+	sign.position = Vector3(0.0, 3.6, ROOM_RADIUS + 0.2)
+	sign.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	room.add_child(sign)
+
+
+## Door state from the room's admission rules (WP 5.3): closed when a cover applies.
+func set_door_closed(closed: bool) -> void:
+	if door_material:
+		door_material.set_shader_parameter("closed", 1.0 if closed else 0.0)
+
+
+func _build_heart(tint: Color) -> void:
+	heart = MeshInstance3D.new()
+	heart.name = "Heart"
+	var s := SphereMesh.new()
+	s.radius = 1.1
+	s.height = 2.2
+	s.radial_segments = 24
+	s.rings = 12
+	heart.mesh = s
+	heart.material_override = _glow(tint.lerp(Color.WHITE, 0.35), 2.5)
+	heart.position = Vector3(0.0, 11.0, 0.0)
+	add_child(heart)
+	var lamp := OmniLight3D.new()
+	lamp.light_color = tint
+	lamp.light_energy = 1.4
+	lamp.omni_range = 28.0
+	lamp.position = heart.position
+	add_child(lamp)
+
+
+## A heartbeat (Beat confirmed): the Heart swells and fades.
+func pulse() -> void:
+	_pulse = 1.0
+
+
+func _build_well(w: Dictionary) -> void:
+	var a := deg_to_rad(float(w["angle"]))
+	var at := Vector3(cos(a) * WELL_RADIUS, 0.0, sin(a) * WELL_RADIUS)  # 270° = behind the Room (-Z)
+	var root := Node3D.new()
+	root.name = "Well_" + w["key"]
+	root.position = at
+	add_child(root)
+	var basin := MeshInstance3D.new()
+	var t := TorusMesh.new()
+	t.inner_radius = 0.9
+	t.outer_radius = 1.2
+	basin.mesh = t
+	basin.material_override = _glow(w["color"], 1.0)
+	root.add_child(basin)
+	var column := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.35
+	cyl.bottom_radius = 0.35
+	cyl.height = 1.0
+	column.mesh = cyl
+	var mat := _glow(w["color"], 2.2)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color.a = 0.75
+	column.material_override = mat
+	column.scale = Vector3(1, 0.05, 1)
+	column.position.y = 0.025
+	root.add_child(column)
+	var lab := _label("%s\n—" % w["label"], 48)
+	lab.position = Vector3(0.0, 2.2, 0.0)
+	root.add_child(lab)
+	_wells[w["key"]] = {"column": column, "label": lab, "def": w}
+
+
+## Sets a well from a Fact holding a balance (wei, as a BigInt hex string or
+## PackedInt64Array). Height is log-scaled; the label shows the token amount.
+func set_well(key: String, f: Fact) -> void:
+	if not _wells.has(key):
+		return
+	var w: Dictionary = _wells[key]
+	var lab: Label3D = w["label"]
+	var name: String = w["def"]["label"]
+	if not f.has_value():
+		lab.text = "%s\n%s" % [name, f.display()]
+		_set_column(w["column"], 0.05)
+		return
+	var wei := BigInt.coerce(f.value)
+	var tokens := TokenFormat.wei_to_tokens(wei)
+	lab.text = "%s\n%s" % [name, tokens]
+	var lg := BigInt.log10(wei) - 18.0  # log10(tokens)
+	var h := 0.05 if is_inf(lg) else clampf(1.0 + (lg + 3.0) * 1.2, 0.2, 9.0)
+	_set_column(w["column"], h)
+
+
+func _set_column(col: MeshInstance3D, h: float) -> void:
+	col.scale = Vector3(1.0, h, 1.0)
+	col.position.y = h * 0.5
+
+
+func _process(delta: float) -> void:
+	_t += delta
+	if heart:
+		_pulse = maxf(0.0, _pulse - delta * 0.8)
+		var s := 1.0 + 0.04 * sin(_t * 1.3) + 0.6 * _pulse
+		heart.scale = Vector3.ONE * s
+		heart.position.y = 11.0 + 0.25 * sin(_t * 0.7)
