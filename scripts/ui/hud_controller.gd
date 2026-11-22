@@ -309,8 +309,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.keycode == KEY_O:
 			_toggle_voice_chat()
 			get_viewport().set_input_as_handled()
-		# Toggle controls help with H
-		elif event.keycode == KEY_H:
+		# Toggle controls help with F1 (H is "How is this drawn?", the Inspector)
+		elif event.keycode == KEY_F1:
 			_toggle_controls()
 			get_viewport().set_input_as_handled()
 		# Toggle minimap with N
@@ -2010,7 +2010,7 @@ func _create_controls_panel() -> void:
 	# Header
 	var header := HBoxContainer.new()
 	var title := Label.new()
-	title.text = "Controls [H]"
+	title.text = "Controls [F1]"
 	title.add_theme_font_size_override("font_size", 20)
 	title.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
 	header.add_child(title)
@@ -2065,7 +2065,8 @@ func _create_controls_panel() -> void:
 	_controls_list.append_text("  Esc            Release / Capture Mouse[/color]\n\n")
 
 	_controls_list.append_text("[color=#60a5fa][b]Panels[/b][/color]\n")
-	_controls_list.append_text("[color=#cccccc]  H               Controls (this screen)\n")
+	_controls_list.append_text("[color=#cccccc]  F1              Controls (this screen)\n")
+	_controls_list.append_text("[color=#cccccc]  H               How is this drawn? (the numbers behind the picture)\n")
 	_controls_list.append_text("  T               Terraform Operations\n")
 	_controls_list.append_text("  C               Chat Panel\n")
 	_controls_list.append_text("  Enter / /     Open Chat Input\n")
@@ -2099,7 +2100,7 @@ func _create_controls_panel() -> void:
 	_controls_list.append_text("[color=#60a5fa][b]Debug[/b][/color]\n")
 	_controls_list.append_text("[color=#cccccc]  F3              Toggle Debug Info[/color]\n\n")
 
-	_controls_list.append_text("[color=#888888]Close: H / Esc[/color]")
+	_controls_list.append_text("[color=#888888]Close: F1 / Esc[/color]")
 
 
 func _toggle_controls() -> void:

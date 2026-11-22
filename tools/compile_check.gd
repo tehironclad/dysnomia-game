@@ -21,7 +21,16 @@ func _initialize() -> void:
 		if not (s is GDScript) or not s.can_instantiate():
 			bad += 1
 			print("FAIL ", f)
-	print("%d scripts, %d failed to compile" % [files.size(), bad])
+	# Shaders: assigning code runs the preprocessor + compiler; errors print as
+	# "SHADER ERROR", which tools/check.sh turns into a failure.
+	var shaders := 0
+	for f in DirAccess.get_files_at("res://assets/shaders"):
+		if f.ends_with(".gdshader"):
+			var sh := Shader.new()
+			sh.code = FileAccess.get_file_as_string("res://assets/shaders/" + f)
+			sh.get_shader_uniform_list()  # compilation is lazy; this forces it
+			shaders += 1
+	print("%d scripts, %d failed to compile; %d shaders checked" % [files.size(), bad, shaders])
 	quit(1 if bad > 0 else 0)
 
 

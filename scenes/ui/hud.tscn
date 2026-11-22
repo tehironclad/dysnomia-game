@@ -482,6 +482,6 @@ offset_left = -260.0
 offset_top = 10.0
 offset_right = -155.0
 offset_bottom = 35.0
-text = "[H] Help"
+text = "[F1] Help · [H] How is this drawn?"
 theme_override_font_sizes/font_size = 12
 theme_override_colors/font_color = Color(0.7, 0.8, 0.9, 0.85)
