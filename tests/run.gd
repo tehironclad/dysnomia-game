@@ -2,10 +2,15 @@ extends SceneTree
 ## Headless test runner.
 ##   godot --headless --path . -s res://tests/run.gd [-- --filter=<substring>]
 ## Runs every test_* method of every res://tests/test_*.gd. Exit code 0 = all passed.
-## Tests are pure logic: no network, no autoloads.
+## Tests need no network. They run after the first idle frame so autoloads
+## (Registry, Inspector…) have finished _ready().
 
 
 func _initialize() -> void:
+	_run.call_deferred()
+
+
+func _run() -> void:
 	var filter := ""
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--filter="):

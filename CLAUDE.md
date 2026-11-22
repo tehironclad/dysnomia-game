@@ -32,8 +32,13 @@
 - `godot --headless --path . -s res://tools/update_snapshot.gd` refreshes
   `assets/data/territories.json` from the chain.
 - `node tools/golden/gen.js <entropy-ai-pulse> <qing-registry.json>` regenerates the test goldens.
-- A headless boot (`godot --headless --path . res://scenes/main.tscn --quit-after 400`) catches runtime
-  errors. The props cut in WP 2.6 still print 44 `look_at` "Node not inside tree" errors; that is known.
+- `godot --headless --path . -s res://tools/boot_territory.gd` loads a real territory from the chain
+  (read-only), enters the world headlessly and prints the HUD territory card. It catches runtime
+  errors. The props cut in WP 2.6 still print ~44 `look_at` "Node not inside tree" errors; that is
+  known.
+- `godot --headless --path . -s res://tools/preview_emblems.gd -- --out=<abs dir>` CPU-renders Deep
+  Field pictures to PNG. You can view them without a GPU.
+- Deep Field goldens: `node tools/golden/deepfield.js <entropy-ai-pulse>` reruns the site's real JS.
 - Rendering screenshots (Xvfb + lavapipe) needs the user's OK. Otherwise ask the user for local screenshots.
 
 **Research source:** `tehironclad/entropy-ai-pulse`. Attach it read-only when a WP says "port from …".

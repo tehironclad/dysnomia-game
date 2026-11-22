@@ -544,11 +544,25 @@ func _process(delta: float) -> void:
 			debug_label.text = debug_text
 
 
+var _territory_card: TerritoryCard = null
+
+
+func _show_territory_card(addr: String) -> void:
+	if addr.is_empty():
+		return
+	if _territory_card == null:
+		_territory_card = TerritoryCard.new()
+		territory_panel.add_child(_territory_card)
+		territory_panel.move_child(_territory_card, 0)
+	_territory_card.show_territory(addr)
+
+
 func _on_territory_data_changed(data: Dictionary) -> void:
 	territory_panel.visible = true
 	var tname: String = data.get("name", "")
 	var addr: String = data.get("address", "")
-	var owner: String = data.get("owner", "Unknown")
+	_show_territory_card(addr)
+	var asset: String = Registry.get_territory(addr).get("asset", "")
 	var waat: String = data.get("waat_hex", "")
 	var seed_val: int = data.get("seed", 0)
 	var biome := BiomeSystem.get_biome(seed_val)
@@ -556,7 +570,9 @@ func _on_territory_data_changed(data: Dictionary) -> void:
 	if not tname.is_empty():
 		bbcode += "[font_size=16][b]%s[/b][/font_size]\n" % _escape_bbcode(tname)
 	bbcode += "[color=#aaaaaa]QING:[/color] %s [url=copy:%s][color=#8b5cf6]📋[/color][/url]\n" % [_truncate_address(addr), _escape_bbcode(addr)]
-	bbcode += "[color=#aaaaaa]Owner:[/color] %s [url=copy:%s][color=#8b5cf6]📋[/color][/url]\n" % [_truncate_address(owner), _escape_bbcode(owner)]
+	# QING.owner() returns the QING itself, so it is not shown; the asset token is.
+	if not asset.is_empty():
+		bbcode += "[color=#aaaaaa]Asset:[/color] %s [url=copy:%s][color=#8b5cf6]📋[/color][/url]\n" % [_truncate_address(asset), _escape_bbcode(asset)]
 	bbcode += "[color=#aaaaaa]Waat:[/color] %s [url=copy:%s][color=#8b5cf6]📋[/color][/url]\n" % [_escape_bbcode(waat.left(20)) + "...", _escape_bbcode(waat)]
 	bbcode += "[color=#aaaaaa]Seed:[/color] %d [url=copy:%d][color=#8b5cf6]📋[/color][/url]\n" % [seed_val, seed_val]
 	bbcode += "[color=#aaaaaa]Biome:[/color] %s" % biome.get("biome_name", "Unknown")

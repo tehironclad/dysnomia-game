@@ -138,19 +138,13 @@ func is_territory_owner() -> bool:
 
 func load_territory_state(data: Dictionary) -> void:
 	## Store territory state from Phase 3A reads (HECKE coords, XIE power, YUE bars, FAUNG).
-	## HECKE coordinates are cosmically large integers (not geographic degrees).
-	## Map to -90..+90 range for shader use and display.
-	var raw_lat: int = data.get("latitude", 0)
-	var raw_lon: int = data.get("longitude", 0)
-	# Store raw hex for MAP.GetMapQing neighbor lookups (±1 arithmetic)
+	## HECKE coordinates are ~240-bit integers; the raw words are kept as hex.
+	## Degrees are the site's display projection (Coords.project), the same
+	## numbers the Field map and the territory card show.
 	territory_latitude_hex = data.get("latitude_hex", "")
 	territory_longitude_hex = data.get("longitude_hex", "")
-	# Use modular reduction to get a stable value in -90..+90 range
-	# Sign is preserved from the int256 parsing (negative = South/West)
-	var lat_sign := signf(float(raw_lat)) if raw_lat != 0 else 1.0
-	var lon_sign := signf(float(raw_lon)) if raw_lon != 0 else 1.0
-	territory_latitude = lat_sign * float(absi(raw_lat) % 90)
-	territory_longitude = lon_sign * float(absi(raw_lon) % 180)
+	territory_latitude = float(data.get("latitude_deg", 0.0))
+	territory_longitude = float(data.get("longitude_deg", 0.0))
 	territory_charge = data.get("charge", 0)
 	territory_omicron = data.get("omicron", 0)
 	territory_omega = data.get("omega", 0)

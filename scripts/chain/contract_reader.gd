@@ -456,8 +456,11 @@ func _on_compliment_result(result_hex: String) -> void:
 	if hex.length() >= 128:
 		var lon_hex := hex.substr(0, 64)
 		var lat_hex := hex.substr(64, 64)
-		_pending_state["longitude"] = HexUtils.parse_int256_result("0x" + lon_hex)
-		_pending_state["latitude"] = HexUtils.parse_int256_result("0x" + lat_hex)
+		# ~240-bit int256 words: never parse to int64 (Godot clamps). Display
+		# degrees use the site's projection (Coords.project).
+		var deg := Coords.project(lon_hex, lat_hex)
+		_pending_state["latitude_deg"] = deg[0]
+		_pending_state["longitude_deg"] = deg[1]
 		# Store raw hex for MAP.GetMapQing neighbor lookups
 		_pending_state["longitude_hex"] = lon_hex
 		_pending_state["latitude_hex"] = lat_hex
