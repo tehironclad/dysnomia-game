@@ -1,0 +1,32 @@
+# Dysnomia game — notes for Claude sessions
+
+**Start here:**
+- [`docs/REWORK_PLAN.md`](docs/REWORK_PLAN.md): the v2 plan. Phases and work packages, with a status
+  board to tick as WPs land.
+- [`docs/LEARNINGS.md`](docs/LEARNINGS.md): the facts. Addresses, selectors, formulas, coordinates, RPC
+  rules, the truth contract, and the Deep Field visual rules.
+- `dysnomia-game-spec.md` is the Feb 2026 spec. Its on-chain mechanics are partly wrong; LEARNINGS wins.
+
+**Hard rules:**
+- **Never fabricate chain-shaped data.** Loading, empty, unavailable and zero are different states; a
+  failed read shows "—". Every number carries its source and block.
+- **Every write goes:** simulate (`eth_call` with `from` = wallet) → sign → verify the receipt from the
+  chain → re-read state. Never trust the wallet page's "confirmed".
+- **`tx.origin` reads need `from` = wallet** (Su, Beat, Eta, Yuan, Power…). `META.Beat` takes a **Waat**.
+- **Big integers never become floats.** Coordinates are ~240-bit int256.
+- **No JSON-RPC batches** (the public node serialises them). Use Multicall3
+  `0xca11bde05977b3631167028862be2a173976ca11`.
+- **WORLD/WAR/GWAT/VITUS/H2O are not deployed.** Never hardcode guessed addresses.
+- **Site API** (an optional accelerator only): `https://systm0.vercel.app`.
+  `entropy-dysnomia.vercel.app` and the Supabase project are gone.
+- **Territory visuals depend only on territory state**, never on the viewer.
+
+**Verify:**
+- Godot 4.6.1 is not installed. Download it into the scratchpad:
+  `https://github.com/godotengine/godot/releases/download/4.6.1-stable/Godot_v4.6.1-stable_linux.x86_64.zip`
+- `godot --headless --import --path .`. Per-script `--check-only` gives false "Identifier not found"
+  errors for autoloads; ignore it.
+- `godot --headless --path . -s res://tests/run.gd`, once WP 0.1 lands.
+- Rendering screenshots (Xvfb + lavapipe) needs the user's OK. Otherwise ask the user for local screenshots.
+
+**Research source:** `tehironclad/entropy-ai-pulse`. Attach it read-only when a WP says "port from …".

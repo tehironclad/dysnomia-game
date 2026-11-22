@@ -1,5 +1,10 @@
 # Dysnomia: The Game — Development Specification
 
+> **⚠ Partly superseded (2026-11-22).** Several on-chain assumptions below turned out to be wrong.
+> The main one: AFFECTION calls do **not** terraform territories. For the verified facts see
+> [`docs/LEARNINGS.md`](docs/LEARNINGS.md); for the v2 direction see
+> [`docs/REWORK_PLAN.md`](docs/REWORK_PLAN.md).
+
 ## Project Overview
 
 **Dysnomia** is a 3D territory exploration and terraforming game built on the Dysnomia/Atropa smart contract ecosystem deployed on PulseChain. Players own LAU identity tokens, claim QING territories, terraform land through AFFECTION contract interactions, and participate in an on-chain world that mirrors particle physics.
