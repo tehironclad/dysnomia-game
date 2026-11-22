@@ -314,7 +314,7 @@ and 1-wei nudges to break a round number. Gas for Su + Beat ≈ 2.8M.
 
 | Source | What | Notes |
 |---|---|---|
-| **Chain, `NewQing` logs** | every territory: address, Integrative (founding LAU), Waat, block | one call from block 0. Then per QING (Multicall3): Entropy, Asset, name, symbol, CoverCharge, BouncerDivisor, GWAT, Compliment |
+| **Chain, `NewQing` logs** | every territory: address, Integrative (**= the asset token**, equals `QING.Asset()`; verified on the two newest), Waat, block | one call from block 0. Then per QING (Multicall3): Entropy, Asset, name, symbol, CoverCharge, BouncerDivisor, GWAT, Compliment |
 | `https://systm0.vercel.app/data/qing-registry.json` | 940 territories (2026-11-17), fields: address, lau (**actually the asset token**), waat (decimal string), block, txHash, name, symbol, entropy, gwat, coverCharge, bouncerDivisor, totalSupply, creator, lat, lon, coordSource | good **seed snapshot**; catch up from its last block with NewQing logs |
 | `…/data/players.json` | 55 `{yue, wallet, last}` (block 28,122,418) | seed list of real players |
 | `…/data/room-snapshot.json` | per-room counts, people, top speakers, latest 300 lines | seed for rooms |

@@ -25,6 +25,9 @@ var minimap_enabled: bool = true
 
 # Chain
 var rpc_url: String = "https://rpc.pulsechain.com"
+## Optional accelerator (chain-backed site endpoints). The game works without it.
+var site_api_base: String = "https://systm0.vercel.app"
+var site_api_enabled: bool = true
 
 # Identity
 var lau_address: String = ""
@@ -108,6 +111,8 @@ func save_settings() -> void:
 	config.set_value("features", "helmet_hud", helmet_hud_enabled)
 	config.set_value("features", "minimap", minimap_enabled)
 	config.set_value("chain", "rpc_url", rpc_url)
+	config.set_value("chain", "site_api_base", site_api_base)
+	config.set_value("chain", "site_api_enabled", site_api_enabled)
 	config.set_value("identity", "lau_address", lau_address)
 	config.set_value("wallet", "bridge_port", wallet_bridge_port)
 	config.save(SETTINGS_PATH)
@@ -131,5 +136,7 @@ func load_settings() -> void:
 	helmet_hud_enabled = config.get_value("features", "helmet_hud", helmet_hud_enabled)
 	minimap_enabled = config.get_value("features", "minimap", minimap_enabled)
 	rpc_url = config.get_value("chain", "rpc_url", rpc_url)
+	site_api_base = config.get_value("chain", "site_api_base", site_api_base)
+	site_api_enabled = config.get_value("chain", "site_api_enabled", site_api_enabled)
 	lau_address = config.get_value("identity", "lau_address", lau_address)
 	wallet_bridge_port = config.get_value("wallet", "bridge_port", wallet_bridge_port)

@@ -93,7 +93,7 @@ fs.writeFileSync(path.join(root, 'assets/data/territories.json'), JSON.stringify
 }) + '\n');
 
 // Projection golden: old raw words vs site lat/lon --------------------------
-const oldMapPath = path.join(root, 'assets/data/qing_map.json');
+const oldMapPath = path.join(root, 'tests/golden/qing_map_legacy.json');
 const byAddr = new Map(qings.map((q) => [q.address, q]));
 const proj = [];
 if (fs.existsSync(oldMapPath)) {

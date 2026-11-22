@@ -11,7 +11,7 @@ func test_hex_roundtrip() -> void:
 func test_decimal_matches_hex_for_real_waats() -> void:
 	# Independent sources: registry decimal Waat vs the old map's hex Waat.
 	var reg = load_json("res://assets/data/territories.json")
-	var old = load_json("res://assets/data/qing_map.json")
+	var old = load_json("res://tests/golden/qing_map_legacy.json")
 	if reg == null or old == null:
 		return
 	var by_addr := {}

@@ -109,25 +109,10 @@ func _on_viewport_resized() -> void:
 
 
 func _load_bundled_names() -> void:
-	## Load QING names from bundled JSON (from entropy's qings.js data).
-	## This provides instant names without any RPC calls.
-	var path := "res://assets/data/qing_names.json"
-	if not FileAccess.file_exists(path):
-		return
-	var file := FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		return
-	var json_text := file.get_as_text()
-	file.close()
-	var json := JSON.new()
-	if json.parse(json_text) != OK:
-		push_warning("[WorldMap] Failed to parse qing_names.json")
-		return
-	var data: Variant = json.data
-	if data is Dictionary:
-		for addr_key: String in data:
-			_name_cache[addr_key.to_lower()] = str(data[addr_key])
-		print("[WorldMap] Loaded %d QING names from bundled cache" % _name_cache.size())
+	## Territory names come from the Registry (read from each QING's name()).
+	for q in Registry.all():
+		if String(q.get("name", "")) != "":
+			_name_cache[q["address"]] = q["name"]
 
 
 func set_qing_name(address: String, qing_name: String) -> void:
@@ -176,10 +161,17 @@ func initialize(raw_qings: Array[Dictionary], current_territory_address: String)
 		var lon_hex: String = q.get("lon_hex", "")
 		var waat_hex: String = q.get("waat_hex", "0x0")
 
-		# Convert HECKE int256 coordinates to lat/lon via modular reduction
-		# HECKE values are cosmically large — mod reduces to valid ranges
-		var lat: float = _int256_hex_to_lat(lat_hex)
-		var lon: float = _int256_hex_to_lon(lon_hex)
+		# Display degrees: the site's projection of HECKE.Compliment words
+		# (Coords.project). Map adjacency is meaningless on chain.
+		var lat: float
+		var lon: float
+		if q.has("lat") and q.has("lon"):
+			lat = float(q["lat"])
+			lon = float(q["lon"])
+		else:
+			var p := Coords.project(lon_hex, lat_hex)
+			lat = p[0]
+			lon = p[1]
 
 		# Meridian-based color (matching entropy's 15-color palette)
 		var meridian_idx := _lon_to_meridian_color_idx(lon)

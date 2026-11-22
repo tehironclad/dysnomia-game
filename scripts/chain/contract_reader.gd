@@ -856,101 +856,30 @@ func _emit_neighbor(direction: int, qing_address: String, qing_name: String, waa
 	})
 
 
-# ─── QING Map Cache (user://qing_map.json) ─────────────────────────────
-
-const QING_CACHE_PATH: String = "user://qing_map.json"
-const BUNDLED_CACHE_PATH: String = "res://assets/data/qing_map.json"  # Ships with the game
-const QING_CACHE_VERSION: int = 1
-const CACHE_MAX_AGE: int = 86400  # 24 hours in seconds
+# ─── QING Map (from the Registry autoload) ───────────────────────────────
+# The territory list now comes from Registry (scripts/data/territory_registry.gd):
+# the shipped snapshot + live NewQing catch-up, with raw Compliment words.
 
 
 func _save_qing_cache() -> void:
-	## Save resolved QING coordinates to local cache for fast startup.
-	var qings_array: Array = []
-	for q in _qings_with_coords:
-		qings_array.append({
-			"address": q.address,
-			"waat_hex": q.waat_hex,
-			"lat_hex": q.lat_hex,
-			"lon_hex": q.lon_hex,
-		})
-
-	var cache := {
-		"version": QING_CACHE_VERSION,
-		"saved_at": int(Time.get_unix_time_from_system()),
-		"count": qings_array.size(),
-		"qings": qings_array,
-	}
-
-	var file := FileAccess.open(QING_CACHE_PATH, FileAccess.WRITE)
-	if file:
-		file.store_string(JSON.stringify(cache, "\t"))
-		file.close()
-		print("[ContractReader] Saved %d QINGs to cache: %s" % [qings_array.size(), QING_CACHE_PATH])
-	else:
-		push_error("[ContractReader] Failed to write QING cache: %s" % QING_CACHE_PATH)
+	pass  # Registry owns persistence.
 
 
 func _load_qing_cache() -> bool:
-	## Load QING coordinates from local cache. Returns true if valid cache loaded.
-	## Falls back to bundled cache shipped with the game on first launch.
-	var cache_path := QING_CACHE_PATH
-	var is_bundled := false
-
-	if not FileAccess.file_exists(QING_CACHE_PATH):
-		# First launch — try the bundled cache that ships with the game
-		if FileAccess.file_exists(BUNDLED_CACHE_PATH):
-			cache_path = BUNDLED_CACHE_PATH
-			is_bundled = true
-		else:
-			return false
-
-	var file := FileAccess.open(cache_path, FileAccess.READ)
-	if not file:
-		return false
-
-	var json_str := file.get_as_text()
-	file.close()
-
-	var parsed = JSON.parse_string(json_str)
-	if parsed == null or not (parsed is Dictionary):
-		return false
-
-	var cache: Dictionary = parsed
-	if cache.get("version", 0) != QING_CACHE_VERSION:
-		print("[ContractReader] QING cache version mismatch, re-scanning...")
-		return false
-
-	# Check cache age — refresh once per day to pick up new QINGs
-	# Bundled cache skips the age check (it's always "old") — use it now, refresh in background
-	if not is_bundled:
-		var saved_at: int = cache.get("saved_at", 0)
-		if saved_at > 0:
-			var age: int = int(Time.get_unix_time_from_system()) - saved_at
-			if age > CACHE_MAX_AGE:
-				var hours := age / 3600.0
-				print("[ContractReader] QING cache is %.1f hours old, refreshing..." % hours)
-				return false
-
-	var qings: Array = cache.get("qings", [])
-	if qings.is_empty():
-		return false
-
+	## Fills _qings_with_coords from the Registry. Returns true if any.
 	_qings_with_coords.clear()
-	for q in qings:
-		if not (q is Dictionary):
-			continue
-		if q.get("address", "").is_empty() or q.get("lat_hex", "").is_empty():
+	for q in Registry.all():
+		if String(q.get("lon_word", "")).is_empty():
 			continue
 		_qings_with_coords.append({
-			"address": q.address,
-			"waat_hex": q.get("waat_hex", "0x0"),
-			"lat_hex": q.lat_hex,
-			"lon_hex": q.get("lon_hex", ""),
+			"address": q["address"],
+			"waat_hex": "0x" + BigInt.to_word(BigInt.from_decimal(q["waat"])),
+			"lat_hex": q["lat_word"],
+			"lon_hex": q["lon_word"],
+			"lat": float(q["lat"]),
+			"lon": float(q["lon"]),
+			"name": q.get("name", ""),
 		})
-
-	var source := "bundled cache" if is_bundled else "cache"
-	print("[ContractReader] Loaded %d QINGs from %s" % [_qings_with_coords.size(), source])
 	return _qings_with_coords.size() > 0
 
 
@@ -1443,6 +1372,8 @@ func read_token_balance(token_address: String, wallet_address: String) -> void:
 # ─── QING Map Accessor (Phase 10) ──────────────────────────────────────
 
 func get_cached_qings() -> Array[Dictionary]:
+	if _qings_with_coords.is_empty() or _qings_with_coords.size() < Registry.count():
+		_load_qing_cache()
 	## Return all cached QING coordinates for the world map.
 	return _qings_with_coords
 

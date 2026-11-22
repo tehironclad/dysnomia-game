@@ -31,6 +31,10 @@ func _ready() -> void:
 	territory_input.text_submitted.connect(_on_territory_submitted)
 	status_label.text = ""
 
+	# Bring the territory list up to the chain head in the background.
+	if not Registry.catching_up:
+		Registry.catch_up()
+
 	# Identity loading
 	identity_button.pressed.connect(_on_identity_load)
 	lau_input.text_submitted.connect(_on_lau_submitted)
