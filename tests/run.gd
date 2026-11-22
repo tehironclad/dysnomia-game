@@ -19,7 +19,12 @@ func _initialize() -> void:
 	var total := 0
 	var failed := 0
 	for f in files:
-		var script: GDScript = load("res://tests/" + f)
+		var script = load("res://tests/" + f)
+		if not (script is GDScript) or not script.can_instantiate():
+			total += 1
+			failed += 1
+			print("FAIL %s: script failed to load (parse error?)" % f)
+			continue
 		var inst = script.new()
 		for m in inst.get_method_list():
 			var name: String = m["name"]
