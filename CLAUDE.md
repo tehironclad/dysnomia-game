@@ -38,6 +38,10 @@
   known.
 - `godot --headless --path . -s res://tools/preview_emblems.gd -- --out=<abs dir>` CPU-renders Deep
   Field pictures to PNG. You can view them without a GPU.
+- `godot --headless --path . -s res://tools/preview_terrain.gd -- --out=<abs dir>` writes Julia-heightfield
+  previews and prints slope stats per territory.
+- If a headless run hangs with no output, a script probably failed to parse: run `tools/check.sh`
+  first. A class that doesn't compile makes `-s` tools hang instead of erroring.
 - Deep Field goldens: `node tools/golden/deepfield.js <entropy-ai-pulse>` reruns the site's real JS.
 - Rendering screenshots (Xvfb + lavapipe) needs the user's OK. Otherwise ask the user for local screenshots.
 
