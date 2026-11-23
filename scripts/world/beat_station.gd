@@ -33,6 +33,8 @@ const DISH_RADIUS: float = 3.0
 const DISH_TUBE: float = 0.25
 const CORE_H: float = 4.5
 const GROUND_RING_SIZE: float = 15.0
+const VIOLET := Color(0.62, 0.3, 1.0)
+const CYAN := Color(0.25, 0.85, 1.0)
 
 # ─── Materials ──────────────────────────────────────────────────────
 var _pylon_material: ShaderMaterial
@@ -59,6 +61,11 @@ var _screens: Array[ShaderMaterial] = []
 var _vu_left: ShaderMaterial
 var _vu_right: ShaderMaterial
 var _desk_vu: ShaderMaterial
+var _arcs: Array = []          # [MeshInstance3D, from, to] cyan chain-arcs between pylon tops
+var _arc_mat: StandardMaterial3D
+var _arc_timer: float = 0.0
+var _arc_idx: int = 0
+var _arc_rng := RandomNumberGenerator.new()
 
 # ─── Animation / state ─────────────────────────────────────────────
 var _dish_angle: float = 0.0
@@ -93,6 +100,8 @@ func initialize(seed_value: int) -> void:
 	_build_core()
 	_build_dish()
 	_build_conduits()
+	_build_header()
+	_build_arcs()
 	_build_ground_circle()
 	_build_speakers()
 	_build_control_desk()
@@ -104,6 +113,8 @@ func initialize(seed_value: int) -> void:
 	var keep: Array = [_dish_mesh, _runic_ring, _core_spinner, _core_plasma]
 	keep.append_array(_cones)
 	keep.append_array(_coils)
+	for arc in _arcs:
+		keep.append(arc[0])
 	Kit.merge_static(self, keep)
 	update_territory_state()
 
@@ -219,6 +230,18 @@ func _process(delta: float) -> void:
 	if _core_light:
 		_core_light.light_energy = (1.2 + _power * 1.8) * (0.85 + thump * 0.3) + flash * 8.0
 
+	# ── Chain-arcs: re-strike one arc every few frames; brighter with CHARGE and on Beat ──
+	_arc_timer -= delta
+	if _arc_timer <= 0.0 and _arcs.size() > 0:
+		_arc_timer = 0.07
+		var arc: Array = _arcs[_arc_idx % _arcs.size()]
+		(arc[0] as MeshInstance3D).mesh = _arc_mesh(arc[1], arc[2])
+		_arc_idx += 1
+		for k in _arcs.size():
+			(_arcs[k][0] as MeshInstance3D).visible = _arc_rng.randf() < 0.55 + _power * 0.4 or flash > 0.0
+	if _arc_mat:
+		_arc_mat.emission_energy_multiplier = 2.5 + _power * 3.0 + flash * 10.0
+
 	# ── Beat effect decay ──
 	if _beat_effect_timer > 0.0:
 		_beat_effect_timer -= delta
@@ -279,6 +302,8 @@ func _build_site() -> void:
 	for s: float in [-1.0, 1.0]:
 		Kit.box(self, Vector3(28.4, 0.5, 0.25), Vector3(0, -0.1, 14.1 * s), kerb)
 		Kit.box(self, Vector3(0.25, 0.5, 28.4), Vector3(14.1 * s, -0.1, 0), kerb)
+	# Embankment from the kerb down to the real terrain so the plaza never floats
+	Kit.skirt(self, Vector2(14.25, 14.25), 0.12, 4.5, Kit.pbr("brushed_concrete", 0.35, Color(0.42, 0.41, 0.4)))
 
 
 func _build_deck() -> void:
@@ -290,9 +315,11 @@ func _build_deck() -> void:
 		Kit.pbr("metal_plate", 0.45, Color(0.7, 0.7, 0.72)), 8, Vector3(0, PI / 8.0, 0), false)
 	Kit.cyl(self, DECK_R + 0.04, DECK_R + 0.04, 0.16, Vector3(0, DECK_H - 0.06, 0),
 		Kit.hazard(2.5), 8, Vector3(0, PI / 8.0, 0), false)
-	# Accent LED strip under the deck lip
-	Kit.cyl(self, DECK_R + 0.06, DECK_R + 0.06, 0.04, Vector3(0, DECK_H - 0.2, 0),
-		Kit.glow(_accent, 2.5), 8, Vector3(0, PI / 8.0, 0), false)
+	# Violet rim LED strip under the deck lip + a skirt down to the plaza
+	Kit.cyl(self, DECK_R + 0.06, DECK_R + 0.06, 0.05, Vector3(0, DECK_H - 0.2, 0),
+		Kit.glow(VIOLET, 3.5), 8, Vector3(0, PI / 8.0, 0), false)
+	Kit.cyl(self, DECK_R + 0.3, DECK_R + 0.55, 0.32, Vector3(0, 0.1, 0),
+		Kit.pbr("brushed_concrete", 0.5, Color(0.5, 0.5, 0.5)), 8, Vector3(0, PI / 8.0, 0))
 
 	var apothem := DECK_R * cos(PI / 8.0)
 	_build_steps(apothem, 1.0)
@@ -528,6 +555,67 @@ func _build_conduits() -> void:
 		Kit.tube(self, pts, 0.06, rubber)
 
 
+func _build_header() -> void:
+	## Lit "META.BEAT" header box hung from a truss spanning the two front pylons.
+	var y := DECK_H + 8.7
+	var z := PYLON_SPACING
+	var xs: Array = []
+	Kit.truss_xforms(Vector3(-PYLON_SPACING + 0.45, y, z), Vector3(PYLON_SPACING - 0.45, y, z), 0.42, 0.5, xs, 0.03)
+	Kit.multi(self, Kit.unit_cylinder(6), xs, Kit.paint(Color(0.6, 0.61, 0.63), 0.35, 0.9))
+	var frame := Kit.paint(Color(0.03, 0.03, 0.035), 0.5, 0.4)
+	Kit.box(self, Vector3(8.0, 1.5, 0.25), Vector3(0, y - 1.15, z), frame)
+	for side: float in [1.0, -1.0]:
+		var fz := z + side * 0.13
+		Kit.label(self, "META.BEAT", Vector3(0, y - 1.12, fz), 300, Color(0.85, 0.97, 1.0), 0.0 if side > 0 else PI, 2.2, 0)
+		Kit.box(self, Vector3(7.8, 0.06, 0.02), Vector3(0, y - 1.82, fz), Kit.glow(CYAN, 4.0), Vector3.ZERO, false)
+		Kit.box(self, Vector3(7.8, 0.06, 0.02), Vector3(0, y - 0.48, fz), Kit.glow(VIOLET, 4.0), Vector3.ZERO, false)
+	for sx: float in [-2.6, 2.6]:
+		Kit.beam(self, Vector3(sx, y - 0.4, z), Vector3(sx, y - 0.2, z), 0.02, Kit.paint(Color(0.6, 0.6, 0.6), 0.3, 1.0))
+
+
+func _build_arcs() -> void:
+	## Crackling cyan chain-arcs between neighbouring pylon tops (meshes re-struck in _process).
+	_arc_rng.seed = _rng.randi()
+	_arc_mat = StandardMaterial3D.new()
+	_arc_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_arc_mat.albedo_color = Color(0.7, 0.95, 1.0)
+	_arc_mat.emission_enabled = true
+	_arc_mat.emission = CYAN
+	_arc_mat.emission_energy_multiplier = 4.0
+	var p := _pylon_positions()
+	var pairs := [[0, 1], [1, 3], [3, 2], [2, 0]]
+	for pr in pairs:
+		var a: Vector3 = p[pr[0]] + Vector3(0, PYLON_HEIGHT - 0.7, 0)
+		var b: Vector3 = p[pr[1]] + Vector3(0, PYLON_HEIGHT - 0.7, 0)
+		var mi := MeshInstance3D.new()
+		mi.material_override = _arc_mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.mesh = _arc_mesh(a, b)
+		add_child(mi)
+		_arcs.append([mi, a, b])
+
+
+func _arc_mesh(a: Vector3, b: Vector3) -> ArrayMesh:
+	## Jagged lightning ribbon (two crossed strips) from a to b with a slight droop.
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 14
+	var pts: Array[Vector3] = []
+	for i in n + 1:
+		var t := float(i) / float(n)
+		var q := a.lerp(b, t)
+		var amp := sin(t * PI) * 0.45
+		q += Vector3(_arc_rng.randf_range(-amp, amp), _arc_rng.randf_range(-amp, amp) - sin(t * PI) * 0.5, _arc_rng.randf_range(-amp, amp))
+		pts.append(q)
+	var w := 0.05
+	for axis: Vector3 in [Vector3.UP, (b - a).cross(Vector3.UP).normalized()]:
+		for i in n:
+			var o0 := axis * w
+			for v: Vector3 in [pts[i] - o0, pts[i] + o0, pts[i + 1] + o0, pts[i] - o0, pts[i + 1] + o0, pts[i + 1] - o0]:
+				st.add_vertex(v)
+	return st.commit()
+
+
 func _build_ground_circle() -> void:
 	## The monument circle shader as a glowing inlay on the deck around the core.
 	var quad := QuadMesh.new()
@@ -545,48 +633,76 @@ func _build_ground_circle() -> void:
 # ─── Club: speakers, desk, video wall ───────────────────────────────
 
 func _build_speakers() -> void:
-	## Two PA stacks flanking the front audience area, VU meter = HYPO (left) / EPI (right).
-	var cab := Kit.paint(Color(0.045, 0.045, 0.05), 0.75, 0.05)
-	var grille := Kit.paint(Color(0.015, 0.015, 0.017), 0.9, 0.2)
+	## Two PA stacks flanking the crowd pit: textured cabinets, real-looking woofers (surround,
+	## paper cone, dust cap) on the subs, perforated grilles + horns on the tops, flybar,
+	## stencils, and a VU column = HYPO (left) / EPI (right).
+	var cab := Kit.painted("metal_plate", Color(0.05, 0.05, 0.055), 1.6)
+	var baffle := Kit.paint(Color(0.025, 0.025, 0.028), 0.85, 0.0)
+	var surround := Kit.paint(Color(0.02, 0.02, 0.02), 0.6, 0.0)
+	var paper := Kit.paint(Color(0.16, 0.16, 0.17), 0.9, 0.0)
+	var cap := Kit.paint(Color(0.03, 0.03, 0.035), 0.25, 0.4)
+	var steel := Kit.paint(Color(0.55, 0.56, 0.58), 0.35, 0.9)
 	var cone_mesh := CylinderMesh.new()
-	cone_mesh.top_radius = 0.06
-	cone_mesh.bottom_radius = 1.0
-	cone_mesh.height = 0.08
-	cone_mesh.radial_segments = 20
+	cone_mesh.top_radius = 0.2
+	cone_mesh.bottom_radius = 0.92
+	cone_mesh.height = 0.12
+	cone_mesh.radial_segments = 24
+	cone_mesh.cap_bottom = false
 	for side: float in [-1.0, 1.0]:
 		var root := Node3D.new()
 		root.name = "SpeakerStack_%s" % ("L" if side < 0 else "R")
-		root.position = Vector3(11.0 * side, 0, 8.6)
-		root.rotation.y = -side * 0.35  # Toe in toward the stage front
+		root.position = Vector3(12.3 * side, 0, 6.3)
+		root.rotation.y = -side * 0.55  # Toe in toward the crowd pit, clear of the stage sightline
 		add_child(root)
-		# Road-case dolly
 		Kit.box(root, Vector3(1.5, 0.14, 1.0), Vector3(0, 0.07, 0), Kit.pbr("metal_plate", 0.8, Color(0.4, 0.4, 0.42), false))
+		for cx: float in [-0.6, 0.6]:
+			for cz: float in [-0.35, 0.35]:
+				Kit.cyl(root, 0.06, 0.06, 0.05, Vector3(cx, 0.03, cz), surround, 10, Vector3(0, 0, PI * 0.5), false)
 		var y := 0.14
-		var specs := [[1.4, 1.0, 0.95, 2, 0.36], [1.4, 1.0, 0.95, 2, 0.36], [1.3, 0.62, 0.8, 3, 0.16], [1.3, 0.62, 0.8, 3, 0.16]]
+		var specs := [[1.4, 1.0, 0.95, 2, 0.36, true], [1.4, 1.0, 0.95, 2, 0.36, true], [1.3, 0.62, 0.8, 2, 0.17, false], [1.3, 0.62, 0.8, 2, 0.17, false]]
 		for s in specs:
 			var w: float = s[0]
 			var h: float = s[1]
 			var d: float = s[2]
 			var nc: int = s[3]
 			var cr: float = s[4]
+			var sub: bool = s[5]
 			Kit.box(root, Vector3(w, h - 0.02, d), Vector3(0, y + h * 0.5, 0), cab)
-			# Corner protectors
+			# Corner protectors + side handles
 			for cx: float in [-1.0, 1.0]:
-				Kit.box(root, Vector3(0.05, h - 0.02, 0.05), Vector3(cx * (w * 0.5 - 0.01), y + h * 0.5, d * 0.5 - 0.01), Kit.paint(Color(0.3, 0.3, 0.32), 0.4, 0.9), Vector3.ZERO, false)
-			Kit.box(root, Vector3(w - 0.12, h - 0.14, 0.01), Vector3(0, y + h * 0.5, d * 0.5 + 0.002), grille, Vector3.ZERO, false)
-			for k in nc:
-				var cxp := (float(k) - float(nc - 1) * 0.5) * (w / float(nc))
-				var cone := MeshInstance3D.new()
-				cone.mesh = cone_mesh
-				cone.material_override = grille
-				cone.position = Vector3(cxp, y + h * 0.5, d * 0.5 + 0.01)
-				cone.rotation.x = PI * 0.5
-				cone.scale = Vector3(cr, 1.0, cr)
-				cone.set_meta("r", cr)
-				root.add_child(cone)
-				_cones.append(cone)
-				Kit.ring(root, cr * 1.02, 0.015, Vector3(cxp, y + h * 0.5, d * 0.5 + 0.02), _cone_rim_mat, Vector3(PI * 0.5, 0, 0), 20)
+				for cy2: float in [-1.0, 1.0]:
+					Kit.box(root, Vector3(0.07, 0.07, 0.07), Vector3(cx * (w * 0.5 - 0.02), y + h * 0.5 + cy2 * (h * 0.5 - 0.04), d * 0.5 - 0.02), steel, Vector3.ZERO, false)
+				Kit.box(root, Vector3(0.02, 0.06, 0.22), Vector3(cx * (w * 0.5 + 0.01), y + h * 0.6, 0), steel, Vector3.ZERO, false)
+			var fz := d * 0.5 + 0.004
+			if sub:
+				Kit.box(root, Vector3(w - 0.08, h - 0.1, 0.01), Vector3(0, y + h * 0.5, fz), baffle, Vector3.ZERO, false)
+				for k in nc:
+					var cxp := (float(k) - float(nc - 1) * 0.5) * (w / float(nc))
+					var c := Vector3(cxp, y + h * 0.5, fz)
+					Kit.ring(root, cr * 0.96, 0.03, c + Vector3(0, 0, 0.01), surround, Vector3(PI * 0.5, 0, 0), 28)
+					var cone := MeshInstance3D.new()
+					cone.mesh = cone_mesh
+					cone.material_override = paper
+					cone.position = c + Vector3(0, 0, -0.02)
+					cone.rotation.x = -PI * 0.5   # Wide end out, apex back into the cabinet
+					cone.scale = Vector3(cr, 1.0, cr)
+					cone.set_meta("r", cr)
+					root.add_child(cone)
+					_cones.append(cone)
+					Kit.ball(root, cr * 0.22, c + Vector3(0, 0, -0.06), cap, 12)
+				Kit.box(root, Vector3(w - 0.2, 0.08, 0.02), Vector3(0, y + 0.08, fz + 0.005), Kit.paint(Color(0.0, 0.0, 0.0), 0.9, 0.0), Vector3.ZERO, false)
+			else:
+				# Perforated grille over a horn + two mids
+				Kit.box(root, Vector3(w - 0.06, h - 0.08, 0.02), Vector3(0, y + h * 0.5, fz), Kit.grille(), Vector3.ZERO, false)
+				Kit.box(root, Vector3(0.5, 0.2, 0.03), Vector3(0, y + h * 0.5, fz + 0.012), Kit.paint(Color(0.12, 0.12, 0.13), 0.35, 0.7), Vector3.ZERO, false)
+			Kit.label(root, "DYS AUDIO", Vector3(side * -(w * 0.5 + 0.012), y + h * 0.5, 0), 48, Color(0.75, 0.75, 0.75), -side * PI * 0.5)
 			y += h
+		# Flybar on top with shackles + a cable loom out the back down to the deck feed
+		Kit.box(root, Vector3(1.5, 0.08, 0.3), Vector3(0, y + 0.1, 0), steel)
+		Kit.beam(root, Vector3(-0.55, y, 0), Vector3(-0.55, y + 0.1, 0), 0.02, steel)
+		Kit.beam(root, Vector3(0.55, y, 0), Vector3(0.55, y + 0.1, 0), 0.02, steel)
+		var loom: Array[Vector3] = [Vector3(0.3, y - 0.3, -0.5), Vector3(0.35, y - 0.6, -0.62), Vector3(0.4, 1.0, -0.66), Vector3(0.4, 0.06, -0.8), Vector3(0.6, 0.06, -1.4)]
+		Kit.tube(root, loom, 0.05, Kit.paint(Color(0.03, 0.03, 0.035), 0.7, 0.0))
 		# VU meter column on the stack's inner side
 		var vu := Kit.screen(4, _accent, int(side * 7.0) + 11)
 		Kit.box(root, Vector3(0.22, 2.6, 0.14), Vector3(-side * 0.82, 1.45, 0.25), cab)
@@ -596,9 +712,9 @@ func _build_speakers() -> void:
 		else:
 			_vu_right = vu
 		Kit.label(root, "HYPO" if side < 0 else "EPI", Vector3(-side * 0.82, 2.86, 0.33), 40, Color(0.9, 0.9, 0.9), 0.0, 0.5)
-		# Stage uplight on the floor in front of the stack
+		# Violet uplight on the floor in front of the stack (rim light for the stage)
 		Kit.cyl(root, 0.16, 0.2, 0.25, Vector3(0.3 * side, 0.125, 0.95), Kit.paint(Color(0.05, 0.05, 0.05), 0.5, 0.6), 12)
-		Kit.light_cone(root, Vector3(0.3 * side, 0.28, 0.95), Vector3(-side * 0.25, 1.0, -0.45), 7.0, 0.12, 0.9, _accent, 0.8)
+		Kit.light_cone(root, Vector3(0.3 * side, 0.28, 0.95), Vector3(-side * 0.25, 1.0, -0.45), 7.0, 0.12, 0.9, VIOLET, 0.9)
 
 
 func _build_control_desk() -> void:
@@ -686,8 +802,8 @@ func _build_video_wall() -> void:
 	Kit.label(root, "META.BEAT", Vector3(0, 7.55, 0.05), 170, _accent, 0.0, 2.5)
 	Kit.label(root, "META.BEAT", Vector3(0, 7.55, -0.05), 170, _accent, PI, 2.5)
 	Kit.box(root, Vector3(6.4, 0.04, 0.1), Vector3(0, 7.15, 0), sign_mat, Vector3.ZERO, false)
-	# Wash light for the wall
-	Kit.omni(root, Vector3(0, 3.0, 3.0), _accent.lightened(0.3), 1.2, 9.0)
+	# Violet back-light: washes the wall and rims the stage from behind
+	Kit.omni(root, Vector3(0, 3.5, 3.4), VIOLET, 2.2, 12.0)
 
 
 # ─── Props, lamps, signage ──────────────────────────────────────────
@@ -710,12 +826,17 @@ func _build_props() -> void:
 	Kit.prop(self, "wooden_crate_02", Vector3(-11.3, 0.46, -10.7), 0.3)
 	Kit.prop(self, "old_military_crate", Vector3(-9.6, 0, -12.4), 0.2)
 	Kit.prop(self, "tool_cart", Vector3(-8.0, 0, -10.2), 2.6)
-	# Crowd barriers along the front edge of the plaza (leave the middle open)
-	for i in 6:
-		var x := (6.5 + float(i % 3) * 1.6) * (1.0 if i < 3 else -1.0)
-		Kit.prop(self, "concrete_road_barrier", Vector3(x, 0, 13.2), _rng.randf_range(-0.06, 0.06))
-	# Lighting masts at the plaza corners, aimed at the stage (front pair carry real spots)
-	var masts := [Vector3(13.0, 0, 13.0), Vector3(-13.0, 0, 13.0), Vector3(13.0, 0, -12.9), Vector3(-13.0, 0, -12.9)]
+	# Crowd pit: steel barrier line with a security lane to the stage steps, FOH desk behind
+	Kit.crowd_barrier(self, Vector3(-8.6, 0, 10.95), Vector3(-2.4, 0, 10.95))
+	Kit.crowd_barrier(self, Vector3(2.4, 0, 10.95), Vector3(8.6, 0, 10.95))
+	_build_foh(Vector3(0, 0, 13.0))
+	Kit.light_pool(self, Vector3(0, 0.08, 12.2), 7.0, CYAN, 0.9)
+	# Concrete barriers now guard the back corners of the plaza
+	for i in 4:
+		var x := (6.5 + float(i % 2) * 1.6) * (1.0 if i < 2 else -1.0)
+		Kit.prop(self, "concrete_road_barrier", Vector3(x, 0, -13.3), _rng.randf_range(-0.06, 0.06))
+	# Lighting masts on the wings and back corners, aimed at the stage (front pair carry spots)
+	var masts := [Vector3(13.6, 0, 3.9), Vector3(-13.5, 0, 8.9), Vector3(13.0, 0, -12.9), Vector3(-13.0, 0, -12.9)]
 	for i in masts.size():
 		var p: Vector3 = masts[i]
 		Kit.flood_mast(self, p, 7.5, Vector3(p.x * 0.25, DECK_H, p.z * 0.25), Color(1.0, 0.86, 0.68), 3, i < 2, 2.5)
@@ -723,15 +844,14 @@ func _build_props() -> void:
 	# Crew cabin (-X) and transformer (+X)
 	Kit.cabin(self, Vector3(-12.2, 0, 2.0), PI * 0.5, Vector3(5.0, 2.5, 2.3), "CREW - BEAT OPS")
 	_build_transformer(Vector3(12.0, 0, 1.5))
-	# Cable protector ramps across the front walkway
-	for x: float in [-6.0, 6.0]:
-		var ramp := Kit.box(self, Vector3(0.6, 0.08, 3.2), Vector3(x, 0.08, 10.2), Kit.hazard(5.0), Vector3(0, 0.25 * signf(x), 0), false)
-		ramp.name = "CableRamp"
+	# Cable protector ramp carrying the FOH snake up the security lane
+	var ramp := Kit.box(self, Vector3(0.6, 0.08, 1.9), Vector3(1.8, 0.08, 11.6), Kit.hazard(5.0), Vector3.ZERO, false)
+	ramp.name = "CableRamp"
 	# Speaker feeds: ground cables from each stack to the deck
 	var rubber := Kit.paint(Color(0.03, 0.03, 0.035), 0.7, 0.0)
 	for sx: float in [-1.0, 1.0]:
-		var pts: Array[Vector3] = [Vector3(10.6 * sx, 0.3, 8.0), Vector3(10.1 * sx, 0.08, 7.6), Vector3(8.0 * sx, 0.08, 7.9),
-			Vector3(6.0 * sx, 0.08, 10.2), Vector3(4.2 * sx, 0.08, 9.6), Vector3(3.9 * sx, 0.5, 8.9), Vector3(3.8 * sx, DECK_H + 0.08, 8.6)]
+		var pts: Array[Vector3] = [Vector3(12.0 * sx, 0.3, 5.6), Vector3(11.3 * sx, 0.08, 5.4), Vector3(9.8 * sx, 0.08, 5.3),
+			Vector3(9.1 * sx, 0.5, 4.9), Vector3(8.0 * sx, DECK_H + 0.08, 4.2)]
 		Kit.tube(self, pts, 0.045, rubber)
 	# Signage on proper stands
 	var warn := "HIGH RESONANCE\nKEEP CLEAR DURING BEAT"
@@ -805,17 +925,55 @@ func _build_light() -> void:
 	_station_light.omni_attenuation = 1.5
 	_core_light = Kit.omni(self, Vector3(0, DECK_H + 3.0, 0), _accent.lightened(0.15), 2.0, 13.0)
 	_core_light.name = "CoreLight"
+	# Cyan crowd wash from the header truss
+	var wash := Kit.spot(self, Vector3(0, DECK_H + 8.3, 5.9), Vector3(0, 0, 12.3), CYAN, 3.5, 16.0, 42.0)
+	wash.name = "CrowdWash"
 
 
 func _build_locals(seed_value: int) -> void:
-	## Operator at the desk, a crew member on rounds, a visitor checking out the stage.
-	var op := Kit.npc(self, seed_value + 101, [], Vector3(0, 0, 1))
-	if op:
-		op.position = Vector3(0, DECK_H, 3.45)
+	## Operator at the desk, crew on rounds, a visitor heading up the lane, security, the FOH
+	## engineer and a crowd of ten in the pit (AmbientNPC culls itself past 70 m).
+	Kit.npc(self, seed_value + 101, [], Vector3(0, 0, 1), Callable(), Vector3(0, DECK_H, 3.45))
 	Kit.npc(self, seed_value + 202, [
-		Vector3(-9.5, 0, 3.7), Vector3(-9.4, 0, 10.6), Vector3(-2.6, 0, 11.8), Vector3(-9.4, 0, 10.6)])
+		Vector3(-9.5, 0, 3.7), Vector3(-9.6, 0, 9.4), Vector3(-9.5, 0, 3.7), Vector3(-9.8, 0, -7.0)])
 	Kit.npc(self, seed_value + 303, [
-		Vector3(4.0, 0, 12.4), Vector3(0.4, 0, 11.2), Vector3(0.0, DECK_H, 8.0), Vector3(3.2, DECK_H, 6.6), Vector3(0.4, DECK_H, 8.1), Vector3(-0.3, 0, 11.3)])
+		Vector3(1.6, 0, 11.6), Vector3(0.6, 0, 10.9), Vector3(0.0, DECK_H, 8.0), Vector3(3.2, DECK_H, 6.6), Vector3(0.4, DECK_H, 8.1), Vector3(0.6, 0, 10.9)])
+	Kit.npc(self, seed_value + 404, [], Vector3(0, 0, 1), Callable(), Vector3(-1.5, 0, 11.3))
+	Kit.npc(self, seed_value + 505, [], Vector3(0, 0, -1), Callable(), Vector3(0.3, 0, 13.65))
+	Kit.crowd(self, seed_value + 606, Vector3(-8.2, 0, 11.5), Vector3(-2.9, 0, 13.6), 5, Vector3(0.15, 0, -1))
+	Kit.crowd(self, seed_value + 707, Vector3(2.9, 0, 11.5), Vector3(8.2, 0, 13.6), 5, Vector3(-0.15, 0, -1))
+
+
+func _build_foh(pos: Vector3) -> void:
+	## Front-of-house mix position: pop-up canopy, desk with console, rack and a light bar.
+	var root := Node3D.new()
+	root.name = "FOH"
+	root.position = pos
+	add_child(root)
+	var frame := Kit.paint(Color(0.6, 0.61, 0.63), 0.35, 0.9)
+	var dark := Kit.paint(Color(0.05, 0.05, 0.06), 0.6, 0.3)
+	Kit.box(root, Vector3(2.6, 0.12, 1.6), Vector3(0, 0.06, 0), Kit.pbr("metal_plate", 0.9, Color(0.4, 0.4, 0.42), false))
+	for sx: float in [-1.2, 1.2]:
+		for sz: float in [-0.75, 0.75]:
+			Kit.beam(root, Vector3(sx, 0.1, sz), Vector3(sx, 2.35, sz), 0.03, frame, 6)
+	Kit.box(root, Vector3(2.7, 0.06, 1.8), Vector3(0, 2.4, 0), Kit.paint(Color(0.08, 0.08, 0.1), 0.8, 0.0))
+	Kit.box(root, Vector3(2.7, 0.25, 0.02), Vector3(0, 2.28, 0.9), Kit.paint(Color(0.08, 0.08, 0.1), 0.8, 0.0))
+	Kit.label(root, "FOH", Vector3(0, 2.28, 0.92), 60, CYAN, 0.0, 1.2)
+	Kit.label(root, "FOH", Vector3(0, 2.28, -0.92), 60, CYAN, PI, 1.2)
+	# Desk + console facing the stage (-Z)
+	Kit.box(root, Vector3(1.9, 0.8, 0.7), Vector3(0, 0.52, -0.25), dark)
+	Kit.box(root, Vector3(1.7, 0.08, 0.6), Vector3(0, 0.96, -0.25), Kit.paint(Color(0.12, 0.12, 0.13), 0.4, 0.5), Vector3(0.2, 0, 0))
+	var leds: Array = []
+	for r in 4:
+		for c in 18:
+			leds.append(Transform3D(Basis.from_scale(Vector3(0.035, 0.02, 0.035)), Vector3(-0.75 + float(c) * 0.088, 1.0 + float(r) * 0.012, -0.45 + float(r) * 0.11)))
+	Kit.multi(root, Kit.unit_box(), leds, Kit.glow(CYAN, 2.5), false)
+	var scr := Kit.screen(1, CYAN, 55)
+	Kit.box(root, Vector3(0.7, 0.45, 0.04), Vector3(0.5, 1.35, -0.52), dark, Vector3(-0.2, 0, 0))
+	Kit.quad(root, Vector2(0.64, 0.4), Vector3(0.5, 1.35, -0.495), scr, Vector3(-0.2, 0, 0))
+	_screens.append(scr)
+	Kit.box(root, Vector3(0.6, 1.0, 0.6), Vector3(-1.0, 0.62, 0.3), dark)
+	Kit.box(root, Vector3(0.5, 0.03, 0.02), Vector3(-1.0, 0.9, 0.61), Kit.glow(Color(0.3, 1.0, 0.45), 3.0), Vector3.ZERO, false)
 
 
 func _build_interaction_area() -> void:

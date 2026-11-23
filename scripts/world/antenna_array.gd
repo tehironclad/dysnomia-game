@@ -1,14 +1,15 @@
 extends Node3D
-## Comm Array — the territory's relay station at (-50, 0), sitting on natural terrain.
-##   - fenced compound (chain-link, barbed outriggers, swing gate, signage) whose posts and
-##     panels follow the ground
-##   - tapered lattice mast in aviation orange/white, platforms, sector panels, microwave
-##     drums, rotating surveillance radar, blinking red obstruction lights
-##   - two ground dishes on proper az/el pedestal mounts, slowly tracking
-##   - equipment cabinets with blinking status LEDs and a link screen, cable tray to the mast,
-##     conduits running into ground handholes, backup generator
-## The uplink beam, LED blink rate and screens follow territory HYPO/EPI activity and CHARGE.
-## Deterministic from the territory seed. Everything is kept within ~9 m of the origin.
+## Comm Array — the territory's relay station at (-50, 0) on a site main.gd levels for it.
+##   - concrete compound with paved walkways inside a chain-link fence (barbed outriggers,
+##     post lights) and a lit "COMM ARRAY" gate arch with a station ID plate
+##   - tapered lattice mast in aviation orange/white with platforms, sector panels,
+##     microwave drums, rotating radar, obstruction lights, cyan relay coils and crystal
+##     resonators (glow = territory activity)
+##   - two ground dishes on az/el pedestal mounts, slowly tracking
+##   - telecom cabinets (louvres, labels, grime, LEDs, link screens) under a canopy with
+##     cable trays, a relay shelter with waveguide bridge, generator + day tank, parked rover
+## The uplink beam, LED blink rate, relay glow and screens follow HYPO/EPI and CHARGE.
+## Deterministic from the territory seed.
 
 const Kit = preload("res://scripts/world/structures/struct_kit.gd")
 const CHAINLINK_SHADER := preload("res://assets/shaders/struct_chainlink.gdshader")
@@ -17,7 +18,7 @@ const TOWER_HEIGHT: float = 20.0
 const BASE_W: float = 3.2
 const TOP_W: float = 1.0
 const BEACON_BLINK_INTERVAL: float = 1.5
-const FENCE_HALF: float = 8.5
+const FENCE_HALF: float = 10.5
 
 var _dish_pivots: Array[Node3D] = []   # Ground dishes: azimuth pivots
 var _dish_elev: Array[Node3D] = []     # ...and their elevation pivots
@@ -35,17 +36,24 @@ var _activity: float = 0.3
 var _power: float = 0.3
 var _time: float = 0.0
 var _rng := RandomNumberGenerator.new()
+var _relay_mat: StandardMaterial3D
+var _gate_half: float = 2.1
 
 
 func initialize(seed_value: int) -> void:
 	_rng.seed = seed_value + 4400
+	_build_compound_floor()
 	_build_foundations()
 	_build_mast()
 	_build_mast_antennas()
 	_build_beacon()
+	_build_relay_crystals()
 	_build_ground_dishes()
 	_build_equipment()
+	_build_shelter()
 	_build_fence()
+	_build_gate_arch()
+	_build_rover()
 	_build_lighting()
 	_build_crew(seed_value)
 	var keep: Array = [_radar]
@@ -95,6 +103,9 @@ func _process(delta: float) -> void:
 		if _obstruction_mat:
 			_obstruction_mat.emission_energy_multiplier = 4.0 if _beacon_on else 0.2
 
+	if _relay_mat:
+		_relay_mat.emission_energy_multiplier = 1.8 + _activity * 3.0 + sin(_time * (1.5 + _activity * 4.0)) * 0.8
+
 	# Cabinet LEDs: data traffic — faster flicker with more territory activity
 	var rate := 2.0 + _activity * 14.0
 	for i in _led_mats.size():
@@ -113,30 +124,6 @@ func _h(x: float, z: float) -> float:
 	if terr and is_instance_valid(terr) and terr.has_method("get_height_at"):
 		return float(terr.get_height_at(position.x + x, position.z + z)) - position.y
 	return 0.0
-
-
-func _footing(center: Vector3, size: Vector2, clearance: float = 0.15) -> float:
-	## Concrete slab that sits level on sloped ground: top just above the highest corner,
-	## skirt reaching below the lowest. Returns the slab top height.
-	var hs := PackedFloat32Array()
-	for sx: float in [-0.5, 0.0, 0.5]:
-		for sz: float in [-0.5, 0.0, 0.5]:
-			hs.append(_h(center.x + sx * size.x, center.z + sz * size.y))
-	var hi := hs[0]
-	var lo := hs[0]
-	var mean := 0.0
-	for v in hs:
-		hi = maxf(hi, v)
-		lo = minf(lo, v)
-		mean += v
-	mean /= float(hs.size())
-	# Cut into the slope: uphill edge sinks into the ground, downhill edge stands proud
-	# as a short retaining face (never a tall pedestal).
-	var top := lerpf(mean, hi, 0.4) + clearance
-	var bottom := lo - 0.6
-	Kit.box(self, Vector3(size.x, top - bottom, size.y), Vector3(center.x, (top + bottom) * 0.5, center.z),
-		Kit.pbr("brushed_concrete", 0.5, Color(0.6, 0.6, 0.58)))
-	return top
 
 
 # ─── Mast ───────────────────────────────────────────────────────────
@@ -282,7 +269,7 @@ func _build_beacon() -> void:
 
 func _build_ground_dishes() -> void:
 	## Two parabolic dishes on azimuth/elevation pedestal mounts.
-	var spots := [[Vector3(-4.8, 0, -4.4), 1.9], [Vector3(4.6, 0, -4.9), 1.2]]
+	var spots := [[Vector3(-6.0, 0, -6.0), 1.9], [Vector3(6.4, 0, -6.4), 1.2]]
 	var white := Kit.paint(Color(0.88, 0.88, 0.86), 0.45, 0.2)
 	var grey := Kit.paint(Color(0.4, 0.41, 0.43), 0.45, 0.85)
 	for i in spots.size():
@@ -336,59 +323,140 @@ func _build_ground_dishes() -> void:
 			_uplink = Kit.light_cone(holder, focus, Vector3.UP, 18.0, 0.1, 0.9, Color(0.35, 0.8, 1.0), 0.3)
 
 
-# ─── Equipment ──────────────────────────────────────────────────────
+# ─── Compound ground ────────────────────────────────────────────────
+
+func _build_compound_floor() -> void:
+	## Level concrete compound (main.gd flattens a 28 m site) with paved walkways:
+	## gate -> mast, a spur up to the cabinets, and across to the shelter door.
+	var slab := Kit.box(self, Vector3(FENCE_HALF * 2.0 + 0.8, 0.5, FENCE_HALF * 2.0 + 0.8), Vector3(0, -0.19, 0),
+		Kit.ground_slab(2, Vector2(FENCE_HALF + 0.4, FENCE_HALF + 0.4), Kit.CYAN, _rng.randi()), Vector3.ZERO, false)
+	slab.name = "CompoundFloor"
+	Kit.skirt(self, Vector2(FENCE_HALF + 0.4, FENCE_HALF + 0.4), 0.06, 3.0, Kit.pbr("brushed_concrete", 0.35, Color(0.42, 0.41, 0.4)))
+	var paver := Kit.pbr("brushed_concrete", 0.9, Color(0.78, 0.78, 0.75))
+	var paths := [[Vector3(2.6, 0, 0), Vector3(FENCE_HALF + 2.5, 0, 0)], [Vector3(7.2, 0, 0.6), Vector3(7.2, 0, 6.8)],
+		[Vector3(-4.6, 0, 6.8), Vector3(7.8, 0, 6.8)]]
+	for pth in paths:
+		var a: Vector3 = pth[0]
+		var b: Vector3 = pth[1]
+		var n := int(a.distance_to(b) / 1.0)
+		for i in n:
+			var p := a.lerp(b, (float(i) + 0.5) / float(n))
+			Kit.box(self, Vector3(0.92, 0.05, 0.92), p + Vector3(0, 0.085, 0), paver, Vector3(0, 0.04 * float((i * 7) % 3 - 1), 0), false)
+
+
+func _footing(center: Vector3, size: Vector2, clearance: float = 0.15) -> float:
+	## Level concrete footing on the compound floor with a chamfered cap and anchor bolts.
+	var top := _h(center.x, center.z) + clearance
+	var conc := Kit.pbr("brushed_concrete", 0.5, Color(0.6, 0.6, 0.58))
+	Kit.box(self, Vector3(size.x, top + 0.5, size.y), Vector3(center.x, (top - 0.5) * 0.5, center.z), conc)
+	Kit.box(self, Vector3(size.x + 0.12, 0.08, size.y + 0.12), Vector3(center.x, 0.1, center.z), Kit.paint(Color(0.32, 0.32, 0.31), 0.9, 0.0), Vector3.ZERO, false)
+	var bolts: Array = []
+	for sx: float in [-0.5, 0.5]:
+		for sz: float in [-0.5, 0.5]:
+			var c := Vector3(center.x + sx * (size.x - 0.3), top, center.z + sz * (size.y - 0.3))
+			bolts.append(Transform3D(Basis.from_scale(Vector3(0.03, 0.08, 0.03)), c + Vector3(0, 0.04, 0)))
+	Kit.multi(self, Kit.unit_cylinder(6), bolts, Kit.paint(Color(0.5, 0.5, 0.5), 0.3, 1.0), false)
+	return top
+
+
+# ─── Cyan relay hardware ────────────────────────────────────────────
+
+func _build_relay_crystals() -> void:
+	## Dysnomia relay coils (glowing rings around the mast) and crystal resonators on the
+	## 9 m platform and the mast head. Glow follows territory activity.
+	_relay_mat = Kit.glow(Kit.CYAN, 3.0, false)
+	for y: float in [5.0, 12.0, 16.5]:
+		var w := lerpf(BASE_W, TOP_W, y / TOWER_HEIGHT) * 0.5
+		var r := w * 1.42 + 0.18
+		Kit.ring(self, r, 0.06, Vector3(0, _mast_base_y + y, 0), _relay_mat, Vector3.ZERO, 32)
+		Kit.ring(self, r, 0.025, Vector3(0, _mast_base_y + y + 0.18, 0), _relay_mat, Vector3.ZERO, 32)
+	var crystal := CylinderMesh.new()
+	crystal.top_radius = 0.0
+	crystal.bottom_radius = 1.0
+	crystal.height = 1.0
+	crystal.radial_segments = 6
+	crystal.rings = 1
+	var xs: Array = []
+	var pw := lerpf(BASE_W, TOP_W, 9.0 / TOWER_HEIGHT) * 0.5 + 0.45
+	for k in 4:
+		var a := float(k) * PI * 0.5 + PI * 0.25
+		var base := Vector3(cos(a), 0, sin(a)) * pw * 1.3 + Vector3(0, _mast_base_y + 9.05, 0)
+		for c in 3:
+			var h := _rng.randf_range(0.5, 1.0)
+			var tilt := Basis(Vector3(_rng.randf_range(-1, 1), 0, _rng.randf_range(-1, 1)).normalized(), _rng.randf_range(0.05, 0.4))
+			var off := Vector3(_rng.randf_range(-0.2, 0.2), 0, _rng.randf_range(-0.2, 0.2))
+			xs.append(Transform3D(tilt * Basis.from_scale(Vector3(0.09, h, 0.09)), base + off + tilt * Vector3(0, h * 0.5, 0)))
+			xs.append(Transform3D(tilt * Basis(Vector3.RIGHT, PI) * Basis.from_scale(Vector3(0.09, 0.15, 0.09)), base + off + tilt * Vector3(0, -0.075, 0)))
+	var top := _mast_base_y + TOWER_HEIGHT
+	for k in 5:
+		var a := float(k) * TAU / 5.0
+		var h := _rng.randf_range(0.6, 1.1)
+		var b := Vector3(cos(a), 0, sin(a)) * 0.28 + Vector3(0, top + 0.05, 0)
+		var tilt := Basis(Vector3(-sin(a), 0, cos(a)), 0.3)
+		xs.append(Transform3D(tilt * Basis.from_scale(Vector3(0.08, h, 0.08)), b + tilt * Vector3(0, h * 0.5, 0)))
+	Kit.multi(self, crystal, xs, _relay_mat, false)
+	var l := Kit.omni(self, Vector3(0, _mast_base_y + 9.8, 0), Kit.CYAN, 1.2, 9.0)
+	l.name = "RelayGlow"
+
+
+# ─── Equipment shelter, cabinets, generator ─────────────────────────
 
 func _build_equipment() -> void:
-	## Outdoor telecom cabinets on a plinth, cable tray to the mast, ground conduits, genset.
-	var c := Vector3(2.6, 0, 4.6)
+	## Outdoor telecom cabinets under a canopy: relief-textured steel, louvres, labels,
+	## grime, status LEDs and link screens; cable trays to the mast; conduits into handholes.
+	var c := Vector3(4.2, 0, 5.0)
 	var top := _footing(c, Vector2(4.6, 1.8), 0.2)
-	var cab_mat := Kit.paint(Color(0.66, 0.68, 0.64), 0.55, 0.35)
+	var cab_mat := Kit.painted("metal_plate", Color(0.6, 0.62, 0.58), 1.2)
 	var dark := Kit.paint(Color(0.06, 0.06, 0.07), 0.5, 0.4)
-	var vent := Kit.paint(Color(0.2, 0.21, 0.21), 0.6, 0.5)
-	var led_colors := [Color(0.2, 1.0, 0.35), Color(0.2, 1.0, 0.35), Color(1.0, 0.65, 0.1), Color(0.2, 0.6, 1.0)]
+	var grime := Kit.paint(Color(0.22, 0.2, 0.17), 0.95, 0.0)
+	var led_colors := [Color(0.2, 1.0, 0.35), Color(0.2, 1.0, 0.35), Color(1.0, 0.65, 0.1), Kit.CYAN]
+	var labels := ["BTS-1  RELAY", "RECTIFIER 48V", "BATT  STRING A"]
 	for i in 3:
 		var x := c.x - 1.5 + float(i) * 1.05
 		var h := 1.85 if i != 1 else 1.6
 		var cab := Node3D.new()
 		cab.position = Vector3(x, top, c.z)
-		cab.rotation.y = 0.0  # Doors face +Z (toward the gate path)
 		add_child(cab)
 		Kit.box(cab, Vector3(0.95, h, 0.75), Vector3(0, h * 0.5, 0), cab_mat)
-		Kit.box(cab, Vector3(1.0, 0.06, 0.8), Vector3(0, h + 0.03, 0), Kit.paint(Color(0.55, 0.56, 0.54), 0.5, 0.4))
+		Kit.box(cab, Vector3(1.0, 0.06, 0.8), Vector3(0, h + 0.03, 0), Kit.paint(Color(0.45, 0.46, 0.44), 0.5, 0.5))
+		Kit.box(cab, Vector3(0.96, 0.22, 0.76), Vector3(0, 0.11, 0), grime, Vector3.ZERO, false)
 		Kit.box(cab, Vector3(0.008, h - 0.15, 0.01), Vector3(0, h * 0.5, 0.38), dark, Vector3.ZERO, false)
 		Kit.box(cab, Vector3(0.04, 0.22, 0.03), Vector3(0.1, h * 0.55, 0.39), Kit.paint(Color(0.15, 0.15, 0.15), 0.4, 0.7), Vector3.ZERO, false)
-		for v in 5:
-			Kit.box(cab, Vector3(0.6, 0.03, 0.01), Vector3(0, 0.25 + float(v) * 0.07, 0.38), vent, Vector3.ZERO, false)
-		# Status LEDs (each its own material so they flicker independently)
+		# Louvred vents (perforated) top and bottom of the door, plus side louvres
+		Kit.box(cab, Vector3(0.7, 0.3, 0.01), Vector3(0, 0.45, 0.383), Kit.grille(Color(0.3, 0.31, 0.3), 0.02), Vector3.ZERO, false)
+		for v in 4:
+			Kit.box(cab, Vector3(0.012, 0.04, 0.5), Vector3(0.478, h - 0.45 - float(v) * 0.08, 0), dark, Vector3.ZERO, false)
+		Kit.label(cab, labels[i], Vector3(0, h - 0.12, 0.386), 30, Color(0.1, 0.1, 0.1), 0.0)
+		Kit.box(cab, Vector3(0.22, 0.12, 0.005), Vector3(0.28, h - 0.38, 0.384), Kit.paint(Color(0.95, 0.75, 0.1), 0.6, 0.0), Vector3.ZERO, false)
 		for l in 4:
 			var m := Kit.glow(led_colors[l], 3.0, false)
 			_led_mats.append(m)
-			Kit.box(cab, Vector3(0.035, 0.035, 0.01), Vector3(-0.3 + float(l) * 0.06, h - 0.2, 0.38), m, Vector3.ZERO, false)
-		if i == 0:
-			var scr := Kit.screen(3, Color(0.3, 0.9, 1.0), 91)
-			Kit.box(cab, Vector3(0.44, 0.3, 0.02), Vector3(-0.18, h - 0.55, 0.38), dark, Vector3.ZERO, false)
-			Kit.quad(cab, Vector2(0.4, 0.26), Vector3(-0.18, h - 0.55, 0.392), scr)
+			Kit.box(cab, Vector3(0.035, 0.035, 0.01), Vector3(-0.3 + float(l) * 0.06, h - 0.25, 0.38), m, Vector3.ZERO, false)
+		if i != 1:
+			var scr := Kit.screen(3 if i == 0 else 0, Kit.CYAN, 91 + i)
+			Kit.box(cab, Vector3(0.44, 0.3, 0.02), Vector3(-0.18, h - 0.6, 0.38), dark, Vector3.ZERO, false)
+			Kit.quad(cab, Vector2(0.4, 0.26), Vector3(-0.18, h - 0.6, 0.392), scr)
 			_link_screens.append(scr)
-		if i == 2:
-			var scr2 := Kit.screen(0, Color(0.3, 0.9, 1.0), 92)
-			Kit.box(cab, Vector3(0.44, 0.3, 0.02), Vector3(-0.18, h - 0.55, 0.38), dark, Vector3.ZERO, false)
-			Kit.quad(cab, Vector2(0.4, 0.26), Vector3(-0.18, h - 0.55, 0.392), scr2)
-			_link_screens.append(scr2)
-	# Rain canopy over the cabinets
+	# Canopy + overhead cable tray along the cabinet tops
 	var post := Kit.paint(Color(0.5, 0.51, 0.52), 0.4, 0.9)
 	for sx: float in [-2.2, 2.2]:
 		for sz: float in [-0.8, 0.8]:
 			Kit.beam(self, Vector3(c.x + sx, top, c.z + sz), Vector3(c.x + sx, top + 2.45, c.z + sz), 0.04, post, 6)
-	Kit.box(self, Vector3(4.8, 0.06, 2.1), Vector3(c.x, top + 2.5, c.z), Kit.paint(Color(0.5, 0.52, 0.54), 0.5, 0.7), Vector3(0.05, 0, 0))
-	# Cable tray (ice bridge) from canopy to the mast at 2.4 m
-	var tray_a := Vector3(c.x - 1.0, top + 2.35, c.z - 0.9)
+	Kit.box(self, Vector3(4.8, 0.06, 2.1), Vector3(c.x, top + 2.5, c.z), Kit.painted("container_side", Color(0.5, 0.52, 0.54), 0.6), Vector3(0.05, 0, 0))
+	var trayy := top + 2.05
+	Kit.box(self, Vector3(4.2, 0.06, 0.35), Vector3(c.x, trayy, c.z - 0.1), Kit.grille(Color(0.45, 0.46, 0.47), 0.05))
+	var cable := Kit.paint(Color(0.03, 0.03, 0.035), 0.7, 0.0)
+	for i in 3:
+		var x := c.x - 1.5 + float(i) * 1.05
+		var hh := 1.85 if i != 1 else 1.6
+		Kit.cable(self, Vector3(x, top + hh + 0.06, c.z - 0.2), Vector3(x + 0.2, trayy, c.z - 0.1), 0.0, 0.025, cable, 4)
+	# Ice bridge (cable tray) from the canopy to the mast at 2.4 m
+	var tray_a := Vector3(c.x - 2.0, trayy, c.z - 0.2)
 	var tray_b := Vector3(BASE_W * 0.35, _mast_base_y + 2.4, BASE_W * 0.35)
-	var tray_len := tray_a.distance_to(tray_b)
-	var tray := Kit.box(self, Vector3(0.4, 0.05, tray_len), (tray_a + tray_b) * 0.5, Kit.pbr("metal_plate", 1.0, Color(0.55, 0.55, 0.57), false))
+	var tray := Kit.box(self, Vector3(0.4, 0.05, tray_a.distance_to(tray_b)), (tray_a + tray_b) * 0.5, Kit.grille(Color(0.45, 0.46, 0.47), 0.05))
 	tray.basis = Basis.looking_at(tray_b - tray_a, Vector3.UP)
 	var mid := (tray_a + tray_b) * 0.5
-	Kit.beam(self, Vector3(mid.x, _h(mid.x, mid.z) - 0.3, mid.z), mid - Vector3(0, 0.05, 0), 0.05, post, 6)
-	var cable := Kit.paint(Color(0.03, 0.03, 0.035), 0.7, 0.0)
+	Kit.beam(self, Vector3(mid.x, 0.06, mid.z), mid - Vector3(0, 0.05, 0), 0.05, post, 6)
 	for k in 3:
 		var o := Vector3((float(k) - 1.0) * 0.1, 0.06, 0)
 		Kit.cable(self, tray_a + o, tray_b + o, 0.05, 0.03, cable, 8)
@@ -396,20 +464,83 @@ func _build_equipment() -> void:
 	for k in 3:
 		var hx := c.x - 3.1
 		var hz := c.z - 0.6 + float(k) * 0.6
-		var gh := _h(hx, hz)
-		Kit.box(self, Vector3(0.5, 0.3, 0.5), Vector3(hx, gh + 0.05, hz), Kit.pbr("brushed_concrete", 1.0, Color(0.5, 0.5, 0.48)))
-		Kit.box(self, Vector3(0.42, 0.02, 0.42), Vector3(hx, gh + 0.21, hz), Kit.pbr("metal_plate", 1.5, Color(0.4, 0.4, 0.42), false))
-		var pts: Array[Vector3] = [Vector3(c.x - 1.95, top + 0.3, hz), Vector3(c.x - 2.35, top + 0.12, hz), Vector3(hx + 0.2, gh + 0.4, hz), Vector3(hx + 0.05, gh - 0.2, hz)]
+		Kit.box(self, Vector3(0.5, 0.12, 0.5), Vector3(hx, 0.1, hz), Kit.pbr("brushed_concrete", 1.0, Color(0.5, 0.5, 0.48)))
+		Kit.box(self, Vector3(0.42, 0.02, 0.42), Vector3(hx, 0.17, hz), Kit.pbr("metal_plate", 1.5, Color(0.4, 0.4, 0.42), false))
+		var pts: Array[Vector3] = [Vector3(c.x - 1.95, top + 0.3, hz), Vector3(c.x - 2.35, top + 0.12, hz), Vector3(hx + 0.2, 0.4, hz), Vector3(hx + 0.05, -0.2, hz)]
 		Kit.tube(self, pts, 0.045, Kit.paint(Color(0.12, 0.28, 0.5), 0.5, 0.2))
-	# Backup generator + gas bottles
-	var gx := -3.8
-	var gz := 4.8
-	var gtop := _footing(Vector3(gx, 0, gz), Vector2(1.6, 1.2), 0.1)
-	Kit.prop(self, "portable_generator", Vector3(gx, gtop, gz), 0.3)
-	Kit.prop(self, "small_lpg_tank", Vector3(gx + 1.2, _h(gx + 1.2, gz + 0.3), gz + 0.3), 0.8)
-	Kit.prop(self, "small_lpg_tank", Vector3(gx + 1.2, _h(gx + 1.2, gz - 0.3), gz - 0.3), 2.0)
-	Kit.prop(self, "barrel_03", Vector3(-6.4, _h(-6.4, 6.4), 6.4), 0.5)
-	Kit.prop(self, "wooden_crate_02", Vector3(-5.6, _h(-5.6, 6.9), 6.9), 1.4)
+
+
+func _build_shelter() -> void:
+	## Prefab relay shelter with lit window, waveguide port to the mast, generator + tank.
+	var sh := Kit.cabin(self, Vector3(-6.5, 0, 5.5), PI * 0.5, Vector3(5.0, 2.6, 2.6), "RELAY SHELTER 07", Color(0.75, 0.92, 1.0))
+	sh.name = "RelayShelter"
+	# Waveguide bridge from the shelter wall (+X face is the front) to the mast
+	var cable := Kit.paint(Color(0.03, 0.03, 0.035), 0.7, 0.0)
+	var a := Vector3(-5.1, 2.3, 3.6)
+	var b := Vector3(-BASE_W * 0.35, _mast_base_y + 2.2, BASE_W * 0.35)
+	var tray := Kit.box(self, Vector3(0.35, 0.05, a.distance_to(b)), (a + b) * 0.5, Kit.grille(Color(0.45, 0.46, 0.47), 0.05))
+	tray.basis = Basis.looking_at(b - a, Vector3.UP)
+	var mid := (a + b) * 0.5
+	Kit.beam(self, Vector3(mid.x, 0.06, mid.z), mid - Vector3(0, 0.05, 0), 0.05, Kit.paint(Color(0.5, 0.51, 0.52), 0.4, 0.9), 6)
+	for k in 2:
+		Kit.cable(self, a + Vector3(0, 0.06, (float(k) - 0.5) * 0.12), b + Vector3(0, 0.06, (float(k) - 0.5) * 0.12), 0.05, 0.03, cable, 8)
+	# Generator on a skid with a day tank
+	var g := Vector3(-8.2, 0, 0.4)
+	var gtop := _footing(g, Vector2(2.2, 1.4), 0.12)
+	Kit.prop(self, "portable_generator", Vector3(g.x - 0.3, gtop, g.z), 0.0)
+	Kit.cyl(self, 0.32, 0.32, 1.0, Vector3(g.x + 0.6, gtop + 0.4, g.z), Kit.paint(Color(0.75, 0.2, 0.1), 0.5, 0.4), 16, Vector3(PI * 0.5, 0, 0))
+	Kit.label(self, "DIESEL", Vector3(g.x + 0.6, gtop + 0.4, g.z + 0.51), 34, Color(0.95, 0.95, 0.9), 0.0)
+	Kit.prop(self, "small_lpg_tank", Vector3(-9.2, 0.06, -1.4), 0.8)
+	Kit.prop(self, "barrel_03", Vector3(-9.0, 0.06, 2.0), 0.5)
+	Kit.prop(self, "wooden_crate_02", Vector3(-8.6, 0.06, -2.2), 1.4)
+	var feed: Array[Vector3] = [Vector3(g.x - 0.6, gtop + 0.3, g.z + 0.3), Vector3(g.x - 0.8, 0.1, g.z + 1.0), Vector3(-6.6, 0.1, 2.4), Vector3(-6.4, 0.5, 2.9)]
+	Kit.tube(self, feed, 0.04, cable)
+
+
+func _build_rover() -> void:
+	## Six-wheeled crew rover parked outside the gate.
+	var root := Node3D.new()
+	root.name = "Rover"
+	root.position = Vector3(FENCE_HALF + 3.6, _h(FENCE_HALF + 3.6, -4.2), -4.2)
+	root.rotation.y = 0.35
+	add_child(root)
+	var body := Kit.hull_material(Color(0.82, 0.8, 0.74), false)
+	var dark := Kit.paint(Color(0.05, 0.05, 0.055), 0.7, 0.2)
+	var steel := Kit.paint(Color(0.45, 0.46, 0.48), 0.4, 0.9)
+	Kit.box(root, Vector3(1.9, 0.35, 4.2), Vector3(0, 0.75, 0), steel)
+	Kit.box(root, Vector3(1.8, 1.05, 2.0), Vector3(0, 1.45, 0.75), body)
+	Kit.box(root, Vector3(1.6, 0.55, 0.05), Vector3(0, 1.65, 1.76), Kit.glass(Color(0.35, 0.5, 0.6, 0.6)), Vector3(-0.3, 0, 0), false)
+	Kit.box(root, Vector3(1.8, 0.5, 1.6), Vector3(0, 1.15, -1.2), body)
+	for s: float in [-1.0, 1.0]:
+		for zz: float in [-1.5, 0.0, 1.5]:
+			Kit.cyl(root, 0.42, 0.42, 0.32, Vector3(s * 1.05, 0.42, zz), dark, 16, Vector3(0, 0, PI * 0.5))
+			Kit.cyl(root, 0.2, 0.2, 0.34, Vector3(s * 1.05, 0.42, zz), steel, 10, Vector3(0, 0, PI * 0.5), false)
+		Kit.box(root, Vector3(0.05, 0.3, 0.9), Vector3(s * 0.91, 1.5, 0.8), Kit.glass(Color(0.35, 0.5, 0.6, 0.6)), Vector3.ZERO, false)
+	Kit.box(root, Vector3(1.4, 0.08, 0.15), Vector3(0, 2.02, 1.4), dark)
+	for x: float in [-0.5, 0.0, 0.5]:
+		Kit.box(root, Vector3(0.2, 0.08, 0.04), Vector3(x, 2.02, 1.48), Kit.glow(Color(1.0, 0.92, 0.8), 4.0), Vector3.ZERO, false)
+	Kit.cyl(root, 0.015, 0.02, 1.4, Vector3(-0.7, 2.6, -0.2), steel, 6)
+	Kit.ball(root, 0.05, Vector3(-0.7, 3.32, -0.2), _obstruction_mat)
+	Kit.label(root, "DYS-ROVER 3", Vector3(0.91, 1.15, -1.2), 50, Color(0.15, 0.15, 0.17), PI * 0.5)
+	Kit.light_cone(root, Vector3(0, 2.0, 1.5), Vector3(0, -0.25, 1), 6.0, 0.15, 1.2, Color(1.0, 0.92, 0.8), 0.6)
+
+
+func _build_gate_arch() -> void:
+	## Lit "COMM ARRAY" arch over the gate + a station ID plate on the gate post.
+	var gx := FENCE_HALF + 0.05
+	var gh := _gate_half + 0.25
+	var steel := Kit.paint(Color(0.2, 0.21, 0.23), 0.45, 0.8)
+	for s: float in [-1.0, 1.0]:
+		Kit.beam(self, Vector3(gx, 0.0, s * gh), Vector3(gx, 4.0, s * gh), 0.09, steel)
+		Kit.box(self, Vector3(0.4, 0.15, 0.4), Vector3(gx, 0.08, s * gh), Kit.pbr("brushed_concrete", 0.8, Color(0.6, 0.6, 0.6)))
+	Kit.box(self, Vector3(0.22, 0.8, gh * 2.0 + 0.3), Vector3(gx, 3.9, 0), steel)
+	for side: float in [1.0, -1.0]:
+		var fx := gx + side * 0.12
+		Kit.label(self, "COMM ARRAY", Vector3(fx, 3.95, 0), 130, Color(0.6, 0.93, 1.0), side * PI * 0.5, 2.4)
+		Kit.box(self, Vector3(0.02, 0.05, gh * 2.0), Vector3(fx, 3.58, 0), Kit.glow(Kit.CYAN, 4.0), Vector3.ZERO, false)
+	Kit.sign_board(self, "STATION ID\nDYS-RLY-07\nPULSECHAIN 369", Vector3(gx + 0.12, 1.55, -gh - 0.6), PI * 0.5, Vector2(0.8, 0.6), Color(0.85, 0.86, 0.84), Color(0.08, 0.1, 0.14), 30)
+	Kit.beam(self, Vector3(gx + 0.1, 0.0, -gh - 0.6), Vector3(gx + 0.1, 1.3, -gh - 0.6), 0.03, steel)
+	Kit.light_pool(self, Vector3(gx + 1.2, 0.08, 0), 3.0, Kit.CYAN, 0.9)
 
 
 # ─── Fence & gate ───────────────────────────────────────────────────
@@ -421,7 +552,8 @@ func _build_fence() -> void:
 	var post_mat := Kit.paint(Color(0.55, 0.57, 0.58), 0.4, 0.9)
 	var hf := FENCE_HALF
 	var corners := [Vector3(hf, 0, hf), Vector3(-hf, 0, hf), Vector3(-hf, 0, -hf), Vector3(hf, 0, -hf)]
-	var gate_half := FENCE_HALF / 4.0  # Exactly one fence bay
+	var gate_half := _gate_half  # Two fence bays (segment count forced even)
+	var lamps: Array = []
 	var posts: Array = []
 	var rails: Array = []
 	var arms: Array = []
@@ -435,6 +567,9 @@ func _build_fence() -> void:
 		# side 0 runs (hf,-hf)→(hf,hf): the +X side with the gate in the middle
 		var len_ := a.distance_to(b)
 		var segs := int(ceil(len_ / 2.4))
+		segs += segs % 2
+		_gate_half = len_ / float(segs)
+		gate_half = _gate_half
 		for i in segs:
 			var t0 := float(i) / float(segs)
 			var t1 := float(i + 1) / float(segs)
@@ -454,6 +589,8 @@ func _build_fence() -> void:
 				var outward := Vector3(pp.x, 0, pp.z).normalized() * 0.32
 				arms.append(Kit.beam_xform(pp + Vector3(0, 2.1, 0), pp + Vector3(0, 2.45, 0) + outward, 0.015))
 			rails.append(Kit.beam_xform(Vector3(p0.x, g0 + 2.08, p0.z), Vector3(p1.x, g1 + 2.08, p1.z), 0.025))
+			if i % 2 == 0:
+				lamps.append(Vector3(p0.x, g0, p0.z) - Vector3(p0.x, 0, p0.z).normalized() * 0.09)
 			var ow0 := Vector3(p0.x, 0, p0.z).normalized()
 			var ow1 := Vector3(p1.x, 0, p1.z).normalized()
 			for k in 3:
@@ -469,6 +606,16 @@ func _build_fence() -> void:
 	Kit.multi(self, Kit.unit_cylinder(6), rails, post_mat, false)
 	Kit.multi(self, Kit.unit_cylinder(4), arms, post_mat, false)
 	Kit.multi(self, Kit.unit_cylinder(4), wires, Kit.paint(Color(0.4, 0.4, 0.42), 0.5, 0.9), false)
+	# Fence-post lamps facing inward, each with a pool of light on the compound floor
+	var heads: Array = []
+	var lenses: Array = []
+	for lp: Vector3 in lamps:
+		var inward := -Vector3(lp.x, 0, lp.z).normalized()
+		heads.append(Transform3D(Basis.from_scale(Vector3(0.16, 0.1, 0.16)), lp + Vector3(0, 1.85, 0) + inward * 0.06))
+		lenses.append(Transform3D(Basis.from_scale(Vector3(0.12, 0.02, 0.12)), lp + Vector3(0, 1.79, 0) + inward * 0.06))
+		Kit.light_pool(self, lp + inward * 1.2 + Vector3(0, 0.1, 0), 1.8, Color(1.0, 0.85, 0.6), 0.45)
+	Kit.multi(self, Kit.unit_box(), heads, Kit.paint(Color(0.1, 0.1, 0.11), 0.5, 0.7), false)
+	Kit.multi(self, Kit.unit_box(), lenses, Kit.glow(Color(1.0, 0.85, 0.6), 5.0), false)
 
 	# Gate: heavy posts and two leaves (one swung half open)
 	var gx := hf
@@ -496,15 +643,10 @@ func _build_fence() -> void:
 		gm.mesh = gst.commit()
 		gm.material_override = mesh_mat
 		leaf.add_child(gm)
-	# Signage on the gate posts / fence beside the gate (facing +X, outward)
-	Kit.sign_board(self, "DYSNOMIA RELAY\nCOMM ARRAY 07", Vector3(gx + 0.06, _h(gx, -3.4) + 1.35, -3.4), PI * 0.5, Vector2(1.4, 0.55), Color(0.08, 0.18, 0.42), Color(0.95, 0.95, 0.95), 40)
-	Kit.sign_board(self, "DANGER\nRF RADIATION", Vector3(gx + 0.06, _h(gx, 3.4) + 1.35, 3.4), PI * 0.5, Vector2(0.9, 0.55), Color(0.95, 0.75, 0.1), Color(0.05, 0.05, 0.05), 40)
-	Kit.sign_board(self, "AUTHORISED\nPERSONNEL ONLY", Vector3(gx + 0.06, _h(gx, -5.6) + 1.35, -5.6), PI * 0.5, Vector2(1.1, 0.5), Color(0.92, 0.92, 0.9), Color(0.7, 0.05, 0.05), 34)
-	# Stepping-stone path from the gate to the cabinets
-	var paver := Kit.pbr("brushed_concrete", 0.9, Color(0.62, 0.62, 0.6))
-	for k in 6:
-		var p := Vector3(hf - 0.9 - float(k) * 0.95, 0, 0.2 + float(k) * 0.65)
-		Kit.box(self, Vector3(0.75, 0.2, 0.75), Vector3(p.x, _h(p.x, p.z) + 0.02, p.z), paver, Vector3(0, 0.1 * float(k % 3), 0))
+	# Signage on the fence beside the gate (facing +X, outward)
+	Kit.sign_board(self, "DYSNOMIA RELAY\nCOMM ARRAY 07", Vector3(gx + 0.06, _h(gx, -4.8) + 1.35, -4.8), PI * 0.5, Vector2(1.4, 0.55), Color(0.08, 0.18, 0.42), Color(0.95, 0.95, 0.95), 40)
+	Kit.sign_board(self, "DANGER\nRF RADIATION", Vector3(gx + 0.06, _h(gx, 3.8) + 1.35, 3.8), PI * 0.5, Vector2(0.9, 0.55), Color(0.95, 0.75, 0.1), Color(0.05, 0.05, 0.05), 40)
+	Kit.sign_board(self, "AUTHORISED\nPERSONNEL ONLY", Vector3(gx + 0.06, _h(gx, -6.8) + 1.35, -6.8), PI * 0.5, Vector2(1.1, 0.5), Color(0.92, 0.92, 0.9), Color(0.7, 0.05, 0.05), 34)
 
 
 func _fence_quad(st: SurfaceTool, a: Vector3, b: Vector3, h: float, u0: float, d: float) -> void:
@@ -520,24 +662,27 @@ func _fence_quad(st: SurfaceTool, a: Vector3, b: Vector3, h: float, u0: float, d
 # ─── Lighting & crew ────────────────────────────────────────────────
 
 func _build_lighting() -> void:
-	# Corner floodlight pole lighting the cabinets and mast base
-	var fp := Vector3(FENCE_HALF - 0.4, 0, FENCE_HALF - 0.4)
-	Kit.flood_mast(self, Vector3(fp.x, _h(fp.x, fp.z), fp.z), 5.5, Vector3(1.5, _mast_base_y, 3.5), Color(1.0, 0.92, 0.8), 2, true, 2.2)
-	Kit.light_pool(self, Vector3(2.0, _mast_base_y + 0.08, 2.4), 5.5, Color(1.0, 0.9, 0.75), 0.6)
-	# Gate lamp
-	var gl := Vector3(FENCE_HALF + 0.1, _h(FENCE_HALF, 1.9) + 2.55, 1.9)
-	Kit.box(self, Vector3(0.22, 0.1, 0.16), gl, Kit.paint(Color(0.1, 0.1, 0.1), 0.5, 0.7), Vector3.ZERO, false)
-	Kit.box(self, Vector3(0.18, 0.02, 0.12), gl - Vector3(0, 0.055, 0), Kit.glow(Color(1.0, 0.82, 0.55), 5.0), Vector3.ZERO, false)
-	Kit.omni(self, gl + Vector3(0.6, -0.3, 0), Color(1.0, 0.82, 0.55), 1.2, 7.0)
+	# Floodlight masts in three corners (none between the approach and the shelter/cabinets)
+	var hf := FENCE_HALF - 0.6
+	Kit.flood_mast(self, Vector3(-hf, 0.06, -hf), 6.0, Vector3(0, 0, 0), Color(1.0, 0.92, 0.8), 2, true, 2.2)
+	Kit.flood_mast(self, Vector3(hf, 0.06, -hf), 6.0, Vector3(3.0, 0, 1.0), Color(1.0, 0.92, 0.8), 2, true, 2.2)
+	Kit.flood_mast(self, Vector3(-hf, 0.06, hf), 6.0, Vector3(-2.5, 0, 4.0), Color(1.0, 0.92, 0.8), 2, true, 2.0)
+	Kit.light_pool(self, Vector3(2.0, 0.1, 2.4), 6.0, Color(1.0, 0.9, 0.75), 0.6)
+	Kit.light_pool(self, Vector3(-3.0, 0.1, -3.0), 6.0, Color(1.0, 0.9, 0.75), 0.5)
+	# Gate lamp on the arch
+	var gl := Vector3(FENCE_HALF + 0.25, 3.35, 0.0)
+	Kit.box(self, Vector3(0.22, 0.1, 0.5), gl, Kit.paint(Color(0.1, 0.1, 0.1), 0.5, 0.7), Vector3.ZERO, false)
+	Kit.box(self, Vector3(0.18, 0.02, 0.46), gl - Vector3(0, 0.055, 0), Kit.glow(Color(1.0, 0.82, 0.55), 5.0), Vector3.ZERO, false)
+	Kit.omni(self, gl + Vector3(0.6, -0.8, 0), Color(1.0, 0.82, 0.55), 1.4, 8.0)
 	# Cool fill from the cabinet screens
-	Kit.omni(self, Vector3(2.6, _h(2.6, 6.3) + 1.7, 6.3), Color(0.4, 0.8, 1.0), 0.6, 3.5)
+	Kit.omni(self, Vector3(3.6, 1.8, 6.6), Color(0.4, 0.8, 1.0), 0.7, 3.5)
 
 
 func _build_crew(seed_value: int) -> void:
-	## A technician at the cabinets, another walking gate → mast → dish.
-	var hfn := Callable(self, "_h")
-	var t := Kit.npc(self, seed_value + 404, [], Vector3(0, 0, -1), hfn)
-	if t:
-		t.position = Vector3(2.0, _h(2.0, 5.95), 5.95)
+	## A technician at the cabinets, a crew member doing rounds gate -> cabinets -> shelter,
+	## and the rover driver waiting by the gate.
+	Kit.npc(self, seed_value + 404, [], Vector3(0, 0, -1), Callable(), Vector3(3.6, 0.08, 6.45))
 	Kit.npc(self, seed_value + 505, [
-		Vector3(FENCE_HALF + 1.5, 0, 0.0), Vector3(5.6, 0, 1.8), Vector3(2.4, 0, -2.4), Vector3(-2.6, 0, -2.6), Vector3(5.6, 0, 1.8)], Vector3.FORWARD, hfn)
+		Vector3(FENCE_HALF + 1.8, 0.0, 0.3), Vector3(7.2, 0.1, 0.3), Vector3(7.2, 0.1, 6.8), Vector3(-4.3, 0.1, 6.9),
+		Vector3(7.2, 0.1, 6.8), Vector3(7.2, 0.1, 0.3)])
+	Kit.npc(self, seed_value + 606, [], Vector3(-0.6, 0, 1), Callable(), Vector3(FENCE_HALF + 2.3, 0.0, -2.4))
