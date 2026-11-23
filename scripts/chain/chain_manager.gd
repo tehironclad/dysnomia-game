@@ -987,6 +987,14 @@ func is_loading_guests() -> bool:
 	return _is_loading_guests
 
 
+func get_joined_qings() -> Dictionary:
+	## QINGs this LAU has joined (admitted), plus the QING it currently stands in.
+	var out := _admitted_cache.duplicate()
+	if not GameManager.lau_current_area.is_empty():
+		out[GameManager.lau_current_area.to_lower()] = true
+	return out
+
+
 func is_admitted_to(qing_address: String) -> bool:
 	## Quick check if user is admitted to a QING (from cached scan results).
 	return _admitted_cache.get(qing_address.to_lower(), false)

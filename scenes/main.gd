@@ -266,6 +266,7 @@ func _ready() -> void:
 	_spawn_debris_scatter()
 	_spawn_antenna_array()
 	_spawn_landing_pad()
+	_spawn_shuttle_terminal()
 	_spawn_pipe_network()
 	_spawn_surface_detail()
 
@@ -379,22 +380,103 @@ func _on_neighbor_discovered(direction: int, data: Dictionary) -> void:
 
 
 func _on_map_territory_selected(qing_address: String) -> void:
-	## Player selected a QING from the world map — load it as a new territory.
-	## This is essentially a teleport: reload the scene with the new QING data.
+	## Shuttle travel from the Landing Pad to a QING you've joined.
+	## Everything else is walked: cross a border force field and Join the next QING.
 	if qing_address.is_empty() or qing_address == GameManager.territory_address.to_lower():
 		hud.show_interact_prompt("You're already in this territory!")
 		await get_tree().create_timer(2.0).timeout
 		hud.hide_interact_prompt()
 		return
-	print("[Main] Map travel to QING: %s" % qing_address.left(14))
-	hud.show_interact_prompt("Traveling to %s..." % qing_address.left(10))
-	# Load the territory data — this will trigger territory_data_changed, then scene reload
+	if not _at_shuttle_terminal:
+		_flash_prompt("Shuttles leave from the Landing Pad — or walk to a border and Join.")
+		return
+	if not ChainManager.get_joined_qings().has(qing_address.to_lower()):
+		_flash_prompt("Shuttles only fly to QINGs you've joined. Walk to its border and Join first.")
+		return
+	print("[Main] Shuttle travel to QING: %s" % qing_address.left(14))
+	player.clear_interact_handler(_open_shuttle_map)
+	player.set_physics_process(false)
+	if _attraction_ui:
+		for line in ["SHUTTLE BOARDING", "3", "2", "1", "DEPARTING"]:
+			_attraction_ui.set_caption(line)
+			await get_tree().create_timer(0.9).timeout
+	hud.show_interact_prompt("In transit to %s..." % qing_address.left(10))
+	# Load the destination, then reload the scene there. If the chain read fails,
+	# abort the trip and put the player back on the pad instead of hanging.
+	var home := GameManager.territory_address
+	var outcome := {"done": false, "ok": false}
+	var on_ok := func(_d: Dictionary) -> void:
+		outcome["done"] = true
+		outcome["ok"] = true
+	var on_fail := func(_m: String) -> void:
+		outcome["done"] = true
+	ChainManager.territory_loaded.connect(on_ok, CONNECT_ONE_SHOT)
+	ChainManager.territory_load_failed.connect(on_fail, CONNECT_ONE_SHOT)
 	GameManager.territory_address = qing_address
 	GameManager.is_chain_sourced = true
 	ChainManager.load_territory(qing_address)
-	# Wait for territory data, then reload the scene
-	await ChainManager.territory_loaded
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	var waited := 0.0
+	while not outcome["done"] and waited < 60.0:
+		await get_tree().create_timer(0.25).timeout
+		waited += 0.25
+	if ChainManager.territory_loaded.is_connected(on_ok):
+		ChainManager.territory_loaded.disconnect(on_ok)
+	if ChainManager.territory_load_failed.is_connected(on_fail):
+		ChainManager.territory_load_failed.disconnect(on_fail)
+	if outcome["ok"]:
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		return
+	GameManager.territory_address = home
+	player.set_physics_process(true)
+	if _attraction_ui:
+		_attraction_ui.set_caption("")
+	if _at_shuttle_terminal:
+		player.set_interact_handler(_open_shuttle_map)
+	_flash_prompt("Shuttle scrubbed — couldn't reach that QING on-chain. Try again shortly.", 4.0)
+
+
+# ─── Shuttle terminal (Landing Pad) ─────────────────────────────────────
+
+var _at_shuttle_terminal: bool = false
+
+
+func _spawn_shuttle_terminal() -> void:
+	## Trigger zone on the Landing Pad: E opens the map in shuttle mode.
+	var area := Area3D.new()
+	area.name = "ShuttleTerminal"
+	var coll := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = 12.0
+	shape.height = 6.0
+	coll.shape = shape
+	area.add_child(coll)
+	area.position = Vector3(LANDING_X, territory.get_height_at(LANDING_X, LANDING_Z) + 2.0, LANDING_Z)
+	add_child(area)
+	area.body_entered.connect(func(b: Node3D) -> void:
+		if not b.is_in_group("player"):
+			return
+		_at_shuttle_terminal = true
+		if ChainManager.get_guest_list().is_empty():
+			ChainManager.load_guest_list()
+		player.set_interact_handler(_open_shuttle_map)
+		hud.show_interact_prompt("Press E — Shuttle terminal: fly to any QING you've joined"))
+	area.body_exited.connect(func(b: Node3D) -> void:
+		if not b.is_in_group("player"):
+			return
+		_at_shuttle_terminal = false
+		player.clear_interact_handler(_open_shuttle_map)
+		hud.hide_interact_prompt())
+
+
+func _open_shuttle_map() -> void:
+	hud.hide_interact_prompt()
+	hud.open_world_map(true)
+
+
+func _flash_prompt(text: String, seconds: float = 3.0) -> void:
+	hud.show_interact_prompt(text)
+	await get_tree().create_timer(seconds).timeout
+	hud.hide_interact_prompt()
 
 
 func _on_territory_entered(direction: int, territory_name: String, address: String) -> void:

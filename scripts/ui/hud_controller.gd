@@ -1936,6 +1936,15 @@ func _toggle_world_map() -> void:
 		_open_world_map()
 
 
+func open_world_map(shuttle_mode: bool) -> void:
+	## Public entry: the Landing Pad shuttle terminal opens the map in shuttle mode.
+	_shuttle_map = shuttle_mode
+	_open_world_map()
+
+
+var _shuttle_map: bool = false
+
+
 func _open_world_map() -> void:
 	# Load QING data from chain manager cache
 	var qings := ChainManager.get_all_qings()
@@ -1947,10 +1956,12 @@ func _open_world_map() -> void:
 	_world_map_visible = true
 	world_map.visible = true
 	world_map.initialize(qings, GameManager.territory_address)
+	world_map.set_travel_context(_shuttle_map, ChainManager.get_joined_qings())
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 
 func _close_world_map() -> void:
+	_shuttle_map = false
 	_world_map_visible = false
 	world_map.visible = false
 	_try_recapture_mouse()

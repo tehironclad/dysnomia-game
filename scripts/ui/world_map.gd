@@ -49,6 +49,19 @@ var _map_qings: Array[Dictionary] = []
 var _selected_idx: int = -1
 var _hovered_idx: int = -1
 var _current_territory: String = ""
+# Travel rules: the map only flies you to QINGs you've joined, and only from a shuttle.
+var _shuttle_mode: bool = false
+var _joined: Dictionary = {}  # lowercase address -> true
+
+
+func set_travel_context(shuttle_mode: bool, joined: Dictionary) -> void:
+	_shuttle_mode = shuttle_mode
+	_joined = joined
+	queue_redraw()
+
+
+func _is_joined(addr: String) -> bool:
+	return _joined.has(addr.to_lower())
 var _current_idx: int = -1  # Cache index of current territory for pulsing
 var _is_initialized: bool = false
 var _is_globe: bool = false  # Toggle between flat map and globe
@@ -549,6 +562,10 @@ func _draw_dot(idx: int, q: Dictionary, screen_pos: Vector2) -> void:
 		radius = HOVER_RADIUS
 		dot_color = dot_color.lightened(0.4)
 
+	# Joined QINGs get a green ring — the places your shuttle can fly
+	if not is_current and _is_joined(q.address):
+		draw_arc(screen_pos, radius + 4.5, 0, TAU, 20, Color(0.45, 0.95, 0.6, 0.85), 1.5)
+
 	draw_circle(screen_pos, radius, dot_color)
 
 	# Draw name label next to dot (if cached)
@@ -641,10 +658,18 @@ func _draw_info_panel(q: Dictionary) -> void:
 	elif not has_name:
 		draw_string(ThemeDB.fallback_font, Vector2(text_x, text_y),
 			"Loading name...", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, COLOR_TEXT_DIM)
+	elif not _is_joined(addr):
+		draw_string(ThemeDB.fallback_font, Vector2(text_x, text_y),
+			"Not joined — walk to its border and Join",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1.0, 0.65, 0.35))
+	elif not _shuttle_mode:
+		draw_string(ThemeDB.fallback_font, Vector2(text_x, text_y),
+			"Joined — fly here from the Landing Pad shuttle",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.5, 0.8, 0.5))
 	else:
 		draw_string(ThemeDB.fallback_font, Vector2(text_x, text_y),
-			"Click again to travel here",
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.5, 0.8, 0.5))
+			"Click again to launch the shuttle",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.5, 1.0, 0.6))
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -699,7 +724,7 @@ func _gui_input(event: InputEvent) -> void:
 				if clicked >= 0:
 					if clicked == _selected_idx:
 						var addr: String = _map_qings[clicked].address
-						if addr != _current_territory:
+						if addr != _current_territory and _shuttle_mode and _is_joined(addr):
 							territory_selected.emit(addr)
 					else:
 						_selected_idx = clicked

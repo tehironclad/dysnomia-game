@@ -72,6 +72,16 @@ func _process(_d: float) -> bool:
 			_check("director idle", not director.is_riding())
 			_test_paid_path()
 			_test_standing()
+			_test_travel_guards()
+			_phase = 4
+			_frames = 0
+	elif _phase == 4:
+		if _frames == 1:
+			var pad: Vector3 = Vector3(0, current_scene.territory.get_height_at(0, 100) + 1.0, 100)
+			player.global_position = pad
+		if _frames == 20:
+			_check("shuttle terminal active on pad", current_scene._at_shuttle_terminal)
+			_check("E at pad opens shuttle map", player._interact_handler.is_valid())
 			print("[test] %s" % ("ALL PASSED" if _fails == 0 else "%d FAILED" % _fails))
 			quit(_fails)
 	return false
@@ -143,3 +153,19 @@ func _test_standing() -> void:
 
 func _QS() -> GDScript:
 	return load("res://scripts/world/qing_standing.gd")
+
+
+func _test_travel_guards() -> void:
+	var gm = root.get_node("GameManager")
+	var here: String = gm.territory_address
+	var other := "0x2222222222222222222222222222222222222222"
+	current_scene._at_shuttle_terminal = false
+	current_scene._on_map_territory_selected(other)
+	_check("no warping from the field", gm.territory_address == here)
+	current_scene._at_shuttle_terminal = true
+	current_scene._on_map_territory_selected(other)
+	_check("no shuttle to unjoined QING", gm.territory_address == here)
+	current_scene._at_shuttle_terminal = false
+	var wm = current_scene.hud.world_map
+	wm.set_travel_context(false, {other: true})
+	_check("map knows joined QINGs", wm._is_joined(other) and not wm._is_joined(here))
