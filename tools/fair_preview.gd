@@ -96,7 +96,7 @@ func _preset(p: String) -> Array:
 		{"name": "r2_fair_night_midway", "tod": 0.02, "cam": Vector3(25.0, 1.9, -20.2), "look": Vector3(7.8, 3.2, -6.2)},
 		{"name": "r2_fair_stalls", "tod": 0.02, "cam": Vector3(19.4, 1.7, -17.4), "look": Vector3(21.9, 1.9, -10.3)},
 		{"name": "r2_fair_noon_aerial", "tod": 0.45, "cam": Vector3(-44, 40, -40), "look": Vector3(0, 0, 4)},
-		{"name": "r2_fair_liftoff", "tod": 0.02, "ride": "rocket", "t": 12.2, "lead": 3.2, "cam_ride": Vector3(12, 3, 31), "look_ride": Vector3(0, 15, 0)},
+		{"name": "r2_fair_liftoff", "tod": 0.02, "ride": "rocket", "t": 12.2, "lead": 3.2, "cam_ride": Vector3(-16, 4, 34), "look_ride": Vector3(0, 15, 0)},
 		{"name": "r2_fair_carousel", "tod": 0.02, "ride": "carousel", "t": 12.0, "lead": 1.0, "cam_ride": Vector3(-8.5, 2.4, 9.5), "look_ride": Vector3(0, 2.0, 0)},
 	]
 	if p == "all":
