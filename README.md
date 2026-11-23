@@ -56,6 +56,18 @@ apes and birds work the same way. Everyone else is the clockwork LAU bear.
 
 You can also pick your own head on the identity card. That choice is stored on your machine only.
 
+## What to do (press O)
+
+The **Opportunities** board is read from the chain at one block.
+- **Hot spots:** the territories where a Su pays Hypobar, ranked by Ω (only 27 of 942 today).
+- **Within reach:** leads you can take, with the exact Su count and its gas cost in PLS.
+- **Your crowns:** territories you lead, and how many Su a rival needs to pass you.
+- **Build together:** how many Su lift a territory to its next tier.
+- **Your record:** your streak of DysnomiaDays with a reaction, read from your YUE logs, plus how much of
+  today is left.
+
+When someone takes your lead, or you take theirs, you get an alert with the block.
+
 ## Territories grow
 
 A territory builds up as people react there. All of this is chain state, so every visitor sees the same

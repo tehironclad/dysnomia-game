@@ -128,7 +128,13 @@ static func dev_fact(st: TerritoryState) -> Fact:
 		return st.total_hypobar
 	var t := Development.tier_of(BigInt.coerce(st.total_hypobar.value))
 	var nxt := Development.next_threshold(t)
-	return Fact.floor_of("%s%s" % [Development.tier_name(t), (" · next at %s" % TokenFormat.wei_to_tokens(BigInt.from_decimal(nxt), 0)) if nxt != "" else ""],
+	var su := ""
+	if nxt != "" and st.omega.has_value() and not BigInt.is_zero(BigInt.coerce(st.omega.value)):
+		var need := BigInt.sub(BigInt.from_decimal(nxt), BigInt.coerce(st.total_hypobar.value))
+		su = " · %s Su to %s" % [BigInt.to_decimal(Opportunities.ceil_div(need, BigInt.coerce(st.omega.value))), Development.tier_name(t + 1)]
+	elif nxt != "":
+		su = " · Ω = 0 here: Su adds no Hypobar"
+	return Fact.floor_of("%s%s" % [Development.tier_name(t), su],
 		"tier of Σ YUE.Bar(QING).Hypobar", "known players only", st.block)
 
 

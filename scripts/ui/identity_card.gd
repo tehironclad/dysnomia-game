@@ -158,6 +158,8 @@ func refresh() -> void:
 			"  ·  WITHOUT held (banned from rooms)" if ps.is_banned() else ""]
 		_state.add_theme_color_override("font_color", Color("#64e3a8") if rd.state.begins_with("ready") or rd.state == "fragile" else Color("#ffd27a"))
 		_reason.text = rd.reason + (("\n" + rd.fragile_reason) if rd.fragile_reason != "" else "")
+		if Session.record != null:
+			_reason.text += "\n" + Session.record.describe()
 		for h in HOLDINGS:
 			var v: Dictionary = rd.holdings.get(h[0], {"verdict": "missing", "detail": "—"})
 			var b: Dictionary = _bodies[h[0]]

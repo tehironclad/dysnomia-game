@@ -22,6 +22,7 @@ var actions: CoreActions
 var lattice: WorldLattice
 var help: ControlsHelp
 var guide: GuidePanel
+var opportunities: OpportunitiesPanel
 var score: TerritoryScore
 var _settings: PanelContainer
 var _monitor: Control
@@ -102,6 +103,15 @@ func _ready() -> void:
 	help = ControlsHelp.new()
 	help.position = Vector2(20, 240)
 	hud.add_child(help)
+	opportunities = OpportunitiesPanel.new()
+	opportunities.set_anchors_preset(Control.PRESET_CENTER)
+	opportunities.position = Vector2(-310, -320)
+	hud.add_child(opportunities)
+	Session.lead_changed.connect(func(lost, gained, block):
+		for a in lost:
+			hud.ticker("LEAD LOST · %s · someone passed you · block %d" % [String(Registry.get_territory(a).get("name", a)), block], Color("#ff8fa0"), 60.0)
+		for a in gained:
+			hud.ticker("LEAD TAKEN · %s · block %d" % [String(Registry.get_territory(a).get("name", a)), block], Color("#ffd27a"), 60.0))
 	guide = GuidePanel.new()
 	guide.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	guide.position = Vector2(-560, 130)
@@ -243,6 +253,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		help.toggle()
 	elif event.is_action_pressed("guide"):
 		guide.toggle()
+	elif event.is_action_pressed("opportunities"):
+		opportunities.toggle()
+		player.process_mode = Node.PROCESS_MODE_DISABLED if opportunities.is_open() else Node.PROCESS_MODE_INHERIT
+		if not opportunities.is_open():
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	elif event.is_action_pressed("settings"):
 		_toggle_settings()
 	elif event.is_action_pressed("toggle_debug"):

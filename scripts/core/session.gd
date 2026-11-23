@@ -4,6 +4,8 @@ extends Node
 ## refreshes them on connect, after every confirmed write, and every 60 s.
 
 signal changed
+## Leads won or lost since this wallet was last seen (known players; a floor).
+signal lead_changed(lost: Array, gained: Array, block: int)
 
 const REFRESH_S := 60.0
 const LOCAL_PATH := "user://identity.cfg"
@@ -22,6 +24,10 @@ var leading: Array = []
 var ladder_rank := -1
 ## A LAU forged by this client but not yet registered with CHO (between steps).
 var forged_lau := ""
+## Streak, reactions and days from the wallet's YUE mint logs (PlayerRecord).
+var record: PlayerRecord = null
+var _record_at := -1000000
+var _record_stale := true
 var _timer: Timer
 
 
@@ -29,6 +35,7 @@ func _ready() -> void:
 	_load_local()
 	Wallet.connected.connect(func(addr): set_wallet(addr))
 	Wallet.disconnected.connect(func(): set_wallet(""))
+	Wallet.tx_stage.connect(func(_l, stage, _i): if stage == "confirmed": _record_stale = true)
 	_timer = Timer.new()
 	_timer.wait_time = REFRESH_S
 	_timer.timeout.connect(func(): if wallet != "": refresh())
@@ -44,6 +51,8 @@ func set_wallet(addr: String) -> void:
 	wallet = addr
 	player = null
 	readiness = null
+	record = null
+	_record_stale = true
 	changed.emit()
 	if wallet != "":
 		refresh()
@@ -60,6 +69,14 @@ func refresh() -> void:
 	if ps.has_yue():
 		Players.add_player(wallet, ps.yue)
 		await _read_bars(ps)
+		_compare_leads(ps.block)
+		if _record_stale or Time.get_ticks_msec() - _record_at > 300000:
+			_record_stale = false
+			_record_at = Time.get_ticks_msec()
+			refreshing = false
+			changed.emit()
+			refreshing = true
+			record = await PlayerRecord.read(wallet, ps.yue)
 	if ps.has_lau() and forged_lau != "":
 		forged_lau = ""  # registered now
 		_save_local()
@@ -80,7 +97,23 @@ func _load_local() -> void:
 
 func _save_local() -> void:
 	var cfg := ConfigFile.new()
+	cfg.load(LOCAL_PATH)  # keep the other sections (head and body picks, leads)
 	cfg.set_value("identity", "forged_lau", forged_lau)
+	cfg.save(LOCAL_PATH)
+
+
+## Leads gained/lost since the last time this wallet was read on this machine.
+func _compare_leads(block: int) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(LOCAL_PATH)
+	var prev: Array = cfg.get_value("leads", wallet, [])
+	var lost: Array = prev.filter(func(a): return not leading.has(a))
+	var gained: Array = leading.filter(func(a): return not prev.has(a))
+	cfg.set_value("leads", wallet, leading.duplicate())
+	cfg.save(LOCAL_PATH)
+	if cfg.has_section_key("leads_seen", wallet) and (not lost.is_empty() or not gained.is_empty()):
+		lead_changed.emit(lost, gained, block)
+	cfg.set_value("leads_seen", wallet, true)
 	cfg.save(LOCAL_PATH)
 
 

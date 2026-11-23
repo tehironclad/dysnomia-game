@@ -12,6 +12,7 @@ var _wallet_btn: Button
 var _card: IdentityCard
 var _onboarding: OnboardingPanel
 var _guide: GuidePanel
+var _opps: OpportunitiesPanel
 var _settings: PanelContainer
 var _bg_q: Dictionary = {}
 var _t := 0.0
@@ -73,6 +74,10 @@ func _ready() -> void:
 	void_btn.text = "ENTER THE VOID  ·  create your identity"
 	void_btn.pressed.connect(func(): _onboarding.visible = not _onboarding.visible)
 	left.add_child(void_btn)
+	var opp_btn := Button.new()
+	opp_btn.text = "OPPORTUNITIES · what pays now"
+	opp_btn.pressed.connect(func(): _opps.toggle())
+	left.add_child(opp_btn)
 	var guide_btn := Button.new()
 	guide_btn.text = "Guide · the acts"
 	guide_btn.pressed.connect(func(): _guide.toggle())
@@ -98,6 +103,15 @@ func _ready() -> void:
 	right.add_child(_onboarding)
 	_guide = GuidePanel.new()
 	right.add_child(_guide)
+	_opps = OpportunitiesPanel.new()
+	right.add_child(_opps)
+	Session.lead_changed.connect(func(lost, gained, block):
+		var parts: PackedStringArray = []
+		for a in lost:
+			parts.append("lost the lead at %s" % String(Registry.get_territory(a).get("name", a)))
+		for a in gained:
+			parts.append("took the lead at %s" % String(Registry.get_territory(a).get("name", a)))
+		_status.text = "Since you were last here (block %d): %s." % [block, "; ".join(parts)])
 	var caption := Label.new()
 	caption.theme_type_variation = "MutedLabel"
 	caption.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)

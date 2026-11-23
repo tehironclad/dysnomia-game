@@ -152,7 +152,7 @@ reverted 12 out of 12 times.
 | **Room chat** `LogEvent(string Username, uint64 Soul, uint64 Aura, string LogLine)` | `0xb916a3aaef1d0f80cd78f5fca0067f557f3db4a63748929d2e5e8d0014549374` | each QING | Nothing is indexed; data words are [offset of Username, Soul, Aura, offset of LogLine]. **Accept only known QING emitters**, because anyone can emit a copy of this event. |
 | **Void chat** `LogEvent(uint64 Soul, uint64 Aura, string)` | `0x6b81130c485ac9b98332fa40c2e57900867815b0fe1497e1a168caf930fc9c9d` | Fomalhaute `0x7aE7…DB84`, from block 21,000,000 | text is `"<Username> line"`, parse with `^<([^>]+)>\s*([\s\S]*)$` |
 | **`NewQing(address QING, address Integrative, uint256 Waat)`** | `0x692bc76be0a4b0d71d90e36ee97b1f3c4141095ea3c22b01b9f620da2e4b5e2e` | MAP | all fields are in data. **One `eth_getLogs` from block 0 returns every territory (~4 s).** |
-| ERC-20 `Transfer` | `0xddf252ad…` | | each Su emits a CHEON→YUE transfer of 0 plus a YUE mint from 0x0 to the wallet. This is how players are discovered. |
+| ERC-20 `Transfer` | `0xddf252ad…` | | each Su emits a CHEON→YUE transfer of 0, then mints 1 YUE from 0x0 **to the YUE contract**, which transfers it **YUE → wallet** (verified 2026-11-23 on a live YUE: 317 mint/transfer pairs). Count reactions with Transfer(from = YUE, to = wallet) on the YUE. This is how players are discovered. |
 | *(WORLD)* | — | | **WORLD will emit no claim events**, so claims must be indexed from `Code` calldata. |
 
 ### Errors (decode reverts with these) [calc]
