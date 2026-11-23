@@ -29,9 +29,9 @@ var view_mode := ""  # su | room | beat | void | ""
 const MONOLITH_AT := Vector2(-26.0, 18.0)
 const PROMPTS := {
 	"su": "Su: react with this territory (your bars grow, +1 YUE)",
-	"room": "the Room: its door, its lines",
+	"room": "enter the hall: this QING's room",
 	"beat": "Beat at the Heart",
-	"void": "the Void: one board for everyone",
+	"void": "step into the Void: one board for everyone",
 	"world": "WORLD: your range here (latent until deployed)",
 }
 
@@ -216,9 +216,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		hud.hide_prompt()
 		match _near:
 			"su": actions.open_su()
-			"room": actions.open_room()
+			"room": Travel.hall(get_tree())
 			"beat": actions.open_beat()
-			"void": actions.open_void()
+			"void": Travel.void_place(get_tree())
 			"world": actions.open_world()
 		_near = ""
 		return

@@ -58,6 +58,10 @@
 - The avatar is `scripts/player/human_avatar.gd`: a Quaternius CC0 body plus animation library in
   `assets/characters/quaternius/` (same 65-bone rig, so the clips play directly). Creature heads go on
   `neck_01` while the `Head` bone is collapsed. Crow and flames: `avatar_extras.gd`.
+- Places (`scripts/places/`): `qing_hall.gd` (the room, built from `assets/buildings/scifi`, Quaternius
+  Modular Sci-Fi MegaKit, CC0, 4 m grid) and `void_place.gd`; both use `ChatController` (history, live tail,
+  post, Join) and `SpeakerEchoes`. Render: `screenshot.gd -- --scene=res://scenes/places/qing_hall.tscn --qing=0x…`.
+- Textures: `assets/textures/polyhaven` (CC0 moon regolith in the terrain shader; metal plates).
 - `tools/avatar_sheet.gd -- --out=<png> --mode=heads|poses|closeup [--head=rat --acc=crown]` renders the
   avatar in a studio (needs Xvfb). Heads come from the LAU's Username/name/symbol (`AvatarHeads`).
 - No hard-coded keys: add an input action in `project.godot` and list it in `ControlsHelp.ACTIONS`

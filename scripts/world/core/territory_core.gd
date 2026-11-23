@@ -157,32 +157,37 @@ func _build_room(tint: Color) -> void:
 	var room := Node3D.new()
 	room.name = "Room"
 	add_child(room)
-	# Ring wall from short segments, with a gap (the door) facing +Z.
-	var segments := 28
+	# The building: a ring of sci-fi wall panels with top sections (Modular
+	# Sci-Fi MegaKit, Quaternius, CC0), 10 around, the one facing +Z left open
+	# for the door frame. A panel's decorated face looks along local +X and sits
+	# ~2.17 m from its origin along -X; facing outward: yaw = −angle and
+	# origin = (R + 2.17)·dir.
 	var door_half := deg_to_rad(16.0)
-	var mat := _glass(tint)
-	for i in segments:
-		var a := TAU * (i + 0.5) / segments
-		var off := wrapf(a - PI * 0.5, -PI, PI)  # 0 at +Z
-		if absf(off) < door_half:
+	for i in 10:
+		var a_deg := 90.0 + 36.0 * i
+		if i == 0:
 			continue
-		var seg := MeshInstance3D.new()
-		var b := BoxMesh.new()
-		b.size = Vector3(TAU * ROOM_RADIUS / segments * 0.96, 2.8, 0.35)
-		seg.mesh = b
-		seg.material_override = mat
-		seg.position = Vector3(cos(a) * ROOM_RADIUS, 1.4, sin(a) * ROOM_RADIUS)
-		seg.rotation.y = -a + PI * 0.5
-		room.add_child(seg)
-	# Lintel light ring.
+		var a := deg_to_rad(a_deg)
+		var dir := Vector3(cos(a), 0.0, sin(a))
+		for piece in ["WallAstra_Straight", "TopAstra_Straight"]:
+			var n := PlaceBase.load_piece(piece)
+			n.position = dir * (ROOM_RADIUS + 2.17)
+			n.rotation_degrees.y = -a_deg
+			n.scale = Vector3(1.0, 0.9, 1.0)
+			room.add_child(n)
+	var frame := PlaceBase.load_piece("Door_Frame_Square")
+	frame.position = Vector3(0.0, 0.0, ROOM_RADIUS + 0.1)
+	frame.scale = Vector3(0.8, 0.8, 0.8)
+	room.add_child(frame)
+	# Crown light ring above the panels.
 	var ring := MeshInstance3D.new()
 	var tor := TorusMesh.new()
-	tor.inner_radius = ROOM_RADIUS - 0.08
-	tor.outer_radius = ROOM_RADIUS + 0.08
-	tor.rings = 48
+	tor.inner_radius = ROOM_RADIUS + 0.5
+	tor.outer_radius = ROOM_RADIUS + 0.62
+	tor.rings = 64
 	ring.mesh = tor
 	ring.material_override = _glow(tint, 1.5)
-	ring.position.y = 2.85
+	ring.position.y = 4.6
 	room.add_child(ring)
 	# The door field.
 	var door := MeshInstance3D.new()
@@ -197,7 +202,7 @@ func _build_room(tint: Color) -> void:
 	door.position = Vector3(0.0, 1.4, ROOM_RADIUS * cos(door_half))
 	room.add_child(door)
 	var sign := _label(String(territory.get("name", "")).to_upper(), 56)
-	sign.position = Vector3(0.0, 3.6, ROOM_RADIUS + 0.2)
+	sign.position = Vector3(0.0, 5.3, ROOM_RADIUS + 0.4)
 	sign.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	room.add_child(sign)
 

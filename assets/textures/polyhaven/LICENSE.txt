@@ -1,0 +1,3 @@
+Textures from Poly Haven (https://polyhaven.com), CC0 1.0 Universal (public domain).
+moon_dusted_02, moon_meteor_01, metal_plate, metal_plate_02 — 1k JPG (diffuse, normal GL, roughness).
+Downloaded 2026-11-23 through api.polyhaven.com.

@@ -20,6 +20,13 @@ uniform int max_iter = 96;
 uniform float glow = 1.0;
 uniform float lit_bands = 2.0;       // escape bands lit around the set (grows with activity)
 uniform float phase = 0.0;
+// Surface detail: scanned lunar regolith (Poly Haven, CC0), tiled in world space
+// at two scales so it never repeats visibly. Visual only; the same everywhere.
+uniform sampler2D regolith_albedo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D regolith_normal : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D regolith_rough : hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float detail_scale = 0.18;   // tiles per metre (≈ 5.5 m tiles)
+uniform float detail_strength = 1.0;
 
 varying vec3 world_pos;
 
@@ -118,8 +125,19 @@ void fragment() {
 		light = (A * core * 0.9 + B * halo * 0.22 + B * bands * near_set) * glow;
 		albedo = mix(GROUND * grain, A * 0.2, core * 0.4);
 	}
+	// Regolith detail: two scales blended, multiplied into the dark ground and
+	// fading out at distance (where the Julia pattern is what should read).
+	vec2 uv1 = world_pos.xz * detail_scale;
+	vec2 uv2 = world_pos.xz * detail_scale * 0.237 + vec2(0.37, 0.71);
+	vec3 rg = mix(texture(regolith_albedo, uv1).rgb, texture(regolith_albedo, uv2).rgb, 0.4);
+	float dist = length(world_pos - CAMERA_POSITION_WORLD);
+	float near_f = (1.0 - smoothstep(60.0, 320.0, dist)) * detail_strength;
+	albedo = mix(albedo, albedo * 0.4 + rg * 0.3, near_f);
+	vec3 nm = mix(texture(regolith_normal, uv1).rgb, texture(regolith_normal, uv2).rgb, 0.35);
+	NORMAL_MAP = mix(vec3(0.5, 0.5, 1.0), nm, near_f);
+	NORMAL_MAP_DEPTH = 1.2;
 	ALBEDO = albedo;
-	ROUGHNESS = 0.92;
+	ROUGHNESS = mix(0.92, texture(regolith_rough, uv1).r, near_f * 0.6);
 	SPECULAR = 0.05;
 	EMISSION = light;
 }

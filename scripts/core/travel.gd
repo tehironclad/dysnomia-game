@@ -4,6 +4,8 @@ extends RefCounted
 
 const TERRITORY_SCENE := "res://scenes/territory/territory_v2.tscn"
 const FIELD_SCENE := "res://scenes/field/field.tscn"
+const HALL_SCENE := "res://scenes/places/qing_hall.tscn"
+const VOID_SCENE := "res://scenes/places/void_place.tscn"
 
 
 ## Sets the destination and changes scene. Returns false (and changes nothing)
@@ -42,3 +44,13 @@ static func random_address(tree: SceneTree) -> String:
 ## The Field: the globe of every territory.
 static func field(tree: SceneTree) -> void:
 	tree.change_scene_to_file(FIELD_SCENE)
+
+
+## Inside the current territory's QING: its chat hall (back out through the door).
+static func hall(tree: SceneTree) -> void:
+	tree.change_scene_to_file(HALL_SCENE)
+
+
+## The Void (back out through the portal to the current territory).
+static func void_place(tree: SceneTree) -> void:
+	tree.change_scene_to_file(VOID_SCENE)

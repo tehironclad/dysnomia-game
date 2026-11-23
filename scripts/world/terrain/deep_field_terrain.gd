@@ -52,6 +52,10 @@ func _build_material() -> void:
 	material.set_shader_parameter("color", Vector3(params["color"][0], params["color"][1], params["color"][2]))
 	material.set_shader_parameter("color2", Vector3(params["color2"][0], params["color2"][1], params["color2"][2]))
 	material.set_shader_parameter("hue", float(params["hue"]))
+	var rd := "res://assets/textures/polyhaven/moon_dusted_02/moon_dusted_02_"
+	material.set_shader_parameter("regolith_albedo", load(rd + "diff_1k.jpg"))
+	material.set_shader_parameter("regolith_normal", load(rd + "nor_gl_1k.jpg"))
+	material.set_shader_parameter("regolith_rough", load(rd + "rough_1k.jpg"))
 	material.set_shader_parameter("style", STYLE_INDEX.get(String(params["style"]), 0))
 
 

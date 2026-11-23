@@ -6,9 +6,9 @@ extends PanelContainer
 const ACTIONS := [
 	["move_forward", "Move forward"], ["move_back", "Move back"], ["move_left", "Move left"], ["move_right", "Move right"],
 	["jump", "Jump (triple jump in low gravity)"], ["sprint", "Sprint"], ["crouch_descend", "Crouch / descend (flying)"],
-	["toggle_fly", "Fly"], ["toggle_camera", "First / third person"], ["interact", "Use: pylon Su · door Room · centre Beat · plinth WORLD · monolith Void"],
+	["toggle_fly", "Fly"], ["toggle_camera", "First / third person"], ["interact", "Use: pylon Su · door: enter the hall · centre Beat · plinth WORLD · monolith: the Void"],
 	["inspect", "How is this drawn?"], ["open_field", "The Field (all territories)"], ["flashlight", "Flashlight"],
-	["guide", "Guide: the acts"], ["settings", "Settings"], ["toggle_debug", "Performance overlay"], ["controls_help", "This list"],
+	["chat", "Speak (in a hall or the Void)"], ["guide", "Guide: the acts"], ["settings", "Settings"], ["toggle_debug", "Performance overlay"], ["controls_help", "This list"],
 ]
 
 var _text: Label

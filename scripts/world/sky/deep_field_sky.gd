@@ -37,6 +37,8 @@ func setup(params: Dictionary, address: String) -> void:
 	material.set_shader_parameter("star_seed", float(BigInt.mod_int(BigInt.from_hex(address), 100003)))
 	material.set_shader_parameter("eris_radius_deg", ERIS_ANGULAR_DIAMETER_DEG * 0.5)
 	material.set_shader_parameter("mark_color", Vector3(params["color"][0], params["color"][1], params["color"][2]))
+	material.set_shader_parameter("neb_a", Vector3(params["color"][0], params["color"][1], params["color"][2]))
+	material.set_shader_parameter("neb_b", Vector3(params["color2"][0], params["color2"][1], params["color2"][2]))
 	_explain(params)
 	sync_time()
 

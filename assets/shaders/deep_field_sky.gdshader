@@ -19,6 +19,34 @@ uniform vec3 field_dir = vec3(-0.55, 0.62, 0.55);
 uniform float field_span_deg = 70.0;          // angular width of the drawn complex plane
 uniform float field_strength = 0.18;
 uniform vec3 base_color : source_color = vec3(0.0118, 0.0157, 0.0275);  // #030407
+// A faint nebula: its colours are the territory's own two Deep Field colours and
+// its shape is seeded by the address (star_seed), so every territory's sky differs.
+uniform vec3 neb_a : source_color = vec3(0.3, 0.15, 0.5);
+uniform vec3 neb_b : source_color = vec3(0.1, 0.4, 0.6);
+uniform float neb_strength = 0.16;
+
+float n_hash(vec3 p) {
+	p = fract(p * 0.1031);
+	p += dot(p, p.zyx + 31.32);
+	return fract((p.x + p.y) * p.z);
+}
+float n_noise(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(mix(n_hash(i), n_hash(i + vec3(1, 0, 0)), f.x), mix(n_hash(i + vec3(0, 1, 0)), n_hash(i + vec3(1, 1, 0)), f.x), f.y),
+		mix(mix(n_hash(i + vec3(0, 0, 1)), n_hash(i + vec3(1, 0, 1)), f.x), mix(n_hash(i + vec3(0, 1, 1)), n_hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+float n_fbm(vec3 p) {
+	float v = 0.0;
+	float a = 0.5;
+	for (int i = 0; i < 5; i++) {
+		v += a * n_noise(p);
+		p *= 2.03;
+		a *= 0.5;
+	}
+	return v;
+}
 
 const float PI_ = 3.14159265359;
 
@@ -70,6 +98,11 @@ float mandel_glow(vec2 p, float px) {
 void sky() {
 	vec3 d = EYEDIR;
 	vec3 col = base_color + stars(d);
+	vec3 so = vec3(mod(star_seed, 97.0), mod(star_seed * 0.37, 89.0), mod(star_seed * 0.11, 83.0));
+	float n1 = n_fbm(d * 2.0 + so);
+	float n2 = n_fbm(d * 4.3 - so * 0.5);
+	float neb = smoothstep(0.5, 0.88, n1) * 0.7 + smoothstep(0.55, 0.92, n2) * 0.3;
+	col += mix(neb_a, neb_b, smoothstep(0.35, 0.8, n2)) * neb * neb_strength * smoothstep(-0.05, 0.25, d.y);
 
 	// "You are here": project directions around field_dir onto the complex plane.
 	vec3 f = normalize(field_dir);

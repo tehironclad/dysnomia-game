@@ -71,6 +71,8 @@ func _run() -> void:
 		var acts = current_scene.get("actions") if current_scene else null
 		if acts:
 			acts.call("open_" + _open)
+		elif _open == "chat" and current_scene and current_scene.get("chat_ctl"):
+			current_scene.chat_ctl.open()  # a hall or the Void
 	if _head != "" and current_scene:
 		# With a session: the wallet's local head choice, exactly as the identity
 		# card's picker stores it (the chain-derived head is the default).

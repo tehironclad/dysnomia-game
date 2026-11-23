@@ -56,6 +56,17 @@ apes and birds work the same way. Everyone else is the clockwork LAU bear.
 
 You can also pick your own head on the identity card. That choice is stored on your machine only.
 
+## Places
+
+- **A QING's hall.** Walk through the Room's door at the Core and you're inside: a sci-fi chamber built
+  for that territory.
+  - Its back wall is the board: the room's own on-chain lines, live.
+  - Its Julia set is inlaid in the floor.
+  - Holographic echoes of the latest speakers stand in front of the board.
+  - Press T to speak. The door takes you back.
+- **The Void.** The monolith takes you to an open space with a glass platform and a nebula sky. Void lines
+  drift around you, the newest closest. Press T to speak; the portal takes you back.
+
 ## Without a wallet
 
 Everything can be read without connecting: territories, bars, rooms, the Void, readiness. Only the writes

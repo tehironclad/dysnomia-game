@@ -7,11 +7,10 @@ extends CanvasLayer
 ##
 ## - Su at the pylons (CHEON.Su): the bar delta is checked by reading
 ##   YUE.Bar(QING) at the receipt's block.
-## - The Room at the door: door facts, Join (approve > cover → Join → verify
-##   Admitted), lines from this QING's logs, post via CHOA.Chat.
+## - The Room and the Void are places now (scripts/places): the door leads
+##   into the QING's hall, the monolith into the Void (ChatController).
 ## - Beat at the Heart (META.Beat(Waat)): gated by readiness, so a wallet that
 ##   would panic sees the diagnosis instead of a doomed transaction.
-## - The Void at the monolith: Fomalhaute's lines, post via LAU.Chat.
 
 signal opened
 signal closed
@@ -25,10 +24,6 @@ var phenomena: Phenomena
 var monolith: VoidMonolith
 var lattice: WorldLattice
 var action: ActionPanel
-var chat: ChatPanel
-var _chat_mode := ""  # "room" | "void"
-var _room: RoomState
-var _door_btn: Button
 var _busy := false
 
 
@@ -49,25 +44,14 @@ func setup(q: Dictionary, p_state: TerritoryState, p_core: TerritoryCore, p_hud:
 	center.add_child(stack)
 	action = ActionPanel.new()
 	stack.add_child(action)
-	chat = ChatPanel.new()
-	stack.add_child(chat)
-	_door_btn = Button.new()
-	_door_btn.visible = false
-	_door_btn.pressed.connect(_join)
-	chat.get_child(0).add_child(_door_btn)
-	chat.get_child(0).move_child(_door_btn, 2)
 	action.closed.connect(_on_closed)
-	chat.closed.connect(_on_closed)
-	chat.post_requested.connect(_post)
-	phenomena.room_lines.connect(func(ls): if chat.is_open() and _chat_mode == "room": chat.append_lines(ls))
-	phenomena.void_lines.connect(func(ls): if chat.is_open() and _chat_mode == "void": chat.append_lines(ls))
 	Wallet.tx_stage.connect(func(_l, stage, _i):
 		if stage == "failed": Cues.play(self, "fail")
 		elif stage == "confirmed": Cues.play(self, "confirm"))
 
 
 func is_open() -> bool:
-	return action.is_open() or chat.is_open()
+	return action.is_open()
 
 
 func _on_closed() -> void:
@@ -77,7 +61,6 @@ func _on_closed() -> void:
 
 
 func _open_action(title: String) -> void:
-	chat.visible = false
 	action.show_panel(title)
 	opened.emit()
 
@@ -226,106 +209,6 @@ func _do_beat(p: Dictionary) -> void:
 	Session.refresh()
 
 
-# --- The Room ------------------------------------------------------------------
-
-func open_room() -> void:
-	action.visible = false
-	_chat_mode = "room"
-	chat.show_panel("THE ROOM · %s" % _tname(), "Reading the door…")
-	chat.set_lines([], "Reading this room's lines from its own logs (only this QING's LogEvent counts)…")
-	chat.set_blocker("…")
-	_door_btn.visible = false
-	opened.emit()
-	_refresh_door()
-	var head := await Chain.refresh_head()
-	var h: Dictionary = await ChatLog.room_history(qing, int(territory.get("block", Contracts.MAP_FIRST_BLOCK)), head, 80)
-	if chat.is_open() and _chat_mode == "room":
-		chat.set_lines(h["lines"], ("Lines from block %d to %d." % [h["scanned_from"], head]) if h["ok"] else "History incomplete: the log scan stopped (—).")
-
-
-func _refresh_door() -> void:
-	var ps: PlayerState = Session.player if Session.wallet != "" else null
-	_room = await RoomState.read(qing, ps)
-	if not (chat.is_open() and _chat_mode == "room"):
-		return
-	chat.set_subtitle(_room.describe())
-	if not _room.ok:
-		chat.set_blocker("The door could not be read: —")
-		return
-	var blocker := _room.chat_blocker() if ps != null else "Connect a wallet at the front door to speak here."
-	if blocker == "":
-		blocker = _signer_blocker()
-	chat.set_blocker(blocker)
-	var steps := _room.join_steps()
-	_door_btn.visible = not steps.is_empty() and _room.has_cover()
-	if _door_btn.visible:
-		var first: Dictionary = steps[0]
-		_door_btn.text = "%s  (%d step%s)" % [first["label"], steps.size(), "s" if steps.size() > 1 else ""]
-		_door_btn.disabled = _signer_blocker() != "" or not _room.can_afford()
-		if not _room.can_afford():
-			chat.set_status("You hold %s; the cover is %s." % [_room.fmt(_room.balance), _room.fmt(_room.cover)])
-
-
-func _join() -> void:
-	if _busy or _room == null:
-		return
-	_busy = true
-	_door_btn.disabled = true
-	for step in _room.join_steps():
-		chat.track(step["label"])
-		var res: Dictionary = await Wallet.send(step["label"], step["to"], step["data"])
-		if not res["ok"]:
-			_busy = false
-			_refresh_door()
-			return
-	_busy = false
-	await _refresh_door()
-	if _room.admitted:
-		chat.set_status("Admitted (QING.Admitted(LAU) is true at block %d). The door is open to you for a day." % _room.block)
-		Acts.set_flag(Session.wallet, "door")
-		core.set_door_closed(false)
-	else:
-		chat.set_status("Join was mined, but Admitted(LAU) still reads false at block %d." % _room.block)
-
-
-func _post(text: String) -> void:
-	if _busy:
-		return
-	_busy = true
-	var to := ""
-	var data := ""
-	var emitter := ""
-	var label := ""
-	if _chat_mode == "room":
-		to = Contracts.CHOA
-		data = Abi.encode_call("Chat(address,string)", [qing, text])
-		emitter = qing
-		label = "Room line at %s" % _tname()
-	else:
-		to = Session.player.lau
-		data = Abi.encode_call("Chat(string)", [text])
-		emitter = Contracts.FOMALHAUTE
-		label = "Void line"
-	chat.track(label)
-	var res: Dictionary = await Wallet.send(label, to, data)
-	_busy = false
-	if not res["ok"]:
-		return
-	chat.clear_input()
-	var r: Dictionary = await ChatLog.tail(emitter, _chat_mode == "room", res["block"] - 1, res["block"])
-	var mine: Array = r["lines"].filter(func(l): return l["tx"] == res["hash"])
-	if mine.is_empty():
-		chat.set_status("Mined in block %d, but the line was not found in that block's logs: —." % res["block"])
-	else:
-		chat.append_lines(mine)
-		chat.set_status("Posted: read back from the chain in block %d." % res["block"])
-		if _chat_mode == "room":
-			Acts.set_flag(Session.wallet, "door")
-	if _chat_mode == "room":
-		core.cascade(0.5)  # CHOA.Chat reacts like Su (bars grow, no YUE)
-		state.refresh()
-
-
 # --- WORLD (latent): the range preview --------------------------------------------
 
 ## Pure: the centre cell's exact call, as the site builds it: Code(word0, word1,
@@ -393,20 +276,3 @@ func open_world() -> void:
 		action.set_secondary("Hide my range" if lattice.range_visible() else "Show my range on the ground", true, func():
 			lattice.show_range(yeo, not lattice.range_visible())
 			action.set_secondary("Hide my range" if lattice.range_visible() else "Show my range on the ground", true, action._action2))
-
-
-# --- The Void -------------------------------------------------------------------
-
-func open_void() -> void:
-	action.visible = false
-	_chat_mode = "void"
-	chat.show_panel("THE VOID", "One board for everyone: Fomalhaute's LogEvent lines (from block %d), written by LAU.Chat. Names are not unique: ✓ OG and ⚠ imposter compare the speaking LAU's Aura with the name's owner." % Contracts.VOID_CHAT_FROM_BLOCK)
-	chat.set_lines([], "Reading the Void from Fomalhaute's logs…")
-	_door_btn.visible = false
-	var ib := _identity_blocker(false)
-	chat.set_blocker(ib if ib != "" else _signer_blocker())
-	opened.emit()
-	var head := await Chain.refresh_head()
-	var h: Dictionary = await ChatLog.void_history(head, 100)
-	if chat.is_open() and _chat_mode == "void":
-		chat.set_lines(h["lines"], ("Lines from block %d to %d." % [h["scanned_from"], head]) if h["ok"] else "History incomplete: the log scan stopped (—).")
