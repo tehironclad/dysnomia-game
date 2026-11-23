@@ -1837,7 +1837,8 @@ func _setup_minimap() -> void:
 
 	# Register pub
 	if _pub_building:
-		hud.register_minimap_poi("Lunar Cantina", _pub_building.position,
+		var pub_label: String = _pub_building.get_sign_text().capitalize() if _pub_building.has_method("get_sign_text") else "Lunar Cantina"
+		hud.register_minimap_poi(pub_label, _pub_building.position,
 			Color(1.0, 0.7, 0.3), 2)  # POIType.PUB
 
 	# Register the fair

@@ -73,6 +73,7 @@ func _process(_d: float) -> bool:
 			_test_paid_path()
 			_test_standing()
 			_test_travel_guards()
+			_test_pub_bar()
 			_phase = 4
 			_frames = 0
 	elif _phase == 4:
@@ -169,3 +170,16 @@ func _test_travel_guards() -> void:
 	var wm = current_scene.hud.world_map
 	wm.set_travel_context(false, {other: true})
 	_check("map knows joined QINGs", wm._is_joined(other) and not wm._is_joined(here))
+
+
+func _test_pub_bar() -> void:
+	var pub = current_scene._pub_building
+	var ui = current_scene._attraction_ui
+	_check("pub has bar_focus signal", pub.has_signal("bar_focus"))
+	pub.bar_focus.emit(true)
+	_check("bar menu opens at the bar", ui._menu.visible)
+	pub.play_drink_served("rho_rocks")
+	pub.play_drink_served("house_round")
+	pub.play_house_cheer()
+	_check("pub sign text", not pub.get_sign_text().is_empty())
+	pub.bar_focus.emit(false)

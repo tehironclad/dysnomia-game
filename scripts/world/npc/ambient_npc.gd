@@ -46,7 +46,7 @@ func setup(seed_value: int, points: Array = [], facing: Vector3 = Vector3.FORWAR
 		_target_idx = 1 % _points.size()
 		_pause = _rng.randf_range(0.0, pause_range.y)
 	elif facing.length() > 0.01:
-		look_at(global_position - facing, Vector3.UP)
+		look_at(global_position + facing, Vector3.UP)  # root -Z = model front
 
 
 func _process(delta: float) -> void:
@@ -76,3 +76,11 @@ func _process(delta: float) -> void:
 	var want := atan2(-dir.x, -dir.z)
 	rotation.y = lerp_angle(rotation.y, want, clampf(delta * 6.0, 0.0, 1.0))
 	_model.update_movement(dir * walk_speed, true, false)
+
+
+func go_to(point: Vector3, linger: float = 4.0) -> void:
+	## Walk to one point (parent-local) and stand there; e.g. the bartender heading to the taps.
+	_points = [position, point]
+	_target_idx = 1
+	_pause = 0.0
+	pause_range = Vector2(linger, linger)
