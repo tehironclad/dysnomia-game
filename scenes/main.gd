@@ -1657,6 +1657,8 @@ func _spawn_debris_scatter() -> void:
 
 
 func _spawn_antenna_array() -> void:
+	# Level a compound for the mast (the natural slope here can drop 8-10 m across it)
+	territory.flatten_area(ANTENNA_X, ANTENNA_Z, 14.0, 14.0, 12.0)
 	_antenna_array = Node3D.new()
 	_antenna_array.set_script(AntennaArrayScript)
 	_antenna_array.name = "AntennaArray"
