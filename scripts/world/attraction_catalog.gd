@@ -20,7 +20,7 @@ const RIDES := {
 		"id": "rocket", "kind": KIND_TICKET, "price": "1",
 		"name": "Upsilon Rocket",
 		"blurb": "Strapped into a glass capsule and fired 400 m straight up. Free-fall view of the whole QING, then a parachute ride home.",
-		"duration": 38.0,
+		"duration": 55.0,
 	},
 	"wheel": {
 		"id": "wheel", "kind": KIND_TICKET, "price": "1",
@@ -31,8 +31,8 @@ const RIDES := {
 	"drop": {
 		"id": "drop", "kind": KIND_TICKET, "price": "1",
 		"name": "Pi Drop Tower",
-		"blurb": "Hauled 55 m up the tower, held at the top for a heartbeat, then dropped in low gravity.",
-		"duration": 26.0,
+		"blurb": "Hauled 51 m up the 55 m tower, held at the top for a heartbeat, then dropped in low gravity.",
+		"duration": 30.0,
 	},
 	"carousel": {
 		"id": "carousel", "kind": KIND_TICKET, "price": "1",
