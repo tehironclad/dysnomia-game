@@ -6,6 +6,8 @@ const TERRITORY_SCENE := "res://scenes/territory/territory_v2.tscn"
 const FIELD_SCENE := "res://scenes/field/field.tscn"
 const HALL_SCENE := "res://scenes/places/qing_hall.tscn"
 const VOID_SCENE := "res://scenes/places/void_place.tscn"
+const ARCADE_SCENE := "res://scenes/places/arcade_place.tscn"
+const PUB_SCENE := "res://scenes/places/sunny_pub.tscn"
 
 
 ## Sets the destination and changes scene. Returns false (and changes nothing)
@@ -54,3 +56,13 @@ static func hall(tree: SceneTree) -> void:
 ## The Void (back out through the portal to the current territory).
 static func void_place(tree: SceneTree) -> void:
 	tree.change_scene_to_file(VOID_SCENE)
+
+
+## The current territory's arcade (cabinets, pool and cards).
+static func arcade(tree: SceneTree) -> void:
+	tree.change_scene_to_file(ARCADE_SCENE)
+
+
+## Sunny's Pub, in TehSunFlowrScioety QING.
+static func pub(tree: SceneTree) -> void:
+	tree.change_scene_to_file(PUB_SCENE)

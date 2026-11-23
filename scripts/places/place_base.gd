@@ -74,9 +74,10 @@ func setup_hud(title: String) -> void:
 	root.add_child(hint)
 
 
-func setup_chat(mode: String, q: Dictionary) -> void:
+func setup_chat(mode: String, q: Dictionary, history: int = 80) -> void:
 	chat_ctl = ChatController.new()
 	chat_ctl.name = "Chat"
+	chat_ctl.history_limit = history
 	add_child(chat_ctl)
 	chat_ctl.setup(mode, q)
 	chat_ctl.opened.connect(func(): player.process_mode = Node.PROCESS_MODE_DISABLED)

@@ -530,3 +530,25 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
 14. **The registry's `lau` field is the asset token**, not a LAU.
 15. **`AFFECTION.View()` returns 48 words**: the game's 50-word FAUNG parser always fails.
 16. **"374 territories"** is stale: there are 942 and counting. Read the count from the chain.
+
+## 14. Games in the rooms: the arcade, pool, Twenty-One (2026-11-23)
+
+- **AFFECTION** reads `symbol() = "Ⓐ"`, `name() = "AFFECTION™"`, `decimals() = 18` [live]. A plain
+  `transfer(QING, 1e18)` to a QING simulates fine [live, eth_call from the AFFECTION reserve].
+- **Arcade fee:** 1 Ⓐ a play, `AFFECTION.transfer(QING, 1e18)` to the QING of the territory the
+  cabinet stands in (the owner's choice: the territory's own balance). A credit counts only after
+  `ArcadePay.verify_receipt` finds AFFECTION's `Transfer(wallet → QING, ≥ fee)` in the receipt read from
+  the chain; the QING's balance is re-read at that block. Credits are a local ledger keyed by tx hash.
+  Maria's `.fkc` game carts read no input, so they run free as attract screens and take no credits.
+- **Pool and Twenty-One are room lines** (`CHOA.Chat(QING, text)`), replayed by every client:
+  `🎱|🃏 challenge anyone|0x<wallet> [stake N Ⓐ]`, then `🎱|🃏 #<id> accept|decline|concede|forfeit|hit|stand`
+  and `🎱 #<id> shot <dx> <dy> <power>`. The id is the challenge tx hash's first 8 hex digits.
+  - **Who said it is `tx.from`** (eth_getTransactionByHash), never the display name.
+  - **Pool is integer physics** (`PoolSim`: µm, 1/480 s ticks, `isqrt`), so every platform replays it identically.
+  - **Cards:** each one is `SHA-256("<block hash>:<draw n>") mod cards left`; the block is the one holding the
+    accept line (the deal) or the hit line.
+  - **Idle games:** after `TableBook.TIMEOUT_BLOCKS` (8,640) without a move, the waiting player may claim the game.
+- **Wagers are honour-bound** (no escrow contract exists). The loser owes the stake; `TableBook.settle`
+  reads AFFECTION `Transfer(loser → winner)` logs after the game's last block and allocates them
+  oldest debt first. ✓ paid / ⚠ unpaid is what everyone sees.
+- **Sunny's Pub** replaces the arcade in TehSunFlowrScioety QING `0x2b78b345880807ac9be28c1309ab55d6fa8796de`.

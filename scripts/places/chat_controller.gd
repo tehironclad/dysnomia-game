@@ -20,6 +20,7 @@ var mode := "room"  # "room" | "void"
 var qing := ""
 var territory: Dictionary = {}
 var lines: Array = []
+var history_limit := 80  # room lines read at arrival (the game rooms read more: their tables replay them)
 var chat: ChatPanel
 var room: RoomState
 var _door_btn: Button
@@ -71,7 +72,7 @@ func _load_history() -> void:
 		return
 	var h: Dictionary
 	if mode == "room":
-		h = await ChatLog.room_history(qing, int(territory.get("block", Contracts.MAP_FIRST_BLOCK)), head, 80)
+		h = await ChatLog.room_history(qing, int(territory.get("block", Contracts.MAP_FIRST_BLOCK)), head, history_limit)
 	else:
 		h = await ChatLog.void_history(head, 100)
 	lines = h["lines"]

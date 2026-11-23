@@ -1,0 +1,106 @@
+{
+  "generated": "day-909",
+  "spec": "../docs/FOLKLORE_CARTRIDGE_SPEC.md",
+  "cartridges": [
+    {
+      "id": "corner",
+      "title": "Corner Pixel",
+      "theme": "The worked example from the spec — one lit pixel, top-left.",
+      "file": "corner.fkc",
+      "type": "sprite",
+      "bytes": 22,
+      "codeLen": 6,
+      "litPx": 1
+    },
+    {
+      "id": "frame",
+      "title": "Frame",
+      "theme": "A bare 64×64 border — the smallest \"full screen\" cartridge.",
+      "file": "frame.fkc",
+      "type": "sprite",
+      "bytes": 717,
+      "codeLen": 701,
+      "litPx": 252
+    },
+    {
+      "id": "entropy-e",
+      "title": "Entropy E",
+      "theme": "Bordered box, diagonal, and a chunky \"E\" — exercises many stores.",
+      "file": "entropy-e.fkc",
+      "type": "sprite",
+      "bytes": 1092,
+      "codeLen": 1076,
+      "litPx": 415
+    },
+    {
+      "id": "bolt",
+      "title": "Bolt",
+      "theme": "The entropy lightning mark, rasterized for the Folklore framebuffer.",
+      "file": "bolt.fkc",
+      "type": "sprite",
+      "bytes": 867,
+      "codeLen": 851,
+      "litPx": 1025
+    },
+    {
+      "id": "heart",
+      "title": "Heart",
+      "theme": "A filled heart — provenance you can hold.",
+      "file": "heart.fkc",
+      "type": "sprite",
+      "bytes": 882,
+      "codeLen": 866,
+      "litPx": 1019
+    },
+    {
+      "id": "target",
+      "title": "Target",
+      "theme": "Concentric rings + bullseye — a calibration cartridge.",
+      "file": "target.fkc",
+      "type": "sprite",
+      "bytes": 1477,
+      "codeLen": 1461,
+      "litPx": 737
+    },
+    {
+      "id": "sweep",
+      "title": "Sweep",
+      "theme": "A scan line sweeps down the screen forever: an indirect pointer walks the framebuffer row by row.",
+      "file": "sweep.fkc",
+      "type": "game",
+      "bytes": 80,
+      "codeLen": 64,
+      "litPx": 64
+    },
+    {
+      "id": "bounce",
+      "title": "Bounce",
+      "theme": "A block bounces inside a walled court. It is drawn and erased with EOR, so it never damages the walls.",
+      "file": "bounce.fkc",
+      "type": "game",
+      "bytes": 192,
+      "codeLen": 176,
+      "litPx": 316
+    },
+    {
+      "id": "odometer",
+      "title": "Odometer",
+      "theme": "A 48-bit counter counts up in binary across the middle of a framed screen; carries ripple left.",
+      "file": "odometer.fkc",
+      "type": "game",
+      "bytes": 116,
+      "codeLen": 100,
+      "litPx": 300
+    },
+    {
+      "id": "static",
+      "title": "Static",
+      "theme": "Snow: a 16-bit shift-register random generator flips one pixel at a time, forever.",
+      "file": "static.fkc",
+      "type": "game",
+      "bytes": 80,
+      "codeLen": 64,
+      "litPx": 250
+    }
+  ]
+}

@@ -17,6 +17,7 @@ var columns: BarColumns
 var development: DevelopmentSite
 var dev_tier := 0
 var monolith: VoidMonolith
+var arcade: ArcadeFront
 var phenomena: Phenomena
 var actions: CoreActions
 var lattice: WorldLattice
@@ -36,6 +37,8 @@ const PROMPTS := {
 	"beat": "Beat at the Heart",
 	"void": "step into the Void: one board for everyone",
 	"world": "WORLD: your range here (latent until deployed)",
+	"arcade": "go into the arcade: cabinets, pool and cards",
+	"pub": "go into Sunny's Pub: the bar, the arcade, pool and cards",
 }
 
 
@@ -90,6 +93,12 @@ func _ready() -> void:
 	actions.name = "Actions"
 	add_child(actions)
 	actions.setup(territory, state, core, hud, phenomena, monolith)
+	arcade = ArcadeFront.new()
+	arcade.name = "Arcade"
+	core.add_child(arcade)
+	arcade.build(String(territory["address"]), DeepField.to_color(terrain.params["color"]))
+	arcade.position = Vector3(ArcadeFront.AT.x, terrain.get_height_at(core.global_position.x + ArcadeFront.AT.x, core.global_position.z + ArcadeFront.AT.y) - core_y - 0.3, ArcadeFront.AT.y)
+	arcade.look_at(core.global_position + Vector3(0.0, arcade.global_position.y - core.global_position.y, 0.0), Vector3.UP, true)
 	lattice = WorldLattice.new()
 	lattice.name = "WorldLattice"
 	core.add_child(lattice)
@@ -219,7 +228,14 @@ static func zone_at(local: Vector3, monolith_local: Vector3) -> String:
 		return "void"
 	if xz.distance_to(Vector2(WorldLattice.PLINTH_AT.x, WorldLattice.PLINTH_AT.z)) < 2.5:
 		return "world"
+	if xz.distance_to(arcade_door()) < ArcadeFront.DOOR_REACH:
+		return "arcade"
 	return ""
+
+
+## The arcade's door (relative to the Core): its front faces the Core.
+static func arcade_door() -> Vector2:
+	return ArcadeFront.AT - ArcadeFront.AT.normalized() * 4.2
 
 
 func _process(_delta: float) -> void:
@@ -231,7 +247,8 @@ func _process(_delta: float) -> void:
 		if z == "":
 			hud.hide_prompt()
 		else:
-			hud.show_prompt("%s  %s" % [ControlsHelp.key_of("interact"), PROMPTS[z]])
+			var key := "pub" if z == "arcade" and arcade and arcade.is_pub else z
+			hud.show_prompt("%s  %s" % [ControlsHelp.key_of("interact"), PROMPTS[key]])
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -246,6 +263,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			"beat": actions.open_beat()
 			"void": Travel.void_place(get_tree())
 			"world": actions.open_world()
+			"arcade": Travel.pub(get_tree()) if arcade and arcade.is_pub else Travel.arcade(get_tree())
 		_near = ""
 		return
 	if event.is_action_pressed("open_field"):

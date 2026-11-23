@@ -61,6 +61,12 @@
 - Places (`scripts/places/`): `qing_hall.gd` (the room, built from `assets/buildings/scifi`, Quaternius
   Modular Sci-Fi MegaKit, CC0, 4 m grid) and `void_place.gd`; both use `ChatController` (history, live tail,
   post, Join) and `SpeakerEchoes`. Render: `screenshot.gd -- --scene=res://scenes/places/qing_hall.tscn --qing=0x…`.
+- Games (`scripts/games/`, LEARNINGS §14): `ArcadePay` (1 Ⓐ a play → the QING, receipt-verified),
+  `TableBook` (pool and Twenty-One as room lines; signer = tx.from; honour-bound wagers checked by
+  Transfer logs), `PoolSim`/`EightBall` (integer physics), `Duel21` (cards from block hashes). The arcade
+  library is `scripts/arcade/` (ArcadeGame, three original games, the Folklore 6502 cart player,
+  ArcadeCatalog). Places: `arcade_place.gd` (every territory, door `ArcadeFront` on the plaza) and
+  `sunny_pub.gd` (TehSunFlowrScioety QING), both on `GamesPlace`.
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
   total; skyline towers per player (`bar_columns.gd`, `tower.gdshader`), structures (`development_site.gd`),
   city lights/roads (terrain shader), aurora (sky shader). `tools/live_development.gd` measures every territory.
