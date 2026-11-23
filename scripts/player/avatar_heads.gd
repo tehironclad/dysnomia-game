@@ -6,9 +6,10 @@ extends RefCounted
 ## stays the clockwork LAU bear. A player may also pick a head for their own
 ## avatar; that choice is local (user://identity.cfg) and labelled as such.
 ##
+## "human" keeps the body's own human head (nothing is built).
 ## Heads are built around a neck pivot: +Y up, +Z the face, origin at the neck.
 
-const KINDS := ["bear", "rat", "alien", "frog", "dog", "cat", "skull", "robot", "hamster", "fox", "pig", "ape", "bird"]
+const KINDS := ["bear", "human", "rat", "alien", "frog", "dog", "cat", "skull", "robot", "hamster", "fox", "pig", "ape", "bird"]
 const ACCESSORIES := ["crown", "halo", "horns", "wizard"]
 const LOCAL_PATH := "user://identity.cfg"
 
@@ -171,6 +172,7 @@ static func build(kind: String, tint: Color = Color(0.5, 0.5, 0.5)) -> Node3D:
 	var p := Node3D.new()
 	p.name = "Head_" + kind
 	match kind:
+		"bear": _bear(p, tint)
 		"rat": _rat(p, tint)
 		"alien": _alien(p, tint)
 		"frog": _frog(p, tint)
@@ -184,6 +186,19 @@ static func build(kind: String, tint: Color = Color(0.5, 0.5, 0.5)) -> Node3D:
 		"ape": _ape(p)
 		"bird": _bird(p, tint)
 	return p
+
+
+static func _bear(p: Node3D, tint: Color) -> void:
+	var fur := _mat(Color(0.52, 0.36, 0.22).lerp(tint, 0.15), 0.95)
+	var tan := _mat(Color(0.82, 0.68, 0.5), 0.9)
+	_sphere(p, 0.21, fur, Vector3(0, 0.23, 0), Vector3(1.08, 0.92, 0.98))
+	for sx in [-1.0, 1.0]:
+		_sphere(p, 0.075, fur, Vector3(sx * 0.17, 0.41, -0.03), Vector3(1.0, 1.0, 0.65))
+		_sphere(p, 0.045, tan, Vector3(sx * 0.17, 0.41, 0.0), Vector3(1.0, 1.0, 0.4))
+	_sphere(p, 0.1, tan, Vector3(0, 0.17, 0.15), Vector3(1.15, 0.85, 0.9))
+	_sphere(p, 0.035, _mat(Color(0.05, 0.03, 0.03), 0.25), Vector3(0, 0.2, 0.245), Vector3(1.3, 0.85, 0.9))
+	_box(p, Vector3(0.05, 0.006, 0.01), _mat(Color(0.12, 0.06, 0.05)), Vector3(0, 0.135, 0.235))
+	_eyes(p, 0.28, 0.085, 0.17, 0.032, Color(0.12, 0.07, 0.03))
 
 
 static func _rat(p: Node3D, tint: Color) -> void:

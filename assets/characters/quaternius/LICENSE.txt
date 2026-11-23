@@ -1,0 +1,5 @@
+Universal Animation Library (Standard) and Universal Base Characters (Standard)
+by Quaternius — https://quaternius.com — CC0 1.0 Universal (public domain).
+https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded from quaternius.itch.io on 2026-11-23. Hair textures are not included;
+the glTFs point their (hidden) hair materials at the eye textures instead.

@@ -21,8 +21,8 @@ func test_whole_words_only() -> void:
 
 func test_every_kind_builds() -> void:
 	for k in AvatarHeads.KINDS:
-		if k == "bear":
-			continue
+		if k == "human":
+			continue  # the body's own head: nothing to build
 		var h := AvatarHeads.build(k)
 		check(h.get_child_count() >= 4, "%s has parts" % k)
 		h.free()

@@ -55,6 +55,9 @@
   previews against the chain (Su, Beat, door, room and Void lines, World watch). It is read-only.
 - `tools/perf.gd` samples draw calls, objects, primitives and object growth (under Xvfb), or script cost
   (headless; `--disable=<node>` to profile).
+- The avatar is `scripts/player/human_avatar.gd`: a Quaternius CC0 body plus animation library in
+  `assets/characters/quaternius/` (same 65-bone rig, so the clips play directly). Creature heads go on
+  `neck_01` while the `Head` bone is collapsed. Crow and flames: `avatar_extras.gd`.
 - `tools/avatar_sheet.gd -- --out=<png> --mode=heads|poses|closeup [--head=rat --acc=crown]` renders the
   avatar in a studio (needs Xvfb). Heads come from the LAU's Username/name/symbol (`AvatarHeads`).
 - No hard-coded keys: add an input action in `project.godot` and list it in `ControlsHelp.ACTIONS`

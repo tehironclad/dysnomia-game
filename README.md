@@ -46,6 +46,10 @@ F1 in game lists the same controls, read from the input map.
 You're a suited LAU in a GTA-style third-person view: the mouse orbits the camera, and your character
 turns to face where it runs.
 
+The body is a rigged human (Quaternius Universal Base Characters, CC0), animated with motion-captured
+clips (Quaternius Universal Animation Library, CC0): idle, walk, jog, sprint, crouch, jump and a
+swimming stroke for jetpack flight. It wears a dark armoured suit with trim in your identity colour.
+
 The head comes from your LAU's own on-chain name and symbol. RatKing's symbol is 🐀👑, so RatKing is a rat
 with a crown. Names and emoji for aliens, frogs/Pepe, dogs, cats, skulls, robots, hamsters, foxes, pigs,
 apes and birds work the same way. Everyone else is the clockwork LAU bear.

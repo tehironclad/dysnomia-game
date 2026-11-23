@@ -61,7 +61,7 @@ func _studio() -> Node3D:
 
 func _model(kind: String, acc: Array, at: Vector3) -> Node3D:
 	var m := Node3D.new()
-	m.set_script(load("res://scripts/player/player_model.gd"))
+	m.set_script(load("res://scripts/player/human_avatar.gd"))
 	m.position = at
 	current_scene.add_child(m)
 	m.set_head(kind, acc)
@@ -113,7 +113,7 @@ func _run() -> void:
 			var m := _model(_head, _acc, Vector3(x, 0, 0))
 			m.rotation_degrees.y = 90  # side-on: the gait reads best in profile
 			m.set_meta("pose", poses[i])
-			m.set("_gait", i * 0.9)  # staggered phases across the walk/run frames
+			m.set_meta("phase", i * 0.37)  # staggered phases across the walk/run frames
 			models.append(m)
 			_label(poses[i][0], Vector3(x, 2.25, 0))
 		cam.fov = 36
@@ -125,6 +125,8 @@ func _run() -> void:
 			if m.has_meta("pose"):
 				var p: Array = m.get_meta("pose")
 				m.update_movement(p[1], p[2], p[3])
+				if f == 30 and m.anim:
+					m.anim.seek(float(m.get_meta("phase")), true)
 		await process_frame
 	await RenderingServer.frame_post_draw
 	var img := get_root().get_viewport().get_texture().get_image()

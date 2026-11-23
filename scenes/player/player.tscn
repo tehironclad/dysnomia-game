@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/player/player_controller.gd" id="1_player"]
 [ext_resource type="PackedScene" uid="uid://camera_rig" path="res://scenes/player/camera_rig.tscn" id="2_camera"]
-[ext_resource type="Script" path="res://scripts/player/player_model.gd" id="3_model"]
+[ext_resource type="Script" path="res://scripts/player/human_avatar.gd" id="3_model"]
 [ext_resource type="Script" path="res://scripts/player/gear.gd" id="4_gear"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
