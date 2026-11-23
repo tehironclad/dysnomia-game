@@ -59,6 +59,7 @@ func _ready() -> void:
 	terrain.build(territory)
 	Config.register_terrain(terrain.material)
 	sky.setup(terrain.params, String(territory["address"]))
+	Config.register_sky(sky.material)
 	core.build(terrain.params, territory, terrain.heightfield.core_height)
 	state = TerritoryState.new()
 	state.name = "State"

@@ -47,8 +47,13 @@ func setup(params: Dictionary, address: String) -> void:
 ## keeps a neutral time and the inspector says the time is unknown.
 ## A City's aurora (0 = none), from Development.
 func set_aurora(strength: float) -> void:
+	_aurora = strength
 	if material:
 		material.set_shader_parameter("aurora", strength)
+
+
+var _aurora := 0.0
+var _aurora_t := 0.0
 
 
 func sync_time() -> void:
@@ -77,7 +82,11 @@ func _ready() -> void:
 			_fraction_override = float(a.substr(15))
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _aurora > 0.0 and material:
+		_aurora_t += delta
+		if fmod(_aurora_t, 0.25) < delta:  # 4 Hz: the curtains drift, the sky isn't redrawn every frame
+			material.set_shader_parameter("sky_time", _aurora_t)
 	var ts := now_unix()
 	var frac := 0.3 if ts < 0 else float(DysnomiaTime.from_unix(ts)["fraction"])
 	if _fraction_override >= 0.0:

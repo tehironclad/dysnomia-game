@@ -37,7 +37,7 @@ Every move previews from your wallet first. Nothing reports success until the ch
 | M | the Field |
 | G | Guide: the acts |
 | F | flashlight |
-| F1 · F3 · F10 | controls · performance overlay · settings |
+| F1 · F2 · F3 | controls · settings · performance overlay |
 
 F1 in game lists the same controls, read from the input map.
 

@@ -128,7 +128,7 @@ void fragment() {
 		else { bands = pow(band, 6.0) * 0.10 * exp(-de_m / 25.0); }
 		light = (A * core * 0.9 + B * halo * 0.22 + B * bands * near_set) * glow;
 		albedo = mix(GROUND * grain, A * 0.2, core * 0.4);
-		if (dev_tier >= 3) {
+		if (dev_tier >= 3 && detail_strength > 0.0) {
 			// City lights: one candidate per 4 m cell, lit with a fixed hash, densest on the coast.
 			vec2 cell = floor(world_pos.xz / 4.0);
 			vec2 fc = fract(world_pos.xz / 4.0) - 0.5;

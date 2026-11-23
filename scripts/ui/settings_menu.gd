@@ -162,6 +162,10 @@ func _apply() -> void:
 func show_menu() -> void:
 	_load_from_config()
 	visible = true
+	# Centre in the window (works whether the parent is a Control or a CanvasLayer).
+	await get_tree().process_frame
+	var vp := get_viewport_rect().size
+	global_position = ((vp - size) * 0.5).max(Vector2.ZERO)
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 

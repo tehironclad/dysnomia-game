@@ -160,6 +160,12 @@ func _toggle_settings() -> void:
 		_settings.show_menu()
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("settings"):
+		get_viewport().set_input_as_handled()
+		_toggle_settings()
+
+
 func _process(delta: float) -> void:
 	if _bg_q.is_empty():
 		return

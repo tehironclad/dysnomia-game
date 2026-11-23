@@ -26,6 +26,11 @@ uniform vec3 neb_b : source_color = vec3(0.1, 0.4, 0.6);
 uniform float neb_strength = 0.16;
 // A City's aurora (Development tier ≥ 4), as bright as its energy (Epibar total).
 uniform float aurora = 0.0;
+// The aurora's clock, set by DeepFieldSky only while there is an aurora (a few
+// times a second), so ordinary skies never re-render every frame.
+uniform float sky_time = 0.0;
+// Potato quality: stars, Eris and the sun only (no nebula, no Mandelbrot field).
+uniform bool simple = false;
 
 float n_hash(vec3 p) {
 	p = fract(p * 0.1031);
@@ -101,6 +106,7 @@ void sky() {
 	vec3 d = EYEDIR;
 	vec3 col = base_color + stars(d);
 	vec3 so = vec3(mod(star_seed, 97.0), mod(star_seed * 0.37, 89.0), mod(star_seed * 0.11, 83.0));
+	if (!simple) {
 	float n1 = n_fbm(d * 2.0 + so);
 	float n2 = n_fbm(d * 4.3 - so * 0.5);
 	float neb = smoothstep(0.5, 0.88, n1) * 0.7 + smoothstep(0.55, 0.92, n2) * 0.3;
@@ -108,11 +114,12 @@ void sky() {
 	if (aurora > 0.0) {
 		// Curtains: vertical streaks low over the horizon, waving slowly.
 		float az = atan(d.z, d.x);
-		float wave = sin(az * 7.0 + TIME * 0.08 + n_noise(vec3(az * 3.0, TIME * 0.05, 0.0)) * 4.0);
+		float wave = sin(az * 7.0 + sky_time * 0.08 + n_noise(vec3(az * 3.0, sky_time * 0.05, 0.0)) * 4.0);
 		float curtain = smoothstep(0.03, 0.12, d.y) * (1.0 - smoothstep(0.14, 0.32, d.y));
-		float patch = smoothstep(0.45, 0.75, n_fbm(vec3(az * 1.3, 0.0, TIME * 0.01) + so * 0.1));
-		float streaks = 0.5 + 0.5 * sin(az * 90.0 + n_noise(vec3(az * 20.0, d.y * 6.0, TIME * 0.1)) * 6.0);
+		float patch = smoothstep(0.45, 0.75, n_fbm(vec3(az * 1.3, 0.0, sky_time * 0.01) + so * 0.1));
+		float streaks = 0.5 + 0.5 * sin(az * 90.0 + n_noise(vec3(az * 20.0, d.y * 6.0, sky_time * 0.1)) * 6.0);
 		col += mix(neb_b, vec3(0.35, 1.0, 0.6), 0.5) * curtain * patch * (0.4 + 0.6 * wave) * streaks * aurora * 0.22;
+	}
 	}
 
 	// "You are here": project directions around field_dir onto the complex plane.
@@ -120,7 +127,7 @@ void sky() {
 	vec3 right = normalize(cross(f, vec3(0.0, 1.0, 0.0)));   // screen-right when facing f
 	vec3 up = cross(right, f);
 	float cosang = dot(d, f);
-	if (cosang > 0.0) {
+	if (cosang > 0.0 && !simple) {
 		vec2 t = vec2(dot(d, right), dot(d, up)) / cosang;      // gnomonic projection
 		float half_span = tan(radians(field_span_deg * 0.5));
 		vec2 q = t / half_span;                                   // [-1,1] across the span

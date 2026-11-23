@@ -7,7 +7,7 @@ extends Node
 signal applied
 
 # Graphics
-var graphics_quality: int = 1  # 0 low · 1 medium · 2 high · 3 ultra (Medium until the player picks)
+var graphics_quality: int = 2  # 0 potato · 1 low · 2 medium · 3 high · 4 ultra (Medium until the player picks)
 var render_distance: float = 900.0  # camera far plane, metres
 
 # Controls
@@ -34,23 +34,31 @@ var site_api_enabled: bool = true
 var wallet_bridge_port: int = 38420
 
 const SETTINGS_PATH := "user://settings.cfg"
-const QUALITY_NAMES := ["Low", "Medium", "High", "Ultra"]
+const QUALITY_NAMES := ["Potato (no GPU)", "Low", "Medium", "High", "Ultra"]
 ## What each quality level enables.
 const QUALITY_PRESETS: Array[Dictionary] = [
 	# scale: 3D render resolution (FSR upscales below 1.0) · iter: fractal iterations on the ground
-	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 90.0, "msaa": Viewport.MSAA_DISABLED, "scale": 0.6, "iter": 40, "shadows": false},
-	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 160.0, "msaa": Viewport.MSAA_DISABLED, "scale": 0.8, "iter": 64, "shadows": true},
-	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": false, "shadow_distance": 260.0, "msaa": Viewport.MSAA_2X, "scale": 1.0, "iter": 96, "shadows": true},
-	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": true, "shadow_distance": 320.0, "msaa": Viewport.MSAA_4X, "scale": 1.0, "iter": 128, "shadows": true},
+	# simple_sky: stars/Eris/sun only · detail: regolith + city lights on the ground · warp_iter: the dive
+	{"ssao": false, "ssil": false, "glow": false, "volumetric_fog": false, "shadow_distance": 60.0, "msaa": Viewport.MSAA_DISABLED, "scale": 0.5, "iter": 24, "shadows": false, "simple_sky": true, "detail": 0.0, "warp_iter": 40},
+	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 90.0, "msaa": Viewport.MSAA_DISABLED, "scale": 0.6, "iter": 40, "shadows": false, "simple_sky": false, "detail": 0.6, "warp_iter": 70},
+	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 160.0, "msaa": Viewport.MSAA_DISABLED, "scale": 0.8, "iter": 64, "shadows": true, "simple_sky": false, "detail": 1.0, "warp_iter": 110},
+	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": false, "shadow_distance": 260.0, "msaa": Viewport.MSAA_2X, "scale": 1.0, "iter": 96, "shadows": true, "simple_sky": false, "detail": 1.0, "warp_iter": 160},
+	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": true, "shadow_distance": 320.0, "msaa": Viewport.MSAA_4X, "scale": 1.0, "iter": 128, "shadows": true, "simple_sky": false, "detail": 1.0, "warp_iter": 200},
 ]
 
 var _terrain_material: ShaderMaterial
+var _sky_material: ShaderMaterial
 var _environment: Environment
 var _sun: DirectionalLight3D
 
 
 func _ready() -> void:
 	load_settings()
+	# `-- --quality=0` (Potato) … 4 (Ultra) on the command line: applied and saved.
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--quality="):
+			graphics_quality = clampi(int(a.substr(10)), 0, QUALITY_NAMES.size() - 1)
+			save_settings()
 	_ensure_buses()
 	apply()
 
@@ -69,6 +77,11 @@ func register_scene(env: Environment, sun: DirectionalLight3D) -> void:
 ## The territory's ground shader: its fractal iteration count follows quality.
 func register_terrain(m: ShaderMaterial) -> void:
 	_terrain_material = m
+	apply()
+
+
+func register_sky(m: ShaderMaterial) -> void:
+	_sky_material = m
 	apply()
 
 
@@ -91,6 +104,9 @@ func apply() -> void:
 		_sun.shadow_enabled = p["shadows"]
 	if is_instance_valid(_terrain_material):
 		_terrain_material.set_shader_parameter("max_iter", int(p["iter"]))
+		_terrain_material.set_shader_parameter("detail_strength", float(p["detail"]))
+	if is_instance_valid(_sky_material):
+		_sky_material.set_shader_parameter("simple", bool(p["simple_sky"]))
 	var vp := get_viewport()
 	if vp and DisplayServer.get_name() != "headless":
 		vp.msaa_3d = p["msaa"]
