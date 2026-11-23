@@ -14,18 +14,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var cm = root.get_node("ChainManager")
-	var done := {"ok": false, "err": ""}
-	cm.territory_loaded.connect(func(_d): done["ok"] = true, CONNECT_ONE_SHOT)
-	cm.territory_load_failed.connect(func(e): done["err"] = str(e), CONNECT_ONE_SHOT)
-	cm.load_territory(_qing)
-	var t0 := Time.get_ticks_msec()
-	while not done["ok"] and done["err"] == "" and Time.get_ticks_msec() - t0 < 60000:
-		await process_frame
-	print("territory load: ok=%s err=%s" % [done["ok"], done["err"]])
-	if not done["ok"]:
-		quit(1)
-		return
+	print("territory load: ok=%s err=" % root.get_node("Registry").has_territory(_qing))
 	Travel.go(self, _qing)
 	for i in 300:
 		await process_frame

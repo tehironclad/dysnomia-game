@@ -106,7 +106,7 @@ func _cmd_pos() -> String:
 
 
 func _cmd_seed() -> String:
-	return "Terrain seed: %d" % GameManager.terrain_seed
+	return "Territory: %s (%s); ground = its Julia set (JuliaHeightfield)" % [GameManager.territory_name, GameManager.territory_address]
 
 
 func _cmd_gravity(g: float) -> String:
@@ -120,9 +120,9 @@ func _cmd_speed(s: float) -> String:
 
 
 func _cmd_wallet() -> String:
-	if GameManager.lau_wallet.is_empty():
+	if Session.wallet.is_empty():
 		return "No wallet connected."
-	return "Wallet: %s\nLAU: %s" % [GameManager.lau_wallet, GameManager.lau_address]
+	return "Wallet: %s\nLAU: %s" % [Session.wallet, Session.player.lau if Session.player else "—"]
 
 
 func _find_world_environment() -> WorldEnvironment:

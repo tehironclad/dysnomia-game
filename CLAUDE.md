@@ -45,6 +45,9 @@
   the tool's parse time the autoloads aren't registered yet, so it fails with "Identifier not found".
   Use `load("res://…").new()` inside a deferred function instead. Godot's stdout is buffered when piped:
   redirect to a file to see errors from killed runs.
+- `godot --headless --path . -s res://tools/live_readiness.gd [-- --n=12]` prints identity + WORLD
+  readiness for real players (read-only).
+- `screenshot.gd -- --session=<wallet>` views any wallet's identity read-only. Nothing is signed.
 - Deep Field goldens: `node tools/golden/deepfield.js <entropy-ai-pulse>` reruns the site's real JS.
 - **Screenshots (the user OK'd this route, 2026-11-22):**
   `VK_ICD_FILENAMES=/opt/lavapipe/lvp_icd.json xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --resolution 1280x720 -s res://tools/screenshot.gd -- --out=<abs png> --scene=res://scenes/territory/territory_v2.tscn --view=aerial|ground`

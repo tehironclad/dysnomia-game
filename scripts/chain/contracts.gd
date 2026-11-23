@@ -118,6 +118,7 @@ const SELECTORS := {
 	"owner(address)": "0x666e1b39",
 	"aggregate3((address,bool,bytes)[])": "0x82ad56cb",
 	"View()": "0x1686f265",  # AFFECTION; returns 48 words
+	"Type()": "0xff762044",  # Dysnomia contracts name their class, e.g. "LAU"
 }
 
 # --- Event topics ----------------------------------------------------------------

@@ -57,6 +57,11 @@ enum State {
 	CONNECTED,
 }
 var _state: int = State.STOPPED
+## Session token baked into the served page; the WebSocket stays unauthenticated
+## (every message ignored, peer closed) until the page echoes it in "hello".
+## Other web pages can open a socket to 127.0.0.1 but cannot read our page.
+var _token := ""
+var _authed := false
 
 
 func _ready() -> void:
@@ -93,8 +98,10 @@ func start_server(port: int = DEFAULT_PORT) -> bool:
 		_chain_id = 0
 
 		# Pre-build the HTML with both ports baked in
+		_token = Crypto.new().generate_random_bytes(16).hex_encode()
+		_authed = false
 		_cached_html = _get_wallet_html()
-		_cached_html = _cached_html.replace("{{PORT}}", str(_ws_port))
+		_cached_html = _cached_html.replace("{{PORT}}", str(_ws_port)).replace("{{TOKEN}}", _token)
 
 		print("[WalletBridge] HTTP on localhost:%d, WS on localhost:%d" % [_http_port, _ws_port])
 		return true
@@ -213,6 +220,26 @@ func send_transaction(to: String, fn_name: String, params: Array) -> int:
 		"params": params,
 	})
 	return tx_id
+
+
+## Sends a fully built transaction ({from, to, data, value}) for the user to
+## sign. Calldata is built in Godot (Abi); the page only relays it to the
+## browser wallet (eth_sendTransaction). Returns the request id (-1 if not ready).
+func send_raw(tx: Dictionary) -> int:
+	if _state != State.CONNECTED or not _authed:
+		return -1
+	var tx_id := _next_tx_id
+	_next_tx_id += 1
+	_send_json({"type": "send_raw", "id": tx_id, "tx": tx})
+	return tx_id
+
+
+func is_authenticated() -> bool:
+	return _authed
+
+
+func get_chain_id() -> int:
+	return _chain_id
 
 
 func is_wallet_connected() -> bool:
@@ -404,8 +431,8 @@ func _poll_pending_peers() -> void:
 			_ws_peer = ws
 			_state = State.CONNECTED
 			_ping_timer = 0.0
-			print("[WalletBridge] WebSocket connection established")
-			_send_json({"type": "request_accounts"})
+			_authed = false
+			print("[WalletBridge] WebSocket open; waiting for the page's hello")
 
 		elif ws_state == WebSocketPeer.STATE_CLOSED:
 			to_remove.append(i)
@@ -444,6 +471,17 @@ func _handle_ws_message(text: String) -> void:
 
 	var data: Dictionary = json.data
 	var msg_type: String = data.get("type", "")
+
+	if not _authed:
+		if msg_type == "hello" and String(data.get("token", "")) == _token and _token != "":
+			_authed = true
+			print("[WalletBridge] Page authenticated")
+			_send_json({"type": "request_accounts"})
+		else:
+			push_warning("[WalletBridge] Unauthenticated WebSocket client rejected")
+			if _ws_peer:
+				_ws_peer.close()
+		return
 
 	match msg_type:
 		"connected":
@@ -497,63 +535,10 @@ func _handle_ws_message(text: String) -> void:
 		"disconnected":
 			_on_ws_disconnected()
 
-		# ── Multiplayer presence ──
-		"mp_sync":
-			var players: Variant = data.get("players", [])
-			if players is Array:
-				mp_sync.emit(players)
-
-		"mp_player_join":
-			var join_wallet: String = data.get("wallet", "")
-			var presence: Variant = data.get("presence", {})
-			if not join_wallet.is_empty() and presence is Dictionary:
-				mp_player_join.emit(join_wallet, presence)
-
-		"mp_player_leave":
-			var leave_wallet: String = data.get("wallet", "")
-			if not leave_wallet.is_empty():
-				mp_player_leave.emit(leave_wallet)
-
-		"mp_position_update":
-			var pos_wallet: String = data.get("wallet", "")
-			if not pos_wallet.is_empty():
-				mp_position_update.emit(
-					pos_wallet,
-					float(data.get("x", 0)),
-					float(data.get("y", 0)),
-					float(data.get("z", 0)),
-					float(data.get("r", 0)),
-					float(data.get("vx", 0)),
-					float(data.get("vz", 0)),
-				)
-
-		"mp_joined":
-			mp_joined.emit(data.get("channel", ""))
-
-		"mp_left":
-			mp_left.emit()
-
-		# ── Voice chat ──
-		"vc_started":
-			vc_started.emit()
-
-		"vc_stopped":
-			vc_stopped.emit()
-
-		"vc_mute_changed":
-			vc_mute_changed.emit(data.get("muted", false))
-
-		"vc_speaking":
-			var spk_wallet: String = data.get("wallet", "")
-			var spk_state: bool = data.get("speaking", false)
-			if not spk_wallet.is_empty():
-				vc_speaking.emit(spk_wallet, spk_state)
-
-		"vc_error":
-			vc_error.emit(data.get("error", "Unknown voice chat error"))
 
 
 func _on_ws_disconnected() -> void:
+	_authed = false
 	_ws_peer = null
 	_state = State.LISTENING
 	var had_wallet := not _wallet_address.is_empty()

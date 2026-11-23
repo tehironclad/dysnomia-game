@@ -11,6 +11,7 @@ var _qing := ""
 var _frames := 90
 var _quality := -1
 var _warp := ""
+var _session := ""
 
 
 func _initialize() -> void:
@@ -23,6 +24,8 @@ func _initialize() -> void:
 			_qing = a.substr(7)
 		elif a.begins_with("--frames="):
 			_frames = int(a.substr(9))
+		elif a.begins_with("--session="):
+			_session = a.substr(10)  # read-only: view a wallet's identity (no signing)
 		elif a.begins_with("--warp="):
 			_warp = a.substr(7)
 		elif a.begins_with("--quality="):
@@ -34,16 +37,18 @@ func _run() -> void:
 	if _quality >= 0:
 		root.get_node("Config").graphics_quality = _quality  # 0 = Low (software renderers)
 	if _qing != "":
-		var cm = root.get_node("ChainManager")
-		var done := {"ok": false, "err": ""}
-		cm.territory_loaded.connect(func(_d): done["ok"] = true, CONNECT_ONE_SHOT)
-		cm.territory_load_failed.connect(func(e): done["err"] = str(e), CONNECT_ONE_SHOT)
-		cm.load_territory(_qing)
-		var t0 := Time.get_ticks_msec()
-		while not done["ok"] and done["err"] == "" and Time.get_ticks_msec() - t0 < 60000:
-			await process_frame
-		print("territory load ok=%s %s" % [done["ok"], done["err"]])
+		var gm = root.get_node("GameManager")
+		gm.territory_address = _qing
+		gm.is_chain_sourced = true
 	change_scene_to_file(_scene)
+	if _session != "":
+		root.get_node("Session").set_wallet(_session)
+		var t0 := Time.get_ticks_msec()
+		while root.get_node("Session").readiness == null and Time.get_ticks_msec() - t0 < 60000:
+			await process_frame
+		var door = current_scene
+		if door and door.get("_onboarding") != null:
+			door._onboarding.visible = true
 	if _warp != "":
 		for i in 5:
 			await process_frame

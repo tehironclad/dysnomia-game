@@ -1,17 +1,25 @@
 class_name PlayerAppearance
-## Generates deterministic player appearance from LAU Saat values.
-## Saat[0] (Soul) -> body proportions (height/radius)
-## Saat[1] (Spirit) -> primary body color (hue)
-## Saat[2] (Aura) -> accent/emission color and glow intensity
+## Deterministic appearance from a LAU's identity numbers (decimal strings).
+## Saat(0) is the Pole, the same for every LAU, so it is not used.
+##   Soul (Saat 1) → proportions and fur shade;  Aura (Saat 2) → accent and glow.
+## Values are uint64; reduced exactly with BigInt (no int64 overflow).
 
 const MOTZKIN_PRIME: int = 953467954114363
 
 
-static func generate(saat: Array[int]) -> Dictionary:
+## Soul and Aura as decimal strings (PlayerState.soul / .aura).
+static func from_identity(soul_dec: String, aura_dec: String) -> Dictionary:
+	var soul := BigInt.mod_int(BigInt.from_decimal(soul_dec), MOTZKIN_PRIME) if soul_dec != "" else 0
+	var aura := BigInt.mod_int(BigInt.from_decimal(aura_dec), MOTZKIN_PRIME) if aura_dec != "" else 0
+	return generate([0, soul, aura])
+
+
+static func generate(saat: Array) -> Dictionary:
 	## Returns appearance dictionary from Saat values.
 	## Deterministic: same Saat always produces the same appearance.
-	var soul: int = saat[0] if saat.size() > 0 else 0
-	var spirit: int = saat[1] if saat.size() > 1 else 0
+	# saat = [pole (unused), soul, aura]; soul drives both shape and shade.
+	var soul: int = saat[1] if saat.size() > 1 else 0
+	var spirit: int = (soul * 7919) % MOTZKIN_PRIME if soul != 0 else 0
 	var aura: int = saat[2] if saat.size() > 2 else 0
 
 	# --- Body proportions from Soul ---
@@ -57,7 +65,7 @@ static func generate(saat: Array[int]) -> Dictionary:
 
 static func generate_default() -> Dictionary:
 	## Fallback appearance when no identity is loaded.
-	## Ted-brown bear, white suit accents, warm amber eyes.
+	## Brown bear, pale suit accents, warm amber eyes.
 	return {
 		"body_color": Color(0.45, 0.30, 0.18),
 		"accent_color": Color(0.5, 0.55, 0.6),

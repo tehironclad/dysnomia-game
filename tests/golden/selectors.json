@@ -52,6 +52,7 @@
   "owner(address)": "0x666e1b39",
   "aggregate3((address,bool,bytes)[])": "0x82ad56cb",
   "View()": "0x1686f265",
+  "Type()": "0xff762044",
   "Error(string)": "0x08c379a0",
   "Panic(uint256)": "0x4e487b71",
   "NotStarted(address)": "0x12efd467",

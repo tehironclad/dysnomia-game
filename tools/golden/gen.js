@@ -2,7 +2,7 @@
 // Generates golden test vectors and the shipped territory snapshot.
 //
 // Usage:
-//   node tools/golden/gen.js <path-to-entropy-ai-pulse> <path-to-qing-registry.json>
+//   node tools/golden/gen.js <path-to-entropy-ai-pulse> <path-to-qing-registry.json> [--snapshot]
 //
 // - tests/golden/selectors.json : keccak-256 selectors/topics for every signature
 //   listed in SIGNATURES (computed with entropy-ai-pulse's own api/lib/keccak.js).
@@ -40,7 +40,7 @@ const SIGNATURES = {
     'BouncerDivisor()', 'Admitted(address)', 'Compliment(uint256)', 'GetMapQing(int256,int256)',
     'GetQing(uint256)', 'Offset()', 'Cho()', 'Yuan(address)', 'Eta()', 'balanceOf(address)',
     'totalSupply()', 'decimals()', 'name()', 'symbol()', 'allowance(address,address)',
-    'maxSupply()', 'owner(address)', 'aggregate3((address,bool,bytes)[])', 'View()',
+    'maxSupply()', 'owner(address)', 'aggregate3((address,bool,bytes)[])', 'View()', 'Type()',
   ],
   events: [
     'LogEvent(string,uint64,uint64,string)', 'LogEvent(uint64,uint64,string)',
@@ -65,7 +65,9 @@ fs.mkdirSync(path.join(root, 'tests/golden'), { recursive: true });
 fs.writeFileSync(path.join(root, 'tests/golden/selectors.json'),
   JSON.stringify({ selectors, topics }, null, 1) + '\n');
 
-// Territory snapshot ------------------------------------------------------
+// Territory snapshot (only with --snapshot: tools/update_snapshot.gd is the
+// normal way to refresh it, and keeps the raw Compliment words) -------------
+const writeSnapshot = process.argv.includes('--snapshot');
 const reg = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
 const qings = reg.qings.map((q) => ({
   address: q.address.toLowerCase(),
@@ -84,7 +86,7 @@ const qings = reg.qings.map((q) => ({
 }));
 qings.sort((a, b) => a.block - b.block || (a.address < b.address ? -1 : 1));
 const snapshotBlock = Math.max(...qings.map((q) => q.block));
-fs.writeFileSync(path.join(root, 'assets/data/territories.json'), JSON.stringify({
+if (writeSnapshot) fs.writeFileSync(path.join(root, 'assets/data/territories.json'), JSON.stringify({
   source: 'systm0.vercel.app/data/qing-registry.json',
   generated_at: reg.generatedAt,
   snapshot_block: snapshotBlock,

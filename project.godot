@@ -16,7 +16,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="Dysnomia"
 config/description="Territory exploration and terraforming on PulseChain"
-run/main_scene="res://scenes/ui/main_menu.tscn"
+run/main_scene="res://scenes/ui/front_door.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
@@ -26,9 +26,10 @@ Config="*res://scripts/autoload/config.gd"
 Chain="*res://scripts/core/chain.gd"
 Registry="*res://scripts/data/territory_registry.gd"
 Players="*res://scripts/data/player_registry.gd"
+Wallet="*res://scripts/core/wallet.gd"
+Session="*res://scripts/core/session.gd"
 Inspector="*res://scripts/ui/inspector.gd"
 GameManager="*res://scripts/autoload/game_manager.gd"
-ChainManager="*res://scripts/chain/chain_manager.gd"
 Console="*res://addons/godot_console/console.gd"
 
 [display]

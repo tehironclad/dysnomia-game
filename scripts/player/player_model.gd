@@ -1,6 +1,6 @@
 extends Node3D
 ## Procedural teddy bear astronaut character built from Godot primitives.
-## Ted-style brown bear head with round ears, snout, and glowing eyes.
+## Clockwork LAU bear head (Maria's lore: the clockwork LAU bears) with round ears, snout, and glowing eyes.
 ## White spacesuit body with backpack, gloves, boots, and jetpack flames.
 ## Full procedural animation: walk cycle, sprint, fly, falling, idle.
 ## Limbs use pivot Node3Ds for proper hierarchical rotation (gloves follow arms, boots follow legs).
@@ -117,32 +117,6 @@ var _status_red: MeshInstance3D
 var _seam_left: MeshInstance3D
 var _seam_right: MeshInstance3D
 
-# Shoulder-mounted laser turret (Predator-style)
-var _laser_mount_pivot: Node3D      # Pivot on right shoulder — tracks aim direction
-var _laser_mount_base: MeshInstance3D  # Base cylinder on shoulder
-var _laser_mount_arm: MeshInstance3D   # Articulated arm
-var _laser_mount_barrel: MeshInstance3D # Barrel that fires
-var _laser_mount_lens: MeshInstance3D   # Emissive lens at tip
-var _laser_mount_mat: StandardMaterial3D
-var _laser_lens_mat: StandardMaterial3D
-
-# Brass knuckles (on both gloves)
-var _knuckle_left: MeshInstance3D
-var _knuckle_right: MeshInstance3D
-var _knuckle_stud_l1: MeshInstance3D
-var _knuckle_stud_l2: MeshInstance3D
-var _knuckle_stud_l3: MeshInstance3D
-var _knuckle_stud_r1: MeshInstance3D
-var _knuckle_stud_r2: MeshInstance3D
-var _knuckle_stud_r3: MeshInstance3D
-var _knuckle_mat: StandardMaterial3D
-
-# Punch animation state
-var _punch_active: bool = false
-var _punch_timer: float = 0.0
-var _punch_hand: int = 0   # 0 = left, 1 = right, alternates
-const PUNCH_DURATION: float = 0.35
-
 # Crow companion
 var _crow_pivot: Node3D        # Orbiting pivot point above player
 var _crow_body: MeshInstance3D
@@ -189,7 +163,7 @@ var _boot_shader_mat: ShaderMaterial
 var _glove_shader_mat: ShaderMaterial
 var _snout_shader_mat: ShaderMaterial  # Lighter tan fur for muzzle area
 
-# Face detail materials (Ted-style)
+# Face detail materials
 var _inner_ear_mat: StandardMaterial3D
 var _eye_shine_mat: StandardMaterial3D
 var _mouth_mat: StandardMaterial3D
@@ -266,7 +240,7 @@ func _build_model() -> void:
 
 	# --- Materials ---
 
-	# Ted-brown fur (warm medium brown, like the movie bear)
+	# Bear-brown fur (warm medium brown)
 	_fur_mat = StandardMaterial3D.new()
 	_fur_mat.albedo_color = Color(0.45, 0.30, 0.18)
 	_fur_mat.roughness = 0.9
@@ -351,7 +325,7 @@ func _build_model() -> void:
 	_panel_mat.roughness = 0.3
 	_panel_mat.metallic = 0.4
 
-	# Ted's beady eyes — dark glossy, no glow
+	# Beady eyes — dark glossy, no glow
 	_eye_mat = StandardMaterial3D.new()
 	_eye_mat.albedo_color = Color(0.06, 0.04, 0.03)
 	_eye_mat.roughness = 0.15
@@ -368,7 +342,7 @@ func _build_model() -> void:
 	_nose_mat.roughness = 0.25
 	_nose_mat.metallic = 0.15
 
-	# Ted-style face detail materials
+	# Face detail materials
 	_inner_ear_mat = StandardMaterial3D.new()
 	_inner_ear_mat.albedo_color = Color(0.62, 0.45, 0.38)  # Pinkish-tan inner ear
 	_inner_ear_mat.roughness = 0.80
@@ -673,10 +647,10 @@ func _build_model() -> void:
 	_helmet_visor.position = Vector3(0.0, 1.48, 0.06)
 	_helmet_visor.scale = Vector3(0.9, 0.75, 0.5)  # Flattened dome in front
 
-	# --- Head (Ted-style: wider, rounder, slightly flattened vertically) ---
+	# --- Head (wide, round, slightly flattened) ---
 	_head = _make_sphere("Head", 0.24, _fur_mat)
 	_head.position = Vector3(0.0, 1.48, 0.0)
-	_head.scale = Vector3(1.08, 0.88, 0.95)  # Wider, squashed like Ted
+	_head.scale = Vector3(1.08, 0.88, 0.95)  # Wider, slightly squashed
 
 	# --- Antenna ---
 	_antenna_shaft = _make_capsule("AntennaShaft", 0.01, 0.15, _accent_mat)
@@ -685,7 +659,7 @@ func _build_model() -> void:
 	_antenna_tip = _make_sphere("AntennaTip", 0.02, _panel_mat)
 	_antenna_tip.position = Vector3(0.06, 1.84, -0.02)
 
-	# --- Ears (Ted-style: rounder, set wider apart on top of head) ---
+	# --- Ears (round, set wide on top of the head) ---
 	_ear_left = _make_sphere("EarLeft", 0.075, _fur_mat)
 	_ear_left.position = Vector3(-0.18, 1.70, -0.04)
 	_ear_left.scale = Vector3(1.0, 0.85, 0.7)  # Slightly flattened
@@ -694,24 +668,24 @@ func _build_model() -> void:
 	_ear_right.position = Vector3(0.18, 1.70, -0.04)
 	_ear_right.scale = Vector3(1.0, 0.85, 0.7)
 
-	# --- Inner Ears (lighter colored patches inside ears — Ted detail) ---
+	# --- Inner Ears (lighter patches inside the ears) ---
 	_inner_ear_left = _make_sphere("InnerEarLeft", 0.045, _inner_ear_mat)
 	_inner_ear_left.position = Vector3(-0.18, 1.70, -0.01)
 
 	_inner_ear_right = _make_sphere("InnerEarRight", 0.045, _inner_ear_mat)
 	_inner_ear_right.position = Vector3(0.18, 1.70, -0.01)
 
-	# --- Muzzle Pad (cream/tan area around snout — Ted's lighter face region) ---
+	# --- Muzzle Pad (cream/tan area around the snout) ---
 	_muzzle_pad = _make_sphere("MuzzlePad", 0.13, _snout_mat)
 	_muzzle_pad.position = Vector3(0.0, 1.42, 0.14)
 	_muzzle_pad.scale = Vector3(1.2, 1.0, 0.9)
 
-	# --- Snout (prominent rounded muzzle — larger, more protruding like Ted) ---
+	# --- Snout (prominent rounded muzzle) ---
 	_snout = _make_sphere("Snout", 0.10, _snout_mat)
 	_snout.position = Vector3(0.0, 1.41, 0.20)
 	_snout.scale = Vector3(1.1, 0.75, 1.1)
 
-	# --- Nose (wider oval bean — Ted's characteristic upturned nose) ---
+	# --- Nose (wide oval nose) ---
 	_nose = _make_sphere("Nose", 0.038, _nose_mat)
 	_nose.position = Vector3(0.0, 1.44, 0.28)
 	_nose.scale = Vector3(1.3, 0.8, 0.9)
@@ -723,7 +697,7 @@ func _build_model() -> void:
 	_cheek_right = _make_sphere("CheekRight", 0.06, _fur_mat)
 	_cheek_right.position = Vector3(0.10, 1.42, 0.14)
 
-	# --- Eyes (slightly larger, wider apart — Ted's warm beady eyes) ---
+	# --- Eyes (slightly large, wide apart) ---
 	_eye_left = _make_sphere("EyeLeft", 0.045, _eye_mat)
 	_eye_left.position = Vector3(-0.09, 1.53, 0.19)
 
@@ -737,7 +711,7 @@ func _build_model() -> void:
 	_eye_shine_right = _make_sphere("EyeShineRight", 0.012, _eye_shine_mat)
 	_eye_shine_right.position = Vector3(0.075, 1.545, 0.225)
 
-	# --- Mouth (thin dark curved line below nose — Ted's subtle smile) ---
+	# --- Mouth (thin dark curve below the nose) ---
 	_mouth = _make_capsule("Mouth", 0.008, 0.06, _mouth_mat)
 	_mouth.position = Vector3(0.0, 1.385, 0.24)
 	_mouth.rotation_degrees.z = 90.0  # Horizontal orientation
@@ -750,11 +724,7 @@ func _build_model() -> void:
 	_flame_right = _create_flame_particles("FlameRight")
 	_flame_right.position = Vector3(0.08, 0.72, -0.24)
 
-	# --- Shoulder-Mounted Laser Turret (Predator-style) ---
-	_build_shoulder_laser()
 
-	# --- Brass Knuckles ---
-	_build_brass_knuckles()
 
 	# --- Crow Companion ---
 	_build_crow()
@@ -840,6 +810,34 @@ func trigger_shield_flash() -> void:
 	, 1.0, 0.0, 0.6).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 
 
+## The crow companion appears only for a wallet holding >= 25 CROWS, which makes
+## it a universal bouncer of every room (CROWS rule, docs/LEARNINGS.md §5).
+## Drawn grey while the player has no bars anywhere (gear rule). Desaturates
+## every StandardMaterial3D on the model; originals are kept to restore colour.
+func modulate_grey(grey: bool) -> void:
+	if grey == _grey:
+		return
+	_grey = grey
+	for mi in find_children("*", "MeshInstance3D", true, false):
+		var m := (mi as MeshInstance3D).material_override as StandardMaterial3D
+		if m == null:
+			continue
+		if not _orig_colors.has(m):
+			_orig_colors[m] = m.albedo_color
+		var c: Color = _orig_colors[m]
+		var lum := c.get_luminance()
+		m.albedo_color = Color(lum, lum, lum * 1.05, c.a) if grey else c
+
+
+var _grey := false
+var _orig_colors := {}
+
+
+func set_crow(visible_now: bool) -> void:
+	if _crow_pivot:
+		_crow_pivot.visible = visible_now
+
+
 func apply_appearance(appearance: Dictionary) -> void:
 	## Apply identity-driven colors and proportions.
 	## body_color -> fur (Spirit-driven, but stays warm brown range)
@@ -851,9 +849,9 @@ func apply_appearance(appearance: Dictionary) -> void:
 	var emission_intensity: float = appearance.get("emission_intensity", 0.1)
 	var target_height: float = appearance.get("height", 1.8)
 
-	# --- Bear fur: blend identity color with Ted-brown so it stays bear-like ---
-	var ted_brown := Color(0.45, 0.30, 0.18)
-	var fur_color := ted_brown.lerp(body_color, 0.35)  # Mostly Ted, tinted by identity
+	# --- Bear fur: blend identity color with bear brown so it stays bear-like ---
+	var bear_brown := Color(0.45, 0.30, 0.18)
+	var fur_color := bear_brown.lerp(body_color, 0.35)  # Mostly brown, tinted by identity
 	_fur_mat.albedo_color = fur_color
 	_snout_mat.albedo_color = fur_color.lightened(0.25)
 
@@ -942,12 +940,6 @@ func _process(delta: float) -> void:
 
 	# Always-on ambient details
 	_animate_details(t, delta)
-
-	# Shoulder laser tracks camera
-	_update_shoulder_laser(delta)
-
-	# Punch animation (overrides arm during punch)
-	_animate_punch(delta)
 
 	# Crow companion orbits above
 	_animate_crow(t, delta)
@@ -1260,208 +1252,11 @@ func _animate_details(t: float, delta: float) -> void:
 	# No emission animation — character has zero glow
 
 
-# ─── Shoulder-Mounted Laser Turret ────────────────────────────────────
 
-func _build_shoulder_laser() -> void:
-	## Predator-style laser turret on the right shoulder.
-	## Pivots to track camera aim direction.
-
-	# Dark gunmetal material for the mount
-	_laser_mount_mat = StandardMaterial3D.new()
-	_laser_mount_mat.albedo_color = Color(0.25, 0.25, 0.28)
-	_laser_mount_mat.roughness = 0.3
-	_laser_mount_mat.metallic = 0.7
-
-	# Red lens — no emission, just colored surface
-	_laser_lens_mat = StandardMaterial3D.new()
-	_laser_lens_mat.albedo_color = Color(0.5, 0.05, 0.05)
-	_laser_lens_mat.roughness = 0.1
-	_laser_lens_mat.metallic = 0.5
-
-	# Pivot sits on the right shoulder — tracks camera aim
-	_laser_mount_pivot = Node3D.new()
-	_laser_mount_pivot.name = "LaserMountPivot"
-	_laser_mount_pivot.position = Vector3(0.28, 1.22, 0.0)  # On right shoulder
-	add_child(_laser_mount_pivot)
-
-	# Base — small cylinder sitting on shoulder
-	_laser_mount_base = _make_capsule_child("LaserBase", 0.04, 0.06, _laser_mount_mat, _laser_mount_pivot)
-	_laser_mount_base.position = Vector3(0.0, 0.0, 0.0)
-
-	# Arm — angled strut from base up and forward
-	_laser_mount_arm = _make_capsule_child("LaserArm", 0.02, 0.14, _laser_mount_mat, _laser_mount_pivot)
-	_laser_mount_arm.position = Vector3(0.0, 0.05, 0.05)
-	_laser_mount_arm.rotation_degrees.x = -30.0
-
-	# Barrel — the main laser housing, points forward
-	_laser_mount_barrel = _make_box_child("LaserBarrel", Vector3(0.05, 0.04, 0.16), _laser_mount_mat, _laser_mount_pivot)
-	_laser_mount_barrel.position = Vector3(0.0, 0.08, 0.12)
-
-	# Lens — emissive red dot at the tip
-	_laser_mount_lens = _make_sphere_child("LaserLens", 0.018, _laser_lens_mat, _laser_mount_pivot)
-	_laser_mount_lens.position = Vector3(0.0, 0.08, 0.20)
-
-
-func _update_shoulder_laser(delta: float) -> void:
-	## Make the shoulder turret track towards camera aim direction.
-	if not _laser_mount_pivot:
-		return
-
-	var camera := get_viewport().get_camera_3d()
-	if not camera:
-		return
-
-	# Get the camera's forward direction in the model's local space
-	var cam_forward := -camera.global_transform.basis.z
-	var local_forward := global_transform.basis.inverse() * cam_forward
-
-	# Calculate pitch and yaw for the turret
-	var target_pitch := -asin(clampf(local_forward.y, -0.8, 0.8))
-	var target_yaw := atan2(-local_forward.x, local_forward.z)  # Negated because model faces -Z
-
-	# Smooth tracking — doesn't snap instantly, has mechanical feel
-	var blend := 8.0 * delta
-	_laser_mount_pivot.rotation.x = lerpf(_laser_mount_pivot.rotation.x, target_pitch, blend)
-	_laser_mount_pivot.rotation.y = lerpf(_laser_mount_pivot.rotation.y, target_yaw, blend)
-
-	# Clamp rotation range (turret can't look behind itself)
-	_laser_mount_pivot.rotation.x = clampf(_laser_mount_pivot.rotation.x, -0.8, 0.6)
-	_laser_mount_pivot.rotation.y = clampf(_laser_mount_pivot.rotation.y, -1.2, 1.2)
-
-
-func flash_shoulder_laser() -> void:
-	## Called when the mining laser fires — brief albedo flash.
-	if not _laser_lens_mat:
-		return
-	_laser_lens_mat.albedo_color = Color(1.0, 0.3, 0.2)
-	get_tree().create_timer(0.15).timeout.connect(func():
-		if _laser_lens_mat:
-			_laser_lens_mat.albedo_color = Color(0.5, 0.05, 0.05))
-
-
-# ─── Brass Knuckles ──────────────────────────────────────────────────
-
-func _build_brass_knuckles() -> void:
-	## Add metallic brass knuckle plates on top of both gloves.
-	_knuckle_mat = StandardMaterial3D.new()
-	_knuckle_mat.albedo_color = Color(0.72, 0.58, 0.20)  # Brass/gold color
-	_knuckle_mat.roughness = 0.25
-	_knuckle_mat.metallic = 0.85
-	_knuckle_mat.albedo_color = Color(0.45, 0.38, 0.15)
-
-	# Left knuckle plate — flat bar across finger tops
-	_knuckle_left = _make_box_child("KnuckleLeft", Vector3(0.09, 0.02, 0.06), _knuckle_mat, _elbow_pivot_left)
-	_knuckle_left.position = Vector3(0.0, -0.22, 0.05)
-
-	# Left studs — three raised bumps on the knuckle bar
-	_knuckle_stud_l1 = _make_sphere_child("KnuckleStudL1", 0.012, _knuckle_mat, _elbow_pivot_left)
-	_knuckle_stud_l1.position = Vector3(-0.028, -0.21, 0.06)
-	_knuckle_stud_l2 = _make_sphere_child("KnuckleStudL2", 0.012, _knuckle_mat, _elbow_pivot_left)
-	_knuckle_stud_l2.position = Vector3(0.0, -0.21, 0.06)
-	_knuckle_stud_l3 = _make_sphere_child("KnuckleStudL3", 0.012, _knuckle_mat, _elbow_pivot_left)
-	_knuckle_stud_l3.position = Vector3(0.028, -0.21, 0.06)
-
-	# Right knuckle plate
-	_knuckle_right = _make_box_child("KnuckleRight", Vector3(0.09, 0.02, 0.06), _knuckle_mat, _elbow_pivot_right)
-	_knuckle_right.position = Vector3(0.0, -0.22, 0.05)
-
-	# Right studs
-	_knuckle_stud_r1 = _make_sphere_child("KnuckleStudR1", 0.012, _knuckle_mat, _elbow_pivot_right)
-	_knuckle_stud_r1.position = Vector3(-0.028, -0.21, 0.06)
-	_knuckle_stud_r2 = _make_sphere_child("KnuckleStudR2", 0.012, _knuckle_mat, _elbow_pivot_right)
-	_knuckle_stud_r2.position = Vector3(0.0, -0.21, 0.06)
-	_knuckle_stud_r3 = _make_sphere_child("KnuckleStudR3", 0.012, _knuckle_mat, _elbow_pivot_right)
-	_knuckle_stud_r3.position = Vector3(0.028, -0.21, 0.06)
-
-
-func trigger_punch() -> void:
-	## Called from weapon_system when fists fire — starts punch animation.
-	_punch_active = true
-	_punch_timer = PUNCH_DURATION
-	_punch_hand = 1 - _punch_hand  # Alternate left/right
-
-
-func _animate_punch(delta: float) -> void:
-	## Boxing-style punch: torso twists into the punch, weight transfers,
-	## opposite arm guards. Less robot, more brawler.
-	if not _punch_active:
-		return
-
-	_punch_timer -= delta
-	var progress := 1.0 - (_punch_timer / PUNCH_DURATION)  # 0→1
-
-	# Punch curve: wind up (0-20%), snap forward (20-40%), hold (40-55%), retract (55-100%)
-	var thrust: float
-	var windup: float  # How much the body winds back before punching
-	if progress < 0.2:
-		# Wind-up phase — slight pull back
-		thrust = -0.3 * (progress / 0.2)
-		windup = progress / 0.2
-	elif progress < 0.4:
-		# Snap forward — explosive extension
-		var snap_progress := (progress - 0.2) / 0.2
-		thrust = lerpf(-0.3, 1.0, snap_progress * snap_progress)  # Ease-in for snap
-		windup = 1.0 - snap_progress
-	elif progress < 0.55:
-		# Hold at full extension briefly
-		thrust = 1.0
-		windup = 0.0
-	else:
-		# Retract smoothly
-		var retract_progress := (progress - 0.55) / 0.45
-		thrust = 1.0 - retract_progress * retract_progress  # Ease-out
-		windup = 0.0
-
-	var is_left := _punch_hand == 0
-	var punch_arm: Node3D = _arm_pivot_left if is_left else _arm_pivot_right
-	var guard_arm: Node3D = _arm_pivot_right if is_left else _arm_pivot_left
-	var punch_elbow: Node3D = _elbow_pivot_left if is_left else _elbow_pivot_right
-	var guard_elbow: Node3D = _elbow_pivot_right if is_left else _elbow_pivot_left
-
-	# Torso twist into the punch — body weight drives the hit
-	var twist_dir := -1.0 if is_left else 1.0
-	if _torso:
-		var twist := thrust * 12.0 * twist_dir  # Torso rotates toward punch side
-		var lean_forward := maxf(0.0, thrust) * 5.0  # Lean into it
-		_torso.rotation_degrees.y = lerpf(_torso.rotation_degrees.y, twist, 15.0 * delta)
-		_torso.rotation_degrees.x = lerpf(_torso.rotation_degrees.x, lean_forward + windup * -3.0, 15.0 * delta)
-
-	# Punching arm: forward thrust with slight cross-body angle
-	if punch_arm:
-		var forward := -70.0 * maxf(0.0, thrust) + 15.0 * windup  # Wind back then snap forward
-		var cross_body := maxf(0.0, thrust) * 4.0 * twist_dir  # Slight cross-body
-		punch_arm.rotation_degrees.x = lerpf(punch_arm.rotation_degrees.x, forward, 18.0 * delta)
-		punch_arm.rotation_degrees.z = lerpf(punch_arm.rotation_degrees.z, cross_body, 12.0 * delta)
-	if punch_elbow:
-		# Elbow extends on contact, stays slightly bent at wind-up
-		var elbow_ext := -15.0 * windup + (-50.0 * maxf(0.0, thrust))
-		punch_elbow.rotation_degrees.x = lerpf(punch_elbow.rotation_degrees.x, elbow_ext, 18.0 * delta)
-
-	# Guard arm: pulls back and up in a protective stance
-	if guard_arm:
-		var guard_back := 15.0 * maxf(0.0, thrust)
-		guard_arm.rotation_degrees.x = lerpf(guard_arm.rotation_degrees.x, guard_back, 10.0 * delta)
-		guard_arm.rotation_degrees.z = lerpf(guard_arm.rotation_degrees.z, 0.0, 10.0 * delta)
-	if guard_elbow:
-		# Guard arm stays bent (protecting face)
-		guard_elbow.rotation_degrees.x = lerpf(guard_elbow.rotation_degrees.x, -35.0 * maxf(0.0, thrust), 10.0 * delta)
-
-	# Flash brass knuckles on impact (snap phase) — albedo flash, no emission
-	if progress > 0.3 and progress < 0.5 and _knuckle_mat:
-		_knuckle_mat.albedo_color = Color(0.85, 0.75, 0.35)
-	elif _knuckle_mat:
-		_knuckle_mat.albedo_color = Color(0.45, 0.38, 0.15)
-
-	if _punch_timer <= 0.0:
-		_punch_active = false
-
-
-# ─── Crow Companion ──────────────────────────────────────────────────
-
-var _crow_flight_phase: float = 0.0  # Smooth flight behavior phase
 var _crow_bank_angle: float = 0.0    # Current bank (roll) angle
 var _crow_glide_timer: float = 0.0   # Time until next glide/flap transition
 var _crow_is_gliding: bool = false   # Whether currently in glide mode
+
 
 func _build_crow() -> void:
 	## Build a procedural crow with proper bird proportions.
@@ -1489,6 +1284,7 @@ func _build_crow() -> void:
 	_crow_pivot = Node3D.new()
 	_crow_pivot.name = "CrowPivot"
 	_crow_pivot.position = Vector3(0.0, 2.4, 0.0)  # Above player's head
+	_crow_pivot.visible = false  # only for a real CROWS holder (set_crow)
 	add_child(_crow_pivot)
 
 	# Body — elongated teardrop (wider at chest, tapers to tail)

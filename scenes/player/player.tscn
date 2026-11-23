@@ -1,8 +1,9 @@
-[gd_scene load_steps=5 format=3 uid="uid://player_scene"]
+[gd_scene load_steps=6 format=3 uid="uid://player_scene"]
 
 [ext_resource type="Script" path="res://scripts/player/player_controller.gd" id="1_player"]
 [ext_resource type="PackedScene" uid="uid://camera_rig" path="res://scenes/player/camera_rig.tscn" id="2_camera"]
 [ext_resource type="Script" path="res://scripts/player/player_model.gd" id="3_model"]
+[ext_resource type="Script" path="res://scripts/player/gear.gd" id="4_gear"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
 radius = 0.3
@@ -20,3 +21,6 @@ transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 0)
 script = ExtResource("3_model")
 
 [node name="CameraRig" parent="." instance=ExtResource("2_camera")]
+
+[node name="Gear" type="Node3D" parent="."]
+script = ExtResource("4_gear")
