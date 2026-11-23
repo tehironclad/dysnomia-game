@@ -31,10 +31,13 @@ const DailyChallengesScript = preload("res://scripts/chain/daily_challenges.gd")
 const AllianceClientScript = preload("res://scripts/chain/alliance_client.gd")
 const EmoteClientScript = preload("res://scripts/chain/emote_client.gd")
 const FlagClientScript = preload("res://scripts/chain/flag_client.gd")
+const AffectionEconomyScript = preload("res://scripts/chain/affection_economy.gd")
 
 const CACHE_DURATION: float = 300.0 # 5 minutes
 const CHAIN_ID_PULSECHAIN: int = 369
 const CHOA_ADDRESS: String = "0x0f5a352fd4cA4850c2099C15B3600ff085B66197"
+# AFFECTION™ — the ERC-20 that also hosts the Dysnomia terraform calls (same address the reader uses)
+const AFFECTION_TOKEN_ADDRESS: String = "0x24F0154C1dCe548AdF15da2098Fdd8B8A3B8151D"
 
 var _reader: Node
 var _wallet_bridge: Node
@@ -49,6 +52,7 @@ var daily_challenges: Node  # DailyChallenges instance
 var alliance_client: Node  # AllianceClient instance
 var emote_client: Node  # EmoteClient instance
 var flag_client: Node  # FlagClient instance
+var economy: Node  # AffectionEconomy — attraction tickets, bar drinks, Hypo/Epi reports
 var _terraform_tx_ids: Array[int] = []
 var _chat_messages: Array[Dictionary] = []
 var _chat_last_ts: int = 0  # Track highest timestamp (ms) for incremental API polling
@@ -159,6 +163,11 @@ func _ready() -> void:
 	_wallet_bridge.tx_result.connect(_on_tx_result)
 	_wallet_bridge.tx_confirmed.connect(_on_tx_confirmed)
 	_wallet_bridge.tx_failed.connect(_on_tx_failed)
+
+	# AFFECTION economy (tickets + bar drinks) — needs the wallet bridge signals above
+	economy = AffectionEconomyScript.new()
+	economy.name = "AffectionEconomy"
+	add_child(economy)
 
 	# Wire multiplayer signals from wallet bridge
 	_connect_multiplayer_signals()
@@ -1074,6 +1083,28 @@ func terraform_upsilon(seed_value: int, phi: bool) -> int:
 	return tx_id
 
 
+func send_affection_transfer(to: String, amount_base_units: String) -> int:
+	## AFFECTION.transfer(to, amount) — used for attraction tickets paid to a QING keeper.
+	## amount is a decimal string in base units (see AffectionEconomy.to_base_units).
+	if not _wallet_bridge.is_wallet_connected():
+		push_error("[ChainManager] Cannot pay AFFECTION — wallet not connected")
+		return -1
+	if not HexUtils.is_valid_address(to):
+		push_error("[ChainManager] Cannot pay AFFECTION — bad recipient %s" % to)
+		return -1
+	print("[ChainManager] AFFECTION.transfer(%s, %s)" % [to.left(10), amount_base_units])
+	return _wallet_bridge.send_transaction(AFFECTION_TOKEN_ADDRESS, "transfer", [to, amount_base_units])
+
+
+func read_affection_balance(wallet_address: String) -> void:
+	_reader.read_token_balance(AFFECTION_TOKEN_ADDRESS, wallet_address)
+
+
+func refresh_territory_state() -> void:
+	## Public re-read of HECKE/XIE/YUE/AFFECTION state for the current territory.
+	_refresh_territory_state_after_terraform()
+
+
 func _check_terraform_preconditions() -> bool:
 	if not _wallet_bridge.is_wallet_connected():
 		push_error("[ChainManager] Cannot terraform — wallet not connected")
@@ -1481,7 +1512,11 @@ func get_token_balances() -> Dictionary:
 
 func _on_token_balance_received(token_address: String, balance_hex: String, decimals: int) -> void:
 	## Normalize and format a token balance for display.
-	var symbol := "CHOA" if token_address.to_lower() == CHOA_ADDRESS.to_lower() else "TOKEN"
+	var symbol := "TOKEN"
+	if token_address.to_lower() == CHOA_ADDRESS.to_lower():
+		symbol = "CHOA"
+	elif token_address.to_lower() == AFFECTION_TOKEN_ADDRESS.to_lower():
+		symbol = "AFFECTION"
 
 	# Convert hex balance to float using decimals
 	var display := _format_token_balance(balance_hex, decimals)

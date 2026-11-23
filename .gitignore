@@ -20,3 +20,4 @@ nul
 # Build exports
 /build/
 /exports/
+override.cfg

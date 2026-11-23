@@ -85,6 +85,8 @@ const MAX_WALL_CLIMB: float = 1.5  # Seconds of wall climbing before sliding
 
 
 func _ready() -> void:
+	# World triggers (pub doors/tables, ride booths) detect the player by this group
+	add_to_group("player")
 	_camera_rig = $CameraRig
 	_collision_shape = $CollisionShape3D
 	_current_height = stand_height
@@ -554,7 +556,11 @@ func set_near_monument(near: bool) -> void:
 
 
 func _try_interact() -> void:
-	## Player pressed E — check monument first, then game table, then border join.
+	## Player pressed E — attraction/bar first, then monument, game table, border join.
+	if _interact_handler.is_valid():
+		_interact_handler.call()
+		return
+
 	if _near_monument:
 		monument_interact.emit()
 		return
@@ -568,6 +574,19 @@ func _try_interact() -> void:
 	if not _terrain_generator or not _terrain_generator.has_method("request_join"):
 		return
 	_terrain_generator.request_join(_near_border_direction)
+
+
+var _interact_handler: Callable = Callable()
+
+
+func set_interact_handler(handler: Callable) -> void:
+	## Let a world system (AttractionDirector) claim the E key while the player is in its zone.
+	_interact_handler = handler
+
+
+func clear_interact_handler(handler: Callable) -> void:
+	if _interact_handler == handler:
+		_interact_handler = Callable()
 
 
 func set_near_game_table(near: bool) -> void:

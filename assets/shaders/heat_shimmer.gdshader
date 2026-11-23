@@ -41,34 +41,34 @@ void fragment() {
 	if (shimmer_intensity < 0.01) {
 		ALBEDO = texture(screen_texture, uv).rgb;
 		ALPHA = 1.0;
-		return;
+	} else {
+
+		// Height-based fade — strongest near ground (0-3m above mesh), fades above
+		float height_fade = 1.0 - smoothstep(0.0, 4.0, world_position.y);
+		height_fade = height_fade * height_fade; // Sharper falloff
+
+		// Distortion from animated noise
+		float time_val = TIME * shimmer_speed;
+
+		// Two layers of scrolling noise for organic movement
+		float distort1 = noise_s(world_position.xz * shimmer_scale * 0.1 + vec2(time_val, time_val * 0.7));
+		float distort2 = noise_s(world_position.xz * shimmer_scale * 0.15 + vec2(-time_val * 0.5, time_val * 1.3));
+
+		// Combine into displacement vector
+		float fade = shimmer_intensity * height_fade;
+		vec2 distortion = vec2(
+			(distort1 - 0.5) * 2.0,
+			(distort2 - 0.5) * 2.0
+		) * fade * 0.008;
+
+		// Sample distorted screen — always output full screen color (never white)
+		vec3 screen_col = texture(screen_texture, uv + distortion).rgb;
+
+		// Slight energy tint in heavily distorted areas
+		float energy_factor = length(distortion) * 200.0 * shimmer_intensity;
+		screen_col += vec3(0.02, 0.04, 0.08) * energy_factor;
+
+		ALBEDO = screen_col;
+		ALPHA = 1.0;
 	}
-
-	// Height-based fade — strongest near ground (0-3m above mesh), fades above
-	float height_fade = 1.0 - smoothstep(0.0, 4.0, world_position.y);
-	height_fade = height_fade * height_fade; // Sharper falloff
-
-	// Distortion from animated noise
-	float time_val = TIME * shimmer_speed;
-
-	// Two layers of scrolling noise for organic movement
-	float distort1 = noise_s(world_position.xz * shimmer_scale * 0.1 + vec2(time_val, time_val * 0.7));
-	float distort2 = noise_s(world_position.xz * shimmer_scale * 0.15 + vec2(-time_val * 0.5, time_val * 1.3));
-
-	// Combine into displacement vector
-	float fade = shimmer_intensity * height_fade;
-	vec2 distortion = vec2(
-		(distort1 - 0.5) * 2.0,
-		(distort2 - 0.5) * 2.0
-	) * fade * 0.008;
-
-	// Sample distorted screen — always output full screen color (never white)
-	vec3 screen_col = texture(screen_texture, uv + distortion).rgb;
-
-	// Slight energy tint in heavily distorted areas
-	float energy_factor = length(distortion) * 200.0 * shimmer_intensity;
-	screen_col += vec3(0.02, 0.04, 0.08) * energy_factor;
-
-	ALBEDO = screen_col;
-	ALPHA = 1.0;
 }
