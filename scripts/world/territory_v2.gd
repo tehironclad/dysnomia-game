@@ -112,23 +112,5 @@ static func _tok(v) -> String:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
-		_open_map()
 		get_viewport().set_input_as_handled()
-
-
-var _map: Control = null
-
-
-## The Field map (to be replaced by the globe in Phase 3): choose a territory → travel.
-func _open_map() -> void:
-	if _map == null:
-		_map = load("res://scripts/ui/world_map.gd").new()
-		_map.set_anchors_preset(Control.PRESET_FULL_RECT)
-		hud.add_child(_map)
-		_map.territory_selected.connect(func(addr): Travel.go(get_tree(), addr))
-		_map.map_closed.connect(func():
-			_map.visible = false
-			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED))
-	_map.visible = true
-	_map.initialize(ChainManager.get_all_qings(), String(territory.get("address", "")))
-	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		Travel.field(get_tree())

@@ -247,3 +247,21 @@ static func describe(p: Dictionary, number_label: String, number: String, addres
 	var c: Array = p["c"]
 	return "Julia set of z ↦ z^%d + c, c = %.6f %+.6fi\n%s %s × 369 mod 953,467,954,114,363 and address %s\nfamily %s · style %s · rarity %s · rotation %.1f°" % [
 		p["power"], c[0], c[1], number_label, number, address, p["family"], p["style"], p["tier"], rad_to_deg(p["rotation"])]
+
+
+## A point on the Julia set's boundary along `angle` from the origin (by
+## bisection on escape). Used as the dive target where dive_point() has none
+## (power > 2). Returns [x, y].
+static func boundary_point(p: Dictionary, angle: float) -> Array:
+	var lo := 0.0
+	var hi := float(p["extent"]) * 1.2
+	var d := Vector2(cos(angle), sin(angle))
+	if JuliaHeightfield.probe(p, d.x * hi, d.y * hi, 96)[0]:
+		return [d.x * hi, d.y * hi]
+	for i in 40:
+		var mid := (lo + hi) * 0.5
+		if JuliaHeightfield.probe(p, d.x * mid, d.y * mid, 96)[0]:
+			lo = mid
+		else:
+			hi = mid
+	return [d.x * hi, d.y * hi]

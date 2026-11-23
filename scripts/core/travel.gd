@@ -3,6 +3,7 @@ extends RefCounted
 ## Going to a territory: every world is a real QING from the Registry.
 
 const TERRITORY_SCENE := "res://scenes/territory/territory_v2.tscn"
+const FIELD_SCENE := "res://scenes/field/field.tscn"
 
 
 ## Sets the destination and changes scene. Returns false (and changes nothing)
@@ -36,3 +37,8 @@ static func resolve(tree: SceneTree, text: String) -> String:
 static func random_address(tree: SceneTree) -> String:
 	var all: Array = tree.root.get_node("Registry").all()
 	return all[randi() % all.size()]["address"] if not all.is_empty() else ""
+
+
+## The Field: the globe of every territory.
+static func field(tree: SceneTree) -> void:
+	tree.change_scene_to_file(FIELD_SCENE)

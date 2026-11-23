@@ -10,6 +10,7 @@ var _scene := "res://scenes/main.tscn"
 var _qing := ""
 var _frames := 90
 var _quality := -1
+var _warp := ""
 
 
 func _initialize() -> void:
@@ -22,6 +23,8 @@ func _initialize() -> void:
 			_qing = a.substr(7)
 		elif a.begins_with("--frames="):
 			_frames = int(a.substr(9))
+		elif a.begins_with("--warp="):
+			_warp = a.substr(7)
 		elif a.begins_with("--quality="):
 			_quality = int(a.substr(10))
 	_run.call_deferred()
@@ -41,6 +44,10 @@ func _run() -> void:
 			await process_frame
 		print("territory load ok=%s %s" % [done["ok"], done["err"]])
 	change_scene_to_file(_scene)
+	if _warp != "":
+		for i in 5:
+			await process_frame
+		load("res://scripts/core/warp.gd").to(self, _warp)
 	for i in _frames:
 		await process_frame
 	await RenderingServer.frame_post_draw

@@ -31,6 +31,16 @@ func _ready() -> void:
 	territory_input.text_submitted.connect(_on_territory_submitted)
 	status_label.text = ""
 
+	# The front door's first choice: the Field (every territory on the globe).
+	var field_btn := Button.new()
+	field_btn.text = "ENTER THE FIELD — %d territories" % Registry.count()
+	field_btn.custom_minimum_size = Vector2(0, 40)
+	field_btn.pressed.connect(func(): Travel.field(get_tree()))
+	var box := generate_button.get_parent()
+	box.add_child(field_btn)
+	box.move_child(field_btn, 0)
+	field_btn.grab_focus()
+
 	# Bring the territory list up to the chain head in the background.
 	if not Registry.catching_up:
 		Registry.catch_up()

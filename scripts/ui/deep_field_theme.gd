@@ -37,6 +37,11 @@ static func _font(path: String, weight: int = 400, width: int = 100) -> Font:
 	coords[TextServerManager.get_primary_interface().name_to_tag("wght")] = weight
 	coords[TextServerManager.get_primary_interface().name_to_tag("wdth")] = width
 	v.variation_opentype = coords
+	# Territory names use every script on Earth (Javanese, CJK, emoji…):
+	# fall back to the system's fonts for glyphs the bundled faces lack.
+	var sys := SystemFont.new()
+	sys.font_names = PackedStringArray(["Noto Sans", "Noto Sans CJK SC", "Noto Color Emoji", "DejaVu Sans", "sans-serif"])
+	v.fallbacks = [sys]
 	return v
 
 

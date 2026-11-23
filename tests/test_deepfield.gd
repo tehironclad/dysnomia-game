@@ -74,3 +74,13 @@ func test_cpu_render_matches_site() -> void:
 				off += 1
 		# Floating-point libm differences may flip a pixel at a filament edge.
 		check(worst <= 1 or off <= want.size() / 100, "%s (%s): %d bytes differ by >1, worst %d" % [r["address"], r["style"], off, worst])
+
+
+func test_boundary_point_is_on_the_edge() -> void:
+	var g = load_json("res://tests/golden/deepfield.json")
+	for t in g["territories"].slice(0, 40):
+		var p := DeepField.params(String(t["number"]), t["address"])
+		var b := DeepField.boundary_point(p, 1.0)
+		var inside_a: bool = JuliaHeightfield.probe(p, b[0] * 0.995, b[1] * 0.995, 96)[0]
+		var inside_b: bool = JuliaHeightfield.probe(p, b[0] * 1.005, b[1] * 1.005, 96)[0]
+		check(inside_a or not inside_b, "boundary straddles the set for %s" % t["address"])
