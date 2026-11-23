@@ -17,6 +17,7 @@ var columns: BarColumns
 var monolith: VoidMonolith
 var phenomena: Phenomena
 var actions: CoreActions
+var lattice: WorldLattice
 var _near := ""
 var view_mode := ""  # su | room | beat | void | ""
 
@@ -26,6 +27,7 @@ const PROMPTS := {
 	"room": "E  the Room: its door, its lines",
 	"beat": "E  Beat at the Heart",
 	"void": "E  the Void: one board for everyone",
+	"world": "E  WORLD: your range here (latent until deployed)",
 }
 
 
@@ -72,6 +74,13 @@ func _ready() -> void:
 	actions.name = "Actions"
 	add_child(actions)
 	actions.setup(territory, state, core, hud, phenomena, monolith)
+	lattice = WorldLattice.new()
+	lattice.name = "WorldLattice"
+	core.add_child(lattice)
+	lattice.build(DeepField.to_color(terrain.params["color"]))
+	actions.lattice = lattice
+	World.launched.connect(func(_a): hud.ticker("WORLD DEPLOYED · verified on-chain · block %d" % World.block, Color("#ffd27a"), 120.0))
+	World.start()
 	actions.opened.connect(func(): player.process_mode = Node.PROCESS_MODE_DISABLED)
 	actions.closed.connect(func(): if view_mode == "": player.process_mode = Node.PROCESS_MODE_INHERIT)
 	Session.changed.connect(_on_state_changed)
@@ -159,6 +168,8 @@ static func zone_at(local: Vector3, monolith_local: Vector3) -> String:
 		return "room"
 	if xz.distance_to(Vector2(monolith_local.x, monolith_local.z)) < 4.5:
 		return "void"
+	if xz.distance_to(Vector2(WorldLattice.PLINTH_AT.x, WorldLattice.PLINTH_AT.z)) < 2.5:
+		return "world"
 	return ""
 
 
@@ -185,6 +196,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			"room": actions.open_room()
 			"beat": actions.open_beat()
 			"void": actions.open_void()
+			"world": actions.open_world()
 		_near = ""
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:

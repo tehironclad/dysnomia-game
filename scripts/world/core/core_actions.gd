@@ -23,6 +23,7 @@ var core: TerritoryCore
 var hud: HudV2
 var phenomena: Phenomena
 var monolith: VoidMonolith
+var lattice: WorldLattice
 var action: ActionPanel
 var chat: ChatPanel
 var _chat_mode := ""  # "room" | "void"
@@ -314,6 +315,75 @@ func _post(text: String) -> void:
 	if _chat_mode == "room":
 		core.cascade(0.5)  # CHOA.Chat reacts like Su (bars grow, no YUE)
 		state.refresh()
+
+
+# --- WORLD (latent): the range preview --------------------------------------------
+
+## Pure: the centre cell's exact call, as the site builds it: Code(word0, word1,
+## QING) with the Compliment words as int256 (order to confirm on the first
+## real Code, by simulating both).
+static func code_call(q: Dictionary) -> Dictionary:
+	var w0 := BigInt.word_to_signed_hex(String(q.get("lon_word", "")))
+	var w1 := BigInt.word_to_signed_hex(String(q.get("lat_word", "")))
+	var addr := String(q["address"]).to_lower()
+	return {"word0": w0, "word1": w1, "qing": addr,
+		"text": "WORLD.Code(%s, %s, %s)" % [_signed_dec(w0), _signed_dec(w1), addr],
+		"data": Abi.encode_call("Code(int256,int256,address)", [w0, w1, addr])}
+
+
+static func _signed_dec(h: String) -> String:
+	var neg := h.begins_with("-")
+	return ("-" if neg else "") + BigInt.to_decimal(BigInt.from_hex(h.trim_prefix("-")))
+
+
+func open_world() -> void:
+	_open_action("WORLD · range preview at %s" % _tname())
+	var lines: PackedStringArray = [World.headline()]
+	for e in World.evidence.slice(0, 3):
+		lines.append("  " + e)
+	lines.append("  Site world-watch (corroboration only): %s" % World.site.display())
+	lines.append("")
+	var cc := code_call(territory)
+	lines.append("Centre cell (this territory's Compliment words, int256):")
+	lines.append("  word0 %s" % _signed_dec(cc["word0"]))
+	lines.append("  word1 %s" % _signed_dec(cc["word1"]))
+	lines.append("The exact call: Code(int256,int256,address) %s…" % String(cc["data"]).left(10))
+	lines.append("  (argument order to confirm on the first real Code by simulating both)")
+	action.set_body("\n".join(lines) + "\n\nReading your Beat and Su here…")
+	var code_why := "WORLD is not deployed: nothing to call." if not World.is_live() \
+		else "WORLD is live, but Code waits for the launch kit (WP 6.3: argument order and guards checked first)."
+	action.set_primary("Code (disabled)", false, Callable())
+	action.set_status(code_why, Color("#ffd27a"))
+	var ib := _identity_blocker(true)
+	if ib != "":
+		action.set_body("\n".join(lines) + "\n\n" + ib)
+		return
+	var ps: PlayerState = Session.player
+	var bt: Dictionary = await Moves.beat_preview(Session.wallet, String(territory["waat"]))
+	var su: Dictionary = await Moves.su_preview(Session.wallet, ps.yue, qing)
+	if not action.is_open():
+		return
+	lines.append("")
+	lines.append("What a Code here would do for you now (simulated from your wallet):")
+	if bt["ok"]:
+		for l in bt["lines"].slice(0, 4):
+			lines.append("  " + l)
+	else:
+		lines.append("  Beat: " + String(bt["message"]) + "  → a Code would revert.")
+	if su["ok"]:
+		var ch: PackedInt64Array = su["values"]["charge"]
+		lines.append("  Su charge here: %s%s" % [TokenFormat.group(BigInt.to_decimal(ch)),
+			"  → Code runs Su first and does nothing at charge 0 (gas spent, no claim)." if BigInt.is_zero(ch)
+			else "  → a claim takes a cell when this charge ≥ the cell's value; empty cells fall to 1."])
+	else:
+		lines.append("  Su: " + String(su["message"]))
+	lines.append("Range check: |lat − qlat| ≤ Yeo and |lon − qlon| ≤ Yeo (a square).")
+	action.set_body("\n".join(lines))
+	if bt["ok"] and lattice != null:
+		var yeo := BigInt.from_hex(bt["values"]["yeo"])
+		action.set_secondary("Hide my range" if lattice.range_visible() else "Show my range on the ground", true, func():
+			lattice.show_range(yeo, not lattice.range_visible())
+			action.set_secondary("Hide my range" if lattice.range_visible() else "Show my range on the ground", true, action._action2))
 
 
 # --- The Void -------------------------------------------------------------------

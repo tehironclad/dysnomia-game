@@ -75,7 +75,7 @@ func _ready() -> void:
 	hint.theme_type_variation = "MutedLabel"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.position = Vector2(20, -36)
-	hint.text = "E  use (pylon: Su · door: Room · centre: Beat · monolith: Void)   ·   H  how is this drawn   ·   M  the field   ·   Esc  mouse"
+	hint.text = "E  use (pylon: Su · door: Room · centre: Beat · plinth: WORLD · monolith: Void)   ·   H  how is this drawn   ·   M  the field   ·   Esc  mouse"
 	_root.add_child(hint)
 
 
@@ -151,4 +151,5 @@ func _process(_delta: float) -> void:
 	if _sky == null:
 		return
 	var t := _sky.now_unix()
-	clock.text = ("block %d\n%s" % [Chain.head_block, DysnomiaTime.format(t)]) if t >= 0 else "block —\ntime unknown"
+	clock.text = (("block %d\n%s" % [Chain.head_block, DysnomiaTime.format(t)]) if t >= 0 else "block —\ntime unknown") \
+		+ "\nWORLD " + {"latent": "latent", "stirring": "· deployer moved", "unverified": "· unverified code", "live": "LIVE", "unknown": "—"}.get(World.status, "—")

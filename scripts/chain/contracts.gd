@@ -119,6 +119,10 @@ const SELECTORS := {
 	"aggregate3((address,bool,bytes)[])": "0x82ad56cb",
 	"View()": "0x1686f265",  # AFFECTION; returns 48 words
 	"Type()": "0xff762044",  # Dysnomia contracts name their class, e.g. "LAU"
+	# WORLD family (latent): identify a deploy by its dispatcher's PUSH4 selectors.
+	"Vitus()": "0xce29ab3c", "Water()": "0x6e69adcf", "Gwat(address,uint256)": "0x6912b95f",
+	"War()": "0x94573097", "World()": "0x2d67bb91", "Cheon()": "0x51d95507", "Meta()": "0xd2717183",
+	"Map()": "0xec557f40",
 }
 
 # --- Event topics ----------------------------------------------------------------

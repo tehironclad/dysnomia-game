@@ -102,6 +102,7 @@ func _ready() -> void:
 	_update_wallet_button()
 	if not Registry.catching_up:
 		Registry.catch_up()
+	World.start()
 
 
 func _go() -> void:

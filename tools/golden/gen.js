@@ -41,6 +41,7 @@ const SIGNATURES = {
     'GetQing(uint256)', 'Offset()', 'Cho()', 'Yuan(address)', 'Eta()', 'balanceOf(address)',
     'totalSupply()', 'decimals()', 'name()', 'symbol()', 'allowance(address,address)',
     'maxSupply()', 'owner(address)', 'aggregate3((address,bool,bytes)[])', 'View()', 'Type()',
+    'Vitus()', 'Water()', 'Gwat(address,uint256)', 'War()', 'World()', 'Cheon()', 'Meta()', 'Map()',
   ],
   events: [
     'LogEvent(string,uint64,uint64,string)', 'LogEvent(uint64,uint64,string)',

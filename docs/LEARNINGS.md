@@ -95,7 +95,7 @@ Wallet ─▶ LAUFactory.New(name,symbol) ─▶ LAU.Username(≤12 chars) ─�
 | MATH ("Xiao", atropaMath) | `0xB680F0cc810317933F234f67EB6A9E923407f05D` | shared RNG/math library |
 | **Multicall3** | `0xca11bde05977b3631167028862be2a173976ca11` | use `aggregate3` for batched reads |
 | WPLS | `0xa1077a294dde1b09bb078844df40758a5d0f9a27` | |
-| Dysnomia deployer (EOA) | `0x0474606332105A1dA6FC8EF7De2470551D389Cb9` | its nonce moving past 712 is the WORLD launch signal |
+| Dysnomia deployer (EOA) | `0x0474606332105A1dA6FC8EF7De2470551D389Cb9` | its nonce moving past 712 is the WORLD launch signal. Its CREATE addresses are precomputed in `assets/data/deployer_creates.json` (nonce 132 → MAP checks out); the game's World watch reads code there |
 | WORLD / WAR / GWAT / VITUS / H2O | **none** | Never ship a guessed address. Clients have already sent `Code()` to WITHOUT by mistake, and a "GWAT address" with no code was once published. |
 
 Per-territory addresses (942 QINGs), LAUs and YUEs are discovered at runtime (§8).

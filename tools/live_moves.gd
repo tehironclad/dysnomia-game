@@ -2,7 +2,8 @@ extends SceneTree
 ## Read-only: the Phase 5 live moves against the real chain. Nothing is signed.
 ##   godot --headless --path . -s res://tools/live_moves.gd [-- --wallet=0x… --qing=0x…]
 ## Prints the Su and Beat previews (simulated from the wallet), the room's door
-## for that wallet, the newest room lines and Void lines with their badges.
+## for that wallet, the newest room lines and Void lines with their badges,
+## and the World watch (deployer nonce, CREATE addresses, bytecode).
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -45,4 +46,10 @@ func _run() -> void:
 		badges[l["badge"]] = badges.get(l["badge"], 0) + 1
 		print(CL.format_line(l))
 	print("badges: ", badges)
+	var world = root.get_node("World")
+	await world.check()
+	print("\n-- World watch --\n", world.status, " · ", world.headline())
+	for e in world.evidence:
+		print("  ", e)
+	print("  site: ", world.site.display())
 	quit()

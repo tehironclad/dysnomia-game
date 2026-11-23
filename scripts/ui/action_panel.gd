@@ -12,8 +12,10 @@ var _title: Label
 var _body: Label
 var _status: Label
 var _primary: Button
+var _secondary: Button
 var _close: Button
 var _action: Callable
+var _action2: Callable
 var _label := ""
 
 
@@ -50,6 +52,11 @@ func _init() -> void:
 	_primary.custom_minimum_size = Vector2(220, 40)
 	_primary.pressed.connect(func(): if _action.is_valid(): _action.call())
 	row.add_child(_primary)
+	_secondary = Button.new()
+	_secondary.custom_minimum_size = Vector2(0, 40)
+	_secondary.visible = false
+	_secondary.pressed.connect(func(): if _action2.is_valid(): _action2.call())
+	row.add_child(_secondary)
 	_close = Button.new()
 	_close.text = "Close (Esc)"
 	_close.pressed.connect(close)
@@ -66,6 +73,7 @@ func show_panel(title: String, body: String = "Simulating from your wallet…") 
 	_status.text = ""
 	_status.remove_theme_color_override("font_color")
 	set_primary("", false, Callable())
+	set_secondary("", false, Callable())
 	_label = ""
 	visible = true
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -89,6 +97,13 @@ func set_primary(text: String, enabled: bool, action: Callable) -> void:
 	_primary.text = text
 	_primary.disabled = not enabled
 	_action = action
+
+
+func set_secondary(text: String, enabled: bool, action: Callable) -> void:
+	_secondary.visible = text != ""
+	_secondary.text = text
+	_secondary.disabled = not enabled
+	_action2 = action
 
 
 ## Follow this Wallet.send label's stages in the status line.
