@@ -25,6 +25,10 @@ uniform float phase = 0.0;
 uniform sampler2D regolith_albedo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D regolith_normal : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D regolith_rough : hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
+// Development (from the territory's Hypobar total; Development.gd): a Town
+// lights up along the Julia coast, a City adds ring roads that follow it.
+uniform int dev_tier = 0;
+uniform float dev_energy = 0.0;      // Epibar total, 0..1
 uniform float detail_scale = 0.18;   // tiles per metre (≈ 5.5 m tiles)
 uniform float detail_strength = 1.0;
 
@@ -124,6 +128,24 @@ void fragment() {
 		else { bands = pow(band, 6.0) * 0.10 * exp(-de_m / 25.0); }
 		light = (A * core * 0.9 + B * halo * 0.22 + B * bands * near_set) * glow;
 		albedo = mix(GROUND * grain, A * 0.2, core * 0.4);
+		if (dev_tier >= 3) {
+			// City lights: one candidate per 4 m cell, lit with a fixed hash, densest on the coast.
+			vec2 cell = floor(world_pos.xz / 4.0);
+			vec2 fc = fract(world_pos.xz / 4.0) - 0.5;
+			float hsh = hash12(cell * 1.31 + 7.7);
+			float coast = exp(-de_m / (dev_tier >= 4 ? 45.0 : 25.0)) * (1.0 - core);
+			float dens = (dev_tier >= 5 ? 0.55 : dev_tier >= 4 ? 0.38 : 0.22) * (0.5 + dev_energy);
+			vec2 jitter = vec2(hash12(cell + 3.1), hash12(cell + 9.4)) - 0.5;
+			float d = length(fc - jitter * 0.6);
+			float dotl = step(hsh, dens * coast) * exp(-d * d / 0.004);
+			vec3 warm = mix(vec3(1.0, 0.78, 0.45), A, 0.25);
+			light += warm * dotl * (1.6 + 1.4 * dev_energy);
+			if (dev_tier >= 4) {
+				// Ring roads: thin lines at fixed distances from the set.
+				float road = pow(max(0.0, cos(de_m * 0.52)), 60.0) * exp(-de_m / 60.0) * step(2.0, de_m);
+				light += warm * road * 0.22 * (0.6 + dev_energy);
+			}
+		}
 	}
 	// Regolith detail: two scales blended, multiplied into the dark ground and
 	// fading out at distance (where the Julia pattern is what should read).

@@ -120,7 +120,7 @@ func test_bar_column_height() -> void:
 	near(BarColumns.height_for(PackedInt64Array()), 0.15, 0.001)
 	check(BarColumns.height_for(BigInt.from_decimal("78")) > BarColumns.height_for(BigInt.from_decimal("26")) + 0.4, "small bars still differ")
 	check(BarColumns.height_for(BigInt.from_decimal("1000000000")) > BarColumns.height_for(BigInt.from_decimal("1000")))
-	near(BarColumns.height_for(BigInt.from_decimal("1" + "0".repeat(60))), 16.0, 0.001)
+	near(BarColumns.height_for(BigInt.from_decimal("1" + "0".repeat(60))), 48.0, 0.001, "16 floors at most")
 
 
 func test_chat_merge_dedups_and_orders() -> void:

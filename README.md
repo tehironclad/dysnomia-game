@@ -56,6 +56,27 @@ apes and birds work the same way. Everyone else is the clockwork LAU bear.
 
 You can also pick your own head on the identity card. That choice is stored on your machine only.
 
+## Territories grow
+
+A territory builds up as people react there. All of this is chain state, so every visitor sees the same
+city.
+- **The tier comes from the Hypobar total.** Bars only ever grow, so a city never decays:
+
+  | Tier | Hypobar total | What appears |
+  |---|---|---|
+  | Wild | none | bare regolith |
+  | Outpost | any | a beacon |
+  | Settlement | ≥ 10⁴ | landing pads |
+  | Town | ≥ 10⁶ | city lights along the fractal coast |
+  | City | ≥ 10⁸ | ring roads and an aurora |
+  | Capital | ≥ 10⁹ | a light spire from the Heart |
+
+- **Each player's bars there make their tower** in the skyline. The leader's is crowned.
+- **The Epibar total lights the windows**, the city lights and the aurora.
+
+`tools/live_development.gd` prints the real distribution. On 2026-11-23 it was 889 wild, 11 outposts,
+9 settlements, 4 towns, 4 cities and 1 capital (RatKing).
+
 ## Places
 
 - **A QING's hall.** Walk through the Room's door at the Core and you're inside: a sci-fi chamber built

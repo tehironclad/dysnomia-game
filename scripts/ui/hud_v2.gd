@@ -37,7 +37,7 @@ func _ready() -> void:
 	grid.add_theme_constant_override("h_separation", 14)
 	here.add_child(grid)
 	for row in [["omega", "HYPOBAR PER SU"], ["hypo", "HYPOBAR HERE"], ["epi", "EPIBAR HERE"],
-			["reactors", "REACTORS"], ["door", "COVER CHARGE"], ["you", "YOU HERE"]]:
+			["reactors", "REACTORS"], ["door", "COVER CHARGE"], ["dev", "DEVELOPMENT"], ["you", "YOU HERE"]]:
 		var l := Label.new()
 		l.theme_type_variation = "MutedLabel"
 		l.add_theme_font_size_override("font_size", 11)
@@ -98,6 +98,7 @@ func _on_state() -> void:
 	_facts["reactors"].set_fact(_state.reactors)
 	_facts["door"].set_fact(_state.cover_charge, func(v): return "none — door open" if BigInt.is_zero(BigInt.coerce(v)) else tok.call(v) + " (asset)")
 	_facts["you"].set_fact(you_fact(_state, Session.wallet))
+	_facts["dev"].set_fact(dev_fact(_state))
 
 
 ## Your place on this territory's board (known players: a floor), with the
@@ -119,6 +120,16 @@ static func you_fact(st: TerritoryState, wallet: String) -> Fact:
 				txt += " · leading" + ("" if rows.size() < 2 else " by %s" % TokenFormat.group(BigInt.to_decimal(BigInt.sub(mine, rows[1]["hypobar"]))))
 			return Fact.floor_of(txt, "YUE.Bar(QING) vs known players", "rank among %d known players" % Players.count(), st.block)
 	return Fact.floor_of("no bars here yet", "YUE.Bar(QING)", "known players only", st.block)
+
+
+## The territory's development tier, from its Hypobar total (a floor).
+static func dev_fact(st: TerritoryState) -> Fact:
+	if not st.total_hypobar.has_value():
+		return st.total_hypobar
+	var t := Development.tier_of(BigInt.coerce(st.total_hypobar.value))
+	var nxt := Development.next_threshold(t)
+	return Fact.floor_of("%s%s" % [Development.tier_name(t), (" · next at %s" % TokenFormat.wei_to_tokens(BigInt.from_decimal(nxt), 0)) if nxt != "" else ""],
+		"tier of Σ YUE.Bar(QING).Hypobar", "known players only", st.block)
 
 
 ## A phenomenon line (each carries its block). Fades after `ttl` seconds.

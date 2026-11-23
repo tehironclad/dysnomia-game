@@ -45,6 +45,12 @@ func setup(params: Dictionary, address: String) -> void:
 
 ## Reads the latest block's timestamp (one RPC call). Until it answers, the sky
 ## keeps a neutral time and the inspector says the time is unknown.
+## A City's aurora (0 = none), from Development.
+func set_aurora(strength: float) -> void:
+	if material:
+		material.set_shader_parameter("aurora", strength)
+
+
 func sync_time() -> void:
 	var r := await Chain.rpc.get_block("latest")
 	if r.get("ok", false) and r["result"] is Dictionary:

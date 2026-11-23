@@ -24,6 +24,8 @@ uniform vec3 base_color : source_color = vec3(0.0118, 0.0157, 0.0275);  // #0304
 uniform vec3 neb_a : source_color = vec3(0.3, 0.15, 0.5);
 uniform vec3 neb_b : source_color = vec3(0.1, 0.4, 0.6);
 uniform float neb_strength = 0.16;
+// A City's aurora (Development tier ≥ 4), as bright as its energy (Epibar total).
+uniform float aurora = 0.0;
 
 float n_hash(vec3 p) {
 	p = fract(p * 0.1031);
@@ -103,6 +105,15 @@ void sky() {
 	float n2 = n_fbm(d * 4.3 - so * 0.5);
 	float neb = smoothstep(0.5, 0.88, n1) * 0.7 + smoothstep(0.55, 0.92, n2) * 0.3;
 	col += mix(neb_a, neb_b, smoothstep(0.35, 0.8, n2)) * neb * neb_strength * smoothstep(-0.05, 0.25, d.y);
+	if (aurora > 0.0) {
+		// Curtains: vertical streaks low over the horizon, waving slowly.
+		float az = atan(d.z, d.x);
+		float wave = sin(az * 7.0 + TIME * 0.08 + n_noise(vec3(az * 3.0, TIME * 0.05, 0.0)) * 4.0);
+		float curtain = smoothstep(0.03, 0.12, d.y) * (1.0 - smoothstep(0.14, 0.32, d.y));
+		float patch = smoothstep(0.45, 0.75, n_fbm(vec3(az * 1.3, 0.0, TIME * 0.01) + so * 0.1));
+		float streaks = 0.5 + 0.5 * sin(az * 90.0 + n_noise(vec3(az * 20.0, d.y * 6.0, TIME * 0.1)) * 6.0);
+		col += mix(neb_b, vec3(0.35, 1.0, 0.6), 0.5) * curtain * patch * (0.4 + 0.6 * wave) * streaks * aurora * 0.22;
+	}
 
 	// "You are here": project directions around field_dir onto the complex plane.
 	vec3 f = normalize(field_dir);

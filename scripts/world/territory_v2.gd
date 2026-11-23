@@ -14,6 +14,8 @@ extends Node3D
 var territory: Dictionary = {}
 var state: TerritoryState
 var columns: BarColumns
+var development: DevelopmentSite
+var dev_tier := 0
 var monolith: VoidMonolith
 var phenomena: Phenomena
 var actions: CoreActions
@@ -64,8 +66,13 @@ func _ready() -> void:
 	hud.bind(String(territory["address"]), state, sky)
 	columns = BarColumns.new()
 	columns.name = "BarColumns"
-	columns.setup(DeepField.to_color(terrain.params["color"]))
+	var core_y := terrain.heightfield.core_height
+	columns.setup(DeepField.to_color(terrain.params["color"]), func(x, z): return terrain.get_height_at(x, z) - core_y)
 	core.add_child(columns)
+	development = DevelopmentSite.new()
+	development.name = "Development"
+	development.setup(DeepField.to_color(terrain.params["color"]))
+	core.add_child(development)
 	monolith = VoidMonolith.new()
 	monolith.name = "VoidMonolith"
 	add_child(monolith)
@@ -163,12 +170,19 @@ func _on_state_changed() -> void:
 	terrain.set_activity(0.85 + 0.15 * minf(1.0, reactors / 8.0), state.lit_bands())
 	if state.total_hypobar.has_value():
 		columns.update_board(state.board, state.block, Session.wallet)
+		# Development: tier from the Hypobar total, energy from the Epibar total.
+		dev_tier = Development.tier_of(BigInt.coerce(state.total_hypobar.value))
+		var energy := Development.energy_of(BigInt.coerce(state.total_epibar.value)) if state.total_epibar.has_value() else 0.0
+		columns.set_energy(energy)
+		development.set_tier(dev_tier, energy)
+		terrain.set_development(dev_tier, energy)
+		sky.set_aurora(energy if dev_tier >= 4 else 0.0)
 	var model := player.get_node_or_null("PlayerModel")
 	if model and model.has_method("set_territory_power"):
 		model.set_territory_power(clampf(state.lit_bands() / 10.0, 0.0, 1.0))
 	Inspector.register(state, "Territory state (block %d)" % state.block,
-		"Ω, Hypobar per Su here: %s\nHypobar total %s · Epibar total %s\nReactors: %s\nLit bands on the ground: %d (one per power of ten of the Hypobar total).\nWells: Fornax %s · Eris %s · Tethys %s" % [
-			state.omega.display(), state.total_hypobar.display(_dec), state.total_epibar.display(_dec), state.reactors.display(),
+		"Development: %s (from the Hypobar total, a floor over known players; bars never shrink, so neither does the city).\nΩ, Hypobar per Su here: %s\nHypobar total %s · Epibar total %s\nReactors: %s\nLit bands on the ground: %d (one per power of ten of the Hypobar total).\nWells: Fornax %s · Eris %s · Tethys %s" % [
+			Development.describe(dev_tier), state.omega.display(), state.total_hypobar.display(_dec), state.total_epibar.display(_dec), state.reactors.display(),
 			int(state.lit_bands()), state.fornax.display(_tok), state.eris.display(_tok), state.tethys.display(_tok)])
 
 

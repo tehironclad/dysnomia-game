@@ -61,6 +61,9 @@
 - Places (`scripts/places/`): `qing_hall.gd` (the room, built from `assets/buildings/scifi`, Quaternius
   Modular Sci-Fi MegaKit, CC0, 4 m grid) and `void_place.gd`; both use `ChatController` (history, live tail,
   post, Join) and `SpeakerEchoes`. Render: `screenshot.gd -- --scene=res://scenes/places/qing_hall.tscn --qing=0x…`.
+- Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
+  total; skyline towers per player (`bar_columns.gd`, `tower.gdshader`), structures (`development_site.gd`),
+  city lights/roads (terrain shader), aurora (sky shader). `tools/live_development.gd` measures every territory.
 - Textures: `assets/textures/polyhaven` (CC0 moon regolith in the terrain shader; metal plates).
 - `tools/avatar_sheet.gd -- --out=<png> --mode=heads|poses|closeup [--head=rat --acc=crown]` renders the
   avatar in a studio (needs Xvfb). Heads come from the LAU's Username/name/symbol (`AvatarHeads`).

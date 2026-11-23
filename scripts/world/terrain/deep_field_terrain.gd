@@ -60,6 +60,13 @@ func _build_material() -> void:
 
 
 ## Shared state hooks (WP 2.5): brightness and lit escape bands.
+## Development tier and energy (Development.gd): city lights and roads.
+func set_development(tier: int, energy: float) -> void:
+	if material:
+		material.set_shader_parameter("dev_tier", tier)
+		material.set_shader_parameter("dev_energy", energy)
+
+
 func set_activity(glow: float, lit_bands: float) -> void:
 	if material:
 		material.set_shader_parameter("glow", glow)
