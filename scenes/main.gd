@@ -476,6 +476,28 @@ func _open_shuttle_map() -> void:
 	hud.open_world_map(true)
 
 
+# ─── Telegram invite ────────────────────────────────────────────────────
+
+func invite_text() -> String:
+	var hub = get_node_or_null("CommunityHub")
+	if hub and hub.has_method("invite_text"):
+		return hub.invite_text()
+	var name := GameManager.territory_name if not GameManager.territory_name.is_empty() else "my QING"
+	var s: Dictionary = _standing.current() if _standing else {}
+	var what := "Affection Fair (%s)" % s.get("fair", "") if s.get("tier", 0) > 0 else "the Cantina"
+	return "Come hang out at %s on Dysnomia — %s, live players, community boards. QING %s" % [
+		name, what, GameManager.territory_address]
+
+
+func share_invite_to_telegram() -> void:
+	## Opens Telegram's share sheet (app or web) with an invite to this QING.
+	var url := "https://t.me/share/url?url=%s&text=%s" % [
+		str(Config.invite_url).uri_encode(), invite_text().uri_encode()]
+	OS.shell_open(url)
+	if _attraction_ui:
+		_attraction_ui.toast("Opening Telegram — invite your group to this QING", AttractionUI.PULSE, 4.0)
+
+
 # ─── Community media boards ─────────────────────────────────────────────
 
 var _board_feed: Node
@@ -1500,6 +1522,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Backtick/tilde key: toggle console
 	if event is InputEventKey and event.pressed and event.keycode == KEY_QUOTELEFT:
 		_toggle_console()
+
+	# K: invite friends from Telegram to this QING
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_K:
+		share_invite_to_telegram()
 
 	# F3 key: toggle performance monitor
 	if event is InputEventKey and event.pressed and event.keycode == KEY_F3:
