@@ -81,13 +81,13 @@ func _input(event: InputEvent) -> void:
 
 # ─── Ticket card ────────────────────────────────────────────────────────
 
-func show_ticket(item: Dictionary, cost_line: String, balance: String, bars_line: String) -> void:
+func show_ticket(item: Dictionary, cost_line: String, balance: String, bars_line: String, action: String = "[E]  Buy ticket & ride") -> void:
 	_card_title.text = str(item.get("name", "Attraction")).to_upper()
 	_card_price.text = AttractionCatalog.price_label(item)
 	_card_blurb.text = str(item.get("blurb", ""))
 	_card_cost.text = cost_line
 	_card_meta.text = "Balance  %s AFFECTION     %s" % [balance, bars_line]
-	_card_action.text = "[E]  Buy ticket & ride"
+	_card_action.text = action
 	_card_action.visible = true
 	set_ticket_status("", DIM)
 	_fade_in(_card)

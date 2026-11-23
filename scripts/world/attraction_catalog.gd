@@ -42,6 +42,13 @@ const RIDES := {
 	},
 }
 
+## Community media boards — one at each wing of a QING. A post stays up 24 h.
+const BOARD := {
+	"id": "board", "kind": KIND_TICKET, "price": "1",
+	"name": "Media Board · 24 h",
+	"blurb": "Put your picture and a caption on this wing's board for 24 hours. Paid to the QING keeper; verified on-chain by every visitor.",
+}
+
 ## The bar menu. Every "op" drink is a real AFFECTION call made by the visitor.
 const DRINKS := [
 	{"id": "pi_shot", "kind": KIND_OP, "op": "pi", "price": "0",

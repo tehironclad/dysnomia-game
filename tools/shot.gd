@@ -66,6 +66,17 @@ func _match(path: String, names: PackedStringArray) -> bool:
 
 func _process(_delta: float) -> bool:
 	_frames += 1
+	# SHOT_BOARD_DEMO=<png path>: put a verified-looking demo post on every media board
+	var demo := OS.get_environment("SHOT_BOARD_DEMO")
+	if not demo.is_empty() and _frames == 6 and current_scene and current_scene.get("_board_feed"):
+		var img := Image.load_from_file(demo)
+		if img:
+			var mb: GDScript = load("res://scripts/world/media_board.gd")
+			mb._image_cache["demo://board"] = ImageTexture.create_from_image(img)
+		var now := int(Time.get_unix_time_from_system())
+		for w in ["cantina", "fair", "beat", "pad", "comm"]:
+			current_scene._board_feed._accept({"wing": w, "pay": "0x" + w.md5_text() + w.md5_text(), "caption": "gm Dysnomia! Rocket launches tonight at the fair",
+				"url": "demo://board", "poster": "Sunny", "chat_tx": "0x" + w.sha256_text()}, "0x" + "cd".repeat(20), now - 3600 * 5)
 	var tod := OS.get_environment("SHOT_TOD")
 	if not tod.is_empty():
 		var gm = root.get_node_or_null("GameManager")

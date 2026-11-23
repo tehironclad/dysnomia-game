@@ -276,6 +276,9 @@ func _ready() -> void:
 	# Phase 13L: Territory flags / guestbook
 	_spawn_flag_manager()
 
+	# Community media boards — one per wing, posts verified on-chain
+	_spawn_media_boards()
+
 	# Track current territory as visited
 	if not GameManager.territory_address.is_empty():
 		_stat_tracker.add_territory_visited(GameManager.territory_address)
@@ -471,6 +474,59 @@ func _spawn_shuttle_terminal() -> void:
 func _open_shuttle_map() -> void:
 	hud.hide_interact_prompt()
 	hud.open_world_map(true)
+
+
+# ─── Community media boards ─────────────────────────────────────────────
+
+var _board_feed: Node
+var _board_post_ui: CanvasLayer
+var _media_boards: Array = []
+
+## wing id, title, node getter, fallback offset from the building (used until it offers get_board_anchor)
+const BOARD_WINGS := [
+	["cantina", "Cantina", "_pub_building", Vector3(-13.0, 0.0, 11.0)],
+	["fair", "Fair", "_funfair", Vector3(30.0, 0.0, -30.0)],
+	["beat", "Beat Station", "_beat_station", Vector3(-14.0, 0.0, -16.0)],
+	["pad", "Shuttle Port", "_landing_pad", Vector3(-15.0, 0.0, -15.0)],
+	["comm", "Comm Array", "_antenna_array", Vector3(16.0, 0.0, 8.0)],
+]
+
+
+func _spawn_media_boards() -> void:
+	_board_feed = BoardFeed.new()
+	_board_feed.name = "BoardFeed"
+	add_child(_board_feed)
+	_board_post_ui = BoardPostUI.new()
+	_board_post_ui.name = "BoardPostUI"
+	add_child(_board_post_ui)
+	if _attraction_director:
+		_attraction_director.register_boards(_board_feed, _board_post_ui)
+	for w in BOARD_WINGS:
+		var host: Node3D = get(w[2])
+		if host == null:
+			continue
+		var board := MediaBoard.new()
+		board.name = "MediaBoard_" + w[0]
+		add_child(board)
+		board.global_transform = _board_transform(host, w[3])
+		board.setup(w[0], w[1], _board_feed)
+		if _attraction_director:
+			_attraction_director.register_board(board)
+		_media_boards.append(board)
+	# Boards read the chat history already loaded for this QING
+	_board_feed.ingest(ChainManager.get_chat_messages())
+
+
+func _board_transform(host: Node3D, fallback_offset: Vector3) -> Transform3D:
+	if host.has_method("get_board_anchor"):
+		return host.global_transform * host.get_board_anchor()
+	# Fallback: stand beside the building, front (-Z) turned toward the spawn plaza
+	var p := host.global_position + fallback_offset
+	p.y = territory.get_height_at(p.x, p.z)
+	var to_spawn := Vector3(-p.x, 0.0, -p.z)
+	if to_spawn.length() < 0.1:
+		to_spawn = Vector3.FORWARD
+	return Transform3D(Basis.looking_at(to_spawn.normalized(), Vector3.UP), p)
 
 
 func _flash_prompt(text: String, seconds: float = 3.0) -> void:
