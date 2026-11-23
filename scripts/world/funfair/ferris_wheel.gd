@@ -112,11 +112,9 @@ func _build() -> void:
 		for p in rim_pts:
 			rp.append(Vector3(p.x, p.z, z + signf(z) * 0.1))
 		wb.bulb_line(rp, [Color(1.0, 0.35, 0.65), FairKit.BULB_WARM, Color(0.3, 0.8, 1.0)], 0.035, 0.085)
-		var hub_pts := FairKit.ring_points(Vector3.ZERO, 1.75, 24)
-		var hp := PackedVector3Array()
-		for p in hub_pts:
-			hp.append(Vector3(p.x, p.z, z * 1.32))
-		wb.bulb_line(hp, [FairKit.BULB_WARM], 0.1, 0.08)
+		# Continuous neon hub ring (a ring of bulbs here read as a dashed gizmo outline)
+		var hr := FairKit.mesh(_wheel, FairKit.torus_mesh(1.68, 1.8, 48, 6), Vector3(0, 0, z * 1.32), FairKit.glow(FairKit.NEON_CYAN, 3.0, 0.8), Vector3.ZERO, false)
+		hr.rotation.x = PI * 0.5
 	wb.flush(_wheel)
 	FairKit.label(_wheel, "RHO", Vector3(0, 0, RIM_Z * 1.36), 120, Color(2.2, 1.9, 1.4)).outline_size = 14
 	FairKit.omni(self, Vector3(0, HUB_H, 4.5), Color(1.0, 0.7, 0.85), 3.5, 30.0, 0.0)

@@ -146,7 +146,7 @@ static func apply_night(n: float) -> void:
 	var aw := shader_mat("fair_awning")
 	aw.set_shader_parameter("night", n)
 	shader_mat("fair_firework").set_shader_parameter("energy", n * 3.0)
-	shader_mat("fair_beam").set_shader_parameter("energy", n * 0.2)
+	shader_mat("fair_beam").set_shader_parameter("energy", n * 0.09)
 
 
 # ─── Meshes ─────────────────────────────────────────────────────────────
@@ -657,26 +657,31 @@ static func awning(parent: Node, width: float, depth: float, pos: Vector3, rot: 
 # ─── Particles ──────────────────────────────────────────────────────────
 
 static func puff_texture() -> Texture2D:
+	## Soft, lumpy smoke puff: radial falloff broken up by fractal noise (no hard disc edge).
 	if _cache.has("puff"):
 		return _cache["puff"]
-	var g := Gradient.new()
-	g.set_color(0, Color(1, 1, 1, 1))
-	g.set_color(1, Color(1, 1, 1, 0))
-	g.add_point(0.45, Color(1, 1, 1, 0.55))
-	var t := GradientTexture2D.new()
-	t.gradient = g
-	t.fill = GradientTexture2D.FILL_RADIAL
-	t.fill_from = Vector2(0.5, 0.5)
-	t.fill_to = Vector2(1.0, 0.5)
-	t.width = 64
-	t.height = 64
+	var n := FastNoiseLite.new()
+	n.seed = 7
+	n.frequency = 0.08
+	n.fractal_octaves = 4
+	var sz := 96
+	var img := Image.create(sz, sz, false, Image.FORMAT_RGBA8)
+	for y in sz:
+		for x in sz:
+			var d := Vector2(x - sz * 0.5 + 0.5, y - sz * 0.5 + 0.5).length() / (sz * 0.5)
+			var nz := n.get_noise_2d(x, y) * 0.5 + 0.5
+			var a := clampf(1.0 - d * (0.75 + 0.6 * (1.0 - nz)), 0.0, 1.0)
+			a = a * a * (3.0 - 2.0 * a) * (0.55 + 0.45 * nz)
+			img.set_pixel(x, y, Color(1, 1, 1, a))
+	img.generate_mipmaps()
+	var t := ImageTexture.create_from_image(img)
 	_cache["puff"] = t
 	return t
 
 
 static func smoke(amount: int, lifetime: float, size: Vector2, tint: Color, spread_deg: float,
 		speed: Vector2, damping: float, gravity: Vector3, emit_radius: float, hot: bool,
-		dir: Vector3 = Vector3.UP) -> GPUParticles3D:
+		dir: Vector3 = Vector3.UP, radial: float = 0.0) -> GPUParticles3D:
 	## Billowing, lit smoke/vapour. `hot` adds a fire-lit orange start to the colour ramp.
 	var p := GPUParticles3D.new()
 	p.amount = amount
@@ -689,6 +694,15 @@ static func smoke(amount: int, lifetime: float, size: Vector2, tint: Color, spre
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
 	pm.emission_sphere_radius = emit_radius
 	pm.direction = dir
+	if radial > 0.0:
+		# Ground-hugging billow: emit from a flat ring and push outward, not up into the sky
+		pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_RING
+		pm.emission_ring_axis = Vector3.UP
+		pm.emission_ring_radius = emit_radius
+		pm.emission_ring_inner_radius = emit_radius * 0.5
+		pm.emission_ring_height = 0.3
+		pm.radial_velocity_min = radial * 0.6
+		pm.radial_velocity_max = radial
 	pm.spread = spread_deg
 	pm.initial_velocity_min = speed.x
 	pm.initial_velocity_max = speed.y

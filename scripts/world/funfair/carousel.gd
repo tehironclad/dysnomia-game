@@ -75,8 +75,8 @@ func _build() -> void:
 	FairKit.mesh(_turntable, FairKit.cyl_mesh(PLAT_R + 0.3, PLAT_R + 0.3, 1.0, 48), Vector3(0, CANOPY_Y - 0.5, 0), red)
 	FairKit.mesh(_turntable, FairKit.torus_mesh(PLAT_R + 0.25, PLAT_R + 0.42, 64, 6), Vector3(0, CANOPY_Y - 1.0, 0), gold)
 	FairKit.mesh(_turntable, FairKit.torus_mesh(PLAT_R + 0.25, PLAT_R + 0.42, 64, 6), Vector3(0, CANOPY_Y, 0), gold)
-	tb.bulb_line(FairKit.ring_points(Vector3(0, CANOPY_Y - 0.2, 0), PLAT_R + 0.36, 96), [FairKit.BULB_WARM, Color(1.0, 0.85, 0.5)], 0.03, 0.06)
-	tb.bulb_line(FairKit.ring_points(Vector3(0, CANOPY_Y - 0.82, 0), PLAT_R + 0.36, 96), [Color(1.0, 0.35, 0.6), FairKit.BULB_WARM], -0.03, 0.06)
+	tb.bulb_line(FairKit.ring_points(Vector3(0, CANOPY_Y - 0.2, 0), PLAT_R + 0.36, 64), [FairKit.BULB_WARM, FairKit.NEON_CYAN], 0.03, 0.045)
+	tb.bulb_line(FairKit.ring_points(Vector3(0, CANOPY_Y - 0.82, 0), PLAT_R + 0.36, 64), [Color(1.0, 0.35, 0.6), FairKit.BULB_WARM], -0.03, 0.045)
 	for i in 6:
 		var a := TAU * i / 6.0
 		var l := FairKit.label(_turntable, "ORBITAL CAROUSEL", Vector3(sin(a), 0, cos(a)) * (PLAT_R + 0.32) + Vector3(0, CANOPY_Y - 0.5, 0), 38, Color(2.0, 1.7, 1.1), a)
@@ -147,8 +147,7 @@ func _build_orrery() -> void:
 	var top := CANOPY_Y + 3.15
 	var brass := FairKit.paint(Color(0.92, 0.7, 0.35), 0.2, 1.0)
 	FairKit.cyl(self, 0.06, 0.1, 1.8, Vector3(0, top + 0.9, 0), brass, 8)
-	FairKit.mesh(self, FairKit.sphere_mesh(0.75, 24), Vector3(0, top + 2.3, 0), FairKit.glow(Color(1.0, 0.72, 0.3), 6.0, 2.5), Vector3.ZERO, false)
-	FairKit.mesh(self, FairKit.torus_mesh(0.95, 1.0, 32, 4), Vector3(0, top + 2.3, 0), brass).rotation.x = 0.4
+	FairKit.mesh(self, FairKit.sphere_mesh(0.75, 24), Vector3(0, top + 2.3, 0), FairKit.glow(Color(1.0, 0.68, 0.3), 2.2, 1.2), Vector3.ZERO, false)
 	var planets := [
 		[1.7, 0.18, Color(0.7, 0.5, 0.4), 0.9], [2.5, 0.26, Color(0.9, 0.75, 0.45), 0.6],
 		[3.4, 0.3, Color(0.25, 0.5, 0.85), 0.45], [4.3, 0.22, Color(0.8, 0.3, 0.15), 0.33],
@@ -239,6 +238,15 @@ func _ride_tick(t: float, _delta: float) -> void:
 	_ride_w = _w(t)
 	_theta = _theta0 + _theta_at(t)
 	_animate(_idle_t)
+
+
+func get_rider_mounts() -> Array:
+	## The bobbing part of each inner-ring sled (the paying rider always gets an outer one);
+	## Funfair seats a couple of locals on them in the sit pose.
+	var out: Array = []
+	for i in range(OUTER, _sleds.size()):
+		out.append(_sleds[i].get_child(0))
+	return out
 
 
 func get_seat_transform(_time: float) -> Transform3D:
