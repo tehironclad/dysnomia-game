@@ -536,7 +536,7 @@ func _create_flashlight() -> void:
 	_flashlight.spot_range = 60.0
 	_flashlight.spot_angle = 34.0
 	_flashlight.spot_attenuation = 0.7
-	_flashlight.shadow_enabled = true
+	_flashlight.shadow_enabled = RenderingServer.get_current_rendering_method() != "gl_compatibility"
 	_flashlight.shadow_bias = 0.04
 	_flashlight.visible = false
 	_flashlight.light_cull_mask = 0xFFFFFFFD  # every layer but 2 (the player's own model)
