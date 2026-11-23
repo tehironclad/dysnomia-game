@@ -63,6 +63,7 @@ func _ready() -> void:
 	Config.register_terrain(terrain.material)
 	sky.setup(terrain.params, String(territory["address"]))
 	Config.register_sky(sky.material)
+	Config.auto_changed.connect(func(t): hud.ticker(t, DeepFieldTheme.ICE, 14.0))
 	core.build(terrain.params, territory, terrain.heightfield.core_height)
 	state = TerritoryState.new()
 	state.name = "State"
@@ -104,6 +105,9 @@ func _ready() -> void:
 	core.add_child(lattice)
 	lattice.build(DeepField.to_color(terrain.params["color"]))
 	actions.lattice = lattice
+	if Config.last_note != "":
+		hud.ticker(Config.last_note, DeepFieldTheme.ICE, 14.0)
+		Config.last_note = ""
 	World.launched.connect(func(_a): hud.ticker("WORLD DEPLOYED · verified on-chain · block %d" % World.block, Color("#ffd27a"), 120.0))
 	World.start()
 	score = TerritoryScore.new()

@@ -7,6 +7,7 @@ extends PanelContainer
 signal settings_closed
 
 var _quality: OptionButton
+var _auto: CheckBox
 var _render: HSlider
 var _fullscreen: CheckBox
 var _vsync: CheckBox
@@ -47,6 +48,8 @@ func _ready() -> void:
 	for n in Config.QUALITY_NAMES:
 		_quality.add_item(n)
 	_row(grid, "Graphics quality", _quality)
+	_auto = _check(grid, "Adjust graphics automatically")
+	_quality.item_selected.connect(func(_i): _auto.button_pressed = false)  # a level picked by hand stays
 	_render = _slider(grid, "Render distance (m)", 300.0, 2000.0, 50.0)
 	_fullscreen = _check(grid, "Fullscreen")
 	_vsync = _check(grid, "V-Sync")
@@ -70,7 +73,7 @@ func _ready() -> void:
 	_note.theme_type_variation = "MutedLabel"
 	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_note.custom_minimum_size = Vector2(520, 0)
-	_note.text = "Low renders at 60% resolution (FSR upscaled), with less fractal detail and no shadows: pick it on slower PCs. The chain is the source of truth; the site accelerator only speeds up a few reads. RPC and port changes apply to new requests and the next wallet connection."
+	_note.text = _detected_line() + "Low renders at 60% resolution (FSR upscaled), with less fractal detail and no shadows: pick it on slower PCs. The chain is the source of truth; the site accelerator only speeds up a few reads. RPC and port changes apply to new requests and the next wallet connection."
 	col.add_child(_note)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
@@ -119,8 +122,13 @@ func _slider(grid: GridContainer, label: String, lo: float, hi: float, step: flo
 	return s
 
 
+func _detected_line() -> String:
+	return ("This PC: %s. Automatic picks a level from it and follows the frame rate (never past High); picking a level turns it off.\n" % Config.detected) if Config.detected != "" else ""
+
+
 func _load_from_config() -> void:
 	_quality.select(clampi(Config.graphics_quality, 0, Config.QUALITY_NAMES.size() - 1))
+	_auto.button_pressed = Config.auto_quality
 	_render.value = Config.render_distance
 	_fullscreen.button_pressed = Config.fullscreen
 	_vsync.button_pressed = Config.vsync
@@ -138,6 +146,7 @@ func _load_from_config() -> void:
 
 func _apply() -> void:
 	Config.graphics_quality = _quality.selected
+	Config.auto_quality = _auto.button_pressed
 	Config.render_distance = _render.value
 	Config.fullscreen = _fullscreen.button_pressed
 	Config.vsync = _vsync.button_pressed

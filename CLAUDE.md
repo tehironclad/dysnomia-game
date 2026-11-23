@@ -73,6 +73,11 @@
 - Collision: `scripts/world/solid.gd` (`Solid.box/cylinder/wrap`). Solid: the Core's room walls (doorway
   open), pylons, skyline towers (resized with them), the monolith, the World plinth, development props.
   Walk-through on purpose: the Heart, beacon/spire (sky), well basins, landing pads, floor lamps.
+- Automatic graphics (`Config.recommend/decide`): on first launch the GPU (name and type), cores and RAM pick
+  the level and renderer; a software or old Intel GPU relaunches the game itself with
+  `--rendering-method gl_compatibility` (an explicit `--rendering-method`/`--quality=` on the command line is
+  respected). In play, 10 s frame-rate windows step the level down (<24 fps) or up (headroom; never past
+  High). F2 has the "Adjust graphics automatically" box. Tools run with `-s` and headless runs skip all of this.
 - Textures: `assets/textures/polyhaven` (CC0 moon regolith in the terrain shader; metal plates).
 - `tools/avatar_sheet.gd -- --out=<png> --mode=heads|poses|closeup [--head=rat --acc=crown]` renders the
   avatar in a studio (needs Xvfb). Heads come from the LAU's Username/name/symbol (`AvatarHeads`).
