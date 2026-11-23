@@ -15,7 +15,8 @@ var _quality := -1
 var _warp := ""
 var _session := ""
 var _open := ""
-var _toggle := ""  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
+var _toggle := ""
+var _head := ""  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
 func _initialize() -> void:
@@ -30,6 +31,8 @@ func _initialize() -> void:
 			_frames = int(a.substr(9))
 		elif a.begins_with("--session="):
 			_session = a.substr(10)  # read-only: view a wallet's identity (no signing)
+		elif a.begins_with("--head="):
+			_head = a.substr(7)
 		elif a.begins_with("--toggle="):
 			_toggle = a.substr(9)
 		elif a.begins_with("--open="):
@@ -68,6 +71,19 @@ func _run() -> void:
 		var acts = current_scene.get("actions") if current_scene else null
 		if acts:
 			acts.call("open_" + _open)
+	if _head != "" and current_scene:
+		# With a session: the wallet's local head choice, exactly as the identity
+		# card's picker stores it (the chain-derived head is the default).
+		if _session != "":
+			load("res://scripts/player/avatar_heads.gd").set_local_choice(_session, _head.split(":")[0])
+			root.get_node("Session").changed.emit()
+		else:
+			for i in 20:
+				await process_frame
+			var model = current_scene.get_node_or_null("Player/PlayerModel")
+			if model:
+				var parts := _head.split(":")
+				model.set_head(parts[0], Array(parts[1].split(",")) if parts.size() > 1 else [])
 	if _toggle != "" and current_scene and current_scene.get(_toggle) != null:
 		current_scene.get(_toggle).toggle()
 	for i in _frames:

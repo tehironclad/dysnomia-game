@@ -15,6 +15,8 @@ var error := ""
 var lau := ""  # "" = none registered
 var yue := ""
 var username := ""
+var lau_name := ""  # LAU name() (ERC-20, fixed at New)
+var lau_symbol := ""  # LAU symbol()
 var pole := ""  # Saat(0): the same for every LAU
 var soul := ""  # Saat(1)
 var aura := ""  # Saat(2) = uint160(wallet) % MotzkinPrime
@@ -57,6 +59,11 @@ func is_bouncer() -> bool:
 	return BigInt.cmp(total("crows"), BigInt.mul_small(BigInt.from_decimal(ONE), 25)) >= 0
 
 
+## The avatar head this LAU's own on-chain text asks for (AvatarHeads rules).
+func head_kind() -> String:
+	return AvatarHeads.kind_for(username, lau_name, lau_symbol)
+
+
 func is_banned() -> bool:
 	return not BigInt.is_zero(total("without"))
 
@@ -89,6 +96,8 @@ static func read(p_wallet: String) -> PlayerState:
 		calls.append(Multicall.make_call(st.lau, "Username()"))
 		for i in 3:
 			calls.append(Multicall.make_call(st.lau, "Saat(uint256)", [i]))
+		calls.append(Multicall.make_call(st.lau, "name()"))
+		calls.append(Multicall.make_call(st.lau, "symbol()"))
 	var holders := {"wallet": st.wallet}
 	if st.has_lau():
 		holders["lau"] = st.lau
@@ -111,7 +120,11 @@ static func read(p_wallet: String) -> PlayerState:
 		st.pole = saat[0]
 		st.soul = saat[1]
 		st.aura = saat[2]
-		k = 4
+		var nm = Multicall.value(r2[4], ["string"])
+		var sy = Multicall.value(r2[5], ["string"])
+		st.lau_name = String(nm[0]) if nm != null else ""
+		st.lau_symbol = String(sy[0]) if sy != null else ""
+		k = 6
 	for o in order:
 		var v = Multicall.value(r2[k], ["uint256"])
 		if not st.holdings.has(o[0]):

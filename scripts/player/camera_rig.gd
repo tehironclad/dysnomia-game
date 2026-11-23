@@ -1,11 +1,10 @@
 extends Node3D
-## Third-person camera rig with SpringArm3D for collision avoidance.
-## Three camera modes:
-##   0 = Third-Person (yaw rotates player body, camera follows behind)
-##   1 = Free Orbit (yaw rotates camera around player, 360° view)
-##   2 = First-Person (camera at head, no spring arm)
-##
-## Z key cycles: 3rd Person → Free Orbit → 1st Person → 3rd Person
+## Camera rig with SpringArm3D for collision avoidance. Two modes:
+##   Third person (default, GTA-style): the mouse orbits the camera freely around
+##     the player (its yaw is held in world space); the body turns to face the
+##     direction it moves (player_controller), never the camera.
+##   First person: the camera sits at the head and the mouse turns the body.
+## The toggle_camera action switches between them.
 
 @export var mouse_sensitivity: float = 0.003
 @export var follow_distance: float = 3.5
@@ -20,7 +19,8 @@ extends Node3D
 enum CameraMode { THIRD_PERSON, FREE_ORBIT, FIRST_PERSON }
 
 var _pitch: float = -0.2  # Slight downward angle
-var _yaw: float = 0.0     # Only used in free orbit mode (local yaw on rig)
+var _yaw: float = 0.0     # third person: the camera's WORLD yaw (independent of the body)
+var _yaw_ready := false
 var _camera_mode: int = CameraMode.THIRD_PERSON
 
 @onready var spring_arm: SpringArm3D = $SpringArm3D
@@ -58,14 +58,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		var invert_mult: float = -1.0 if Config and Config.invert_y else 1.0
 
 		match _camera_mode:
-			CameraMode.THIRD_PERSON:
-				# Yaw rotates the player body
-				get_parent().rotate_y(-event.relative.x * mouse_sensitivity)
-				_pitch -= event.relative.y * mouse_sensitivity * invert_mult
-				_pitch = clampf(_pitch, deg_to_rad(pitch_min_deg), deg_to_rad(pitch_max_deg))
-
-			CameraMode.FREE_ORBIT:
-				# Yaw rotates the camera rig (orbit around player)
+			CameraMode.THIRD_PERSON, CameraMode.FREE_ORBIT:
+				# Orbit the camera; the body is not turned by the mouse.
 				_yaw -= event.relative.x * mouse_sensitivity
 				_pitch -= event.relative.y * mouse_sensitivity * invert_mult
 				_pitch = clampf(_pitch, deg_to_rad(pitch_min_deg), deg_to_rad(pitch_max_deg))
@@ -90,15 +84,14 @@ func _process(delta: float) -> void:
 	# Apply pitch to spring arm
 	spring_arm.rotation.x = _pitch
 
-	# Apply yaw to rig in free orbit mode
-	if _camera_mode == CameraMode.FREE_ORBIT:
-		rotation.y = _yaw
+	if not _yaw_ready:
+		_yaw = get_parent().global_rotation.y
+		_yaw_ready = true
+	if _camera_mode == CameraMode.FIRST_PERSON:
+		rotation.y = 0.0
 	else:
-		# Smoothly return rig yaw to 0 when leaving free orbit
-		if absf(rotation.y) > 0.001:
-			rotation.y = lerpf(rotation.y, 0.0, 8.0 * delta)
-		else:
-			rotation.y = 0.0
+		# Hold the camera's yaw in world space while the body turns under it.
+		global_rotation.y = _yaw
 
 	# Sprint FOV effect
 	var target_fov: float = sprint_fov if Input.is_action_pressed("sprint") else base_fov
@@ -106,17 +99,13 @@ func _process(delta: float) -> void:
 
 
 func _on_camera_mode_changed(_first_person: bool) -> void:
-	# Cycle through 3 modes: 3rd → Free → 1st → 3rd
-	_camera_mode = (_camera_mode + 1) % 3
+	# Third person (free camera) ↔ first person.
+	_camera_mode = CameraMode.FIRST_PERSON if _camera_mode != CameraMode.FIRST_PERSON else CameraMode.THIRD_PERSON
 
 	match _camera_mode:
 		CameraMode.THIRD_PERSON:
 			spring_arm.spring_length = follow_distance
-			# Transfer free orbit yaw back to player body so transition is seamless
-			if absf(_yaw) > 0.01:
-				get_parent().rotate_y(_yaw)
-				_yaw = 0.0
-				rotation.y = 0.0
+			_yaw = get_parent().global_rotation.y  # start behind where the body faces
 			GameManager.is_first_person = false
 
 		CameraMode.FREE_ORBIT:
@@ -128,11 +117,9 @@ func _on_camera_mode_changed(_first_person: bool) -> void:
 
 		CameraMode.FIRST_PERSON:
 			spring_arm.spring_length = 0.0
-			# Transfer yaw back to player body
-			if absf(_yaw) > 0.01:
-				get_parent().rotate_y(_yaw)
-				_yaw = 0.0
-				rotation.y = 0.0
+			# The body turns to where the camera was looking.
+			get_parent().global_rotation.y = _yaw
+			rotation.y = 0.0
 			GameManager.is_first_person = true
 
 

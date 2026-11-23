@@ -17,6 +17,7 @@ var _lines: Label
 var _state: Label
 var _reason: Label
 var _bodies := {}
+var _head_pick: OptionButton
 
 
 func _init() -> void:
@@ -63,11 +64,40 @@ func _init() -> void:
 		d.add_theme_font_size_override("font_size", 11)
 		grid.add_child(d)
 		_bodies[h[0]] = {"dot": l, "detail": d}
+	var hrow := HBoxContainer.new()
+	col.add_child(hrow)
+	var hl := Label.new()
+	hl.theme_type_variation = "MutedLabel"
+	hl.text = "Avatar head"
+	hrow.add_child(hl)
+	_head_pick = OptionButton.new()
+	_head_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_head_pick.item_selected.connect(_on_head_picked)
+	hrow.add_child(_head_pick)
 
 
 func _ready() -> void:
 	Session.changed.connect(refresh)
 	refresh()
+
+
+## The first entry follows the LAU's on-chain name/symbol; the rest are a local
+## choice for this wallet on this machine.
+func _fill_heads(w: String, ps: PlayerState) -> void:
+	_head_pick.visible = true
+	_head_pick.clear()
+	_head_pick.add_item("from my LAU: %s (%s %s)" % [ps.head_kind(), ps.lau_name, ps.lau_symbol])
+	for k in AvatarHeads.KINDS:
+		_head_pick.add_item("%s (my choice, this machine)" % k)
+	var pick := AvatarHeads.local_choice(w)
+	_head_pick.select(0 if pick == "" else 1 + AvatarHeads.KINDS.find(pick))
+
+
+func _on_head_picked(i: int) -> void:
+	if Session.wallet == "":
+		return
+	AvatarHeads.set_local_choice(Session.wallet, "" if i == 0 else String(AvatarHeads.KINDS[i - 1]))
+	Session.changed.emit()
 
 
 func refresh() -> void:
@@ -80,6 +110,7 @@ func refresh() -> void:
 		emblem.visible = false
 		for k in _bodies:
 			_bodies[k]["detail"].text = "—"
+		_head_pick.visible = false
 		return
 	emblem.visible = true
 	var p := DeepField.for_identity(w)
@@ -91,6 +122,7 @@ func refresh() -> void:
 		_state.text = ""
 		return
 	_name.text = (ps.username if ps.username != "" else "(no username)").to_upper()
+	_fill_heads(w, ps)
 	_lines.text = "wallet %s\nLAU    %s\nYUE    %s\nSoul %s · Aura %s\nblock %d" % [
 		w, ps.lau if ps.has_lau() else "— (none registered)", ps.yue if ps.has_yue() else "— (not started)",
 		ps.soul if ps.soul != "" else "—", ps.aura if ps.aura != "" else DeepField.aura(w), ps.block]

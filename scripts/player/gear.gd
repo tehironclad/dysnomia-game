@@ -5,7 +5,8 @@ extends Node3D
 ##   bars at 3+ territories → an orbiting spark;  at 10+ → an orbit ring
 ##   leading any territory → a halo (a floor: among known players)
 ##   ladder rank 1         → a crown (only if the site's ladder confirms it)
-## Plus the player's Aura fractal as a chest emblem.
+## Plus the player's Aura fractal as a chest emblem, and the head their LAU's
+## name/symbol asks for (AvatarHeads), or the one they picked locally.
 
 var _spark: MeshInstance3D
 var _ring: MeshInstance3D
@@ -98,6 +99,11 @@ func refresh() -> void:
 		if Session.player.soul != "":
 			model.apply_appearance(PlayerAppearance.from_identity(Session.player.soul, Session.player.aura))
 		model.set_crow(Session.player.is_bouncer())
+		# The head: the LAU's own on-chain text decides (🐀👑 RatKing → rat + crown),
+		# unless the player picked one for themselves on this machine.
+		var ps: PlayerState = Session.player
+		var pick := AvatarHeads.local_choice(w)
+		model.set_head(pick if pick != "" else ps.head_kind(), AvatarHeads.accessories_for(ps.username, ps.lau_name, ps.lau_symbol))
 		# No bars anywhere: the bear is drawn grey (no colour until it has acted).
 		model.modulate_grey(Session.bars.is_empty())
 

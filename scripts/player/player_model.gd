@@ -41,6 +41,12 @@ var _elbow_pivot_right: Node3D
 # ─── Mesh References ─────────────────────────────────────────────────
 
 var _head: MeshInstance3D
+## Neck pivot: every head part hangs from it, so the whole head turns together.
+var _head_root: Node3D
+var head_kind := "bear"
+var _custom_head: Node3D
+var _head_extras: Array = []
+const NECK_Y := 1.26
 var _ear_left: MeshInstance3D
 var _ear_right: MeshInstance3D
 var _snout: MeshInstance3D
@@ -717,6 +723,18 @@ func _build_model() -> void:
 	_mouth.rotation_degrees.z = 90.0  # Horizontal orientation
 	_mouth.scale = Vector3(1.0, 1.0, 0.3)  # Flatten against face
 
+	# --- Neck pivot: re-parent the bear's head parts under it ---
+	_head_root = Node3D.new()
+	_head_root.name = "HeadRoot"
+	_head_root.position = Vector3(0.0, NECK_Y, 0.0)
+	add_child(_head_root)
+	for part in _bear_head_parts() + [_helmet_visor]:
+		if part:
+			var at: Vector3 = part.position
+			remove_child(part)
+			_head_root.add_child(part)
+			part.position = at - Vector3(0.0, NECK_Y, 0.0)
+
 	# --- Jetpack Flames (hidden by default, shown when flying) ---
 	_flame_left = _create_flame_particles("FlameLeft")
 	_flame_left.position = Vector3(-0.08, 0.72, -0.24)
@@ -726,11 +744,16 @@ func _build_model() -> void:
 
 
 
+	# --- Skeleton: hips → spine, so a lean or twist carries the whole upper body ---
+	_build_rig()
+
 	# --- Crow Companion ---
 	_build_crow()
 
 	# --- Apply premium shader materials to main body parts ---
 	_apply_shader_materials()
+	# --- Then the suit (after the shader pass, which would overwrite it) ---
+	_dress_suit()
 
 
 func _apply_shader_materials() -> void:
@@ -819,6 +842,43 @@ var _grey := false
 var _orig_colors := {}
 
 
+func _bear_head_parts() -> Array:
+	return [_head, _ear_left, _ear_right, _inner_ear_left, _inner_ear_right, _muzzle_pad, _snout, _nose,
+		_cheek_left, _cheek_right, _eye_left, _eye_right, _eye_shine_left, _eye_shine_right, _mouth,
+		_antenna_shaft, _antenna_tip]
+
+
+## Swaps the head (AvatarHeads.KINDS) and its accessories. "bear" restores the
+## clockwork LAU bear. The helmet visor stays for every head.
+func set_head(kind: String, accessories: Array = []) -> void:
+	if not (kind in AvatarHeads.KINDS):
+		kind = "bear"
+	head_kind = kind
+	if _custom_head:
+		_custom_head.queue_free()
+		_custom_head = null
+	for e in _head_extras:
+		(e as Node).queue_free()
+	_head_extras.clear()
+	for part in _bear_head_parts():
+		if part:
+			part.visible = kind == "bear"
+	if kind != "bear":
+		_custom_head = AvatarHeads.build(kind, _fur_mat.albedo_color if _fur_mat else Color.GRAY)
+		_head_root.add_child(_custom_head)
+	var top := 0.46 if kind != "alien" else 0.56
+	for a in accessories:
+		var n := AvatarHeads.accessory(a, top)
+		_head_root.add_child(n)
+		_head_extras.append(n)
+	# The visor bubble only suits the round heads; long snouts would poke through.
+	if _helmet_visor:
+		_helmet_visor.visible = kind in ["bear", "hamster"]
+	if _grey:
+		_grey = false
+		modulate_grey(true)
+
+
 func set_crow(visible_now: bool) -> void:
 	if _crow_pivot:
 		_crow_pivot.visible = visible_now
@@ -842,7 +902,7 @@ func apply_appearance(appearance: Dictionary) -> void:
 	_snout_mat.albedo_color = fur_color.lightened(0.25)
 
 	# --- Suit is PulseChain purple, accents get identity tint ---
-	_suit_mat.albedo_color = Color(0.22, 0.14, 0.38)
+	_suit_mat.albedo_color = FABRIC
 	var accent_tint := Color(0.35, 0.22, 0.55).lerp(accent_color, 0.15)
 	_accent_mat.albedo_color = accent_tint
 
@@ -859,8 +919,9 @@ func apply_appearance(appearance: Dictionary) -> void:
 	if _suit_shader_mat:
 		var pulse_accent := Color(0.55, 0.36, 0.95).lerp(accent_color, 0.3)
 		_suit_shader_mat.set_shader_parameter("power_accent", Vector3(pulse_accent.r, pulse_accent.g, pulse_accent.b))
+	_tint_suit(accent_color)
 	if _accent_shader_mat:
-		_accent_shader_mat.set_shader_parameter("base_color", Vector3(accent_tint.r, accent_tint.g, accent_tint.b))
+		_accent_shader_mat.set_shader_parameter("base_color", Vector3(ARMOUR.lerp(accent_color, 0.12).r, ARMOUR.lerp(accent_color, 0.12).g, ARMOUR.lerp(accent_color, 0.12).b))
 	if _visor_shader_mat:
 		_visor_shader_mat.set_shader_parameter("emission_strength", 0.0)
 	if _boot_shader_mat:
@@ -898,17 +959,14 @@ func _process(delta: float) -> void:
 	# Accumulate animation time based on movement speed
 	_anim_time += _move_speed * delta * 0.5
 
+	_update_bank(delta)
 	match _anim_state:
-		AnimState.IDLE:
-			_animate_idle(t, delta)
-		AnimState.WALK:
-			_animate_walk(t, delta, 16.0, 10.0)
-		AnimState.SPRINT:
-			_animate_walk(t, delta, 26.0, 16.0)
+		AnimState.IDLE, AnimState.WALK, AnimState.SPRINT:
+			_animate_ground(t, delta)
 		AnimState.FLY:
 			_animate_fly(t, delta)
 		AnimState.FALLING:
-			_animate_falling(t, delta)
+			_animate_air(t, delta)
 
 	# ── Landing squash/stretch spring ──
 	if absf(_land_squash) > 0.001 or absf(_land_squash_vel) > 0.001:
@@ -931,286 +989,348 @@ func _process(delta: float) -> void:
 	_animate_crow(t, delta)
 
 
-func _animate_idle(t: float, delta: float) -> void:
-	## Idle: relaxed breathing, weight shifting, curious head tilts, fidgeting.
-	## Teddy bear personality: slightly inquisitive, occasionally looking around.
-	var blend := 5.0 * delta
+# ─── Skeleton & locomotion ─────────────────────────────────────────────
+# Hips (at the hip joint) carry the legs and the spine; the spine carries the
+# torso, backpack, shoulders, arms and the neck. One blended ground cycle
+# covers idle → walk → run: cadence follows speed (no foot skating), knees lift
+# on the swing, arms counter-swing (elbows bent at a run), hips bob and the
+# shoulders twist against them, and the body banks into turns.
 
-	# Breathing — multi-frequency for organic feel
-	var breath := sin(t * 1.8) * 0.5 + sin(t * 0.7) * 0.3
-	# Occasional deep breath / sigh (every ~15s)
-	var deep_breath := maxf(0.0, sin(t * 0.42)) * maxf(0.0, sin(t * 0.42 - 0.15)) * 2.0
-
-	if _torso:
-		var target_y := _torso_rest_y + (breath + deep_breath) * 0.014
-		_torso.position.y = lerpf(_torso.position.y, target_y, blend)
-		# Relaxed posture with slight slouch
-		_torso.rotation_degrees.x = lerpf(_torso.rotation_degrees.x, 2.0 + deep_breath * 1.5, blend)
-		# Weight shift — slow, lazy figure-8 pattern
-		_torso.rotation_degrees.z = lerpf(_torso.rotation_degrees.z, sin(t * 0.5) * 2.5 + sin(t * 0.3) * 1.2, blend)
-		# Hip turn with occasional bigger look-around
-		var look_around := sin(t * 0.25) * 3.0 + sin(t * 0.08) * 6.0 * maxf(0.0, sin(t * 0.08 + 0.5))
-		_torso.rotation_degrees.y = lerpf(_torso.rotation_degrees.y, look_around, blend)
-
-	# Legs: weight shifting between feet, contrapposto stance
-	var weight_phase := sin(t * 0.3)
-	if _leg_pivot_left:
-		_leg_pivot_left.rotation_degrees.x = lerpf(_leg_pivot_left.rotation_degrees.x, sin(t * 0.4) * 2.0, blend)
-		_leg_pivot_left.rotation_degrees.z = lerpf(_leg_pivot_left.rotation_degrees.z, weight_phase * -1.0, blend)
-	if _leg_pivot_right:
-		_leg_pivot_right.rotation_degrees.x = lerpf(_leg_pivot_right.rotation_degrees.x, sin(t * 0.4 + 1.0) * 2.0, blend)
-		_leg_pivot_right.rotation_degrees.z = lerpf(_leg_pivot_right.rotation_degrees.z, weight_phase * 1.0, blend)
-
-	# Knees: contrapposto — weight on one leg, other relaxed
-	if _knee_pivot_left:
-		_knee_pivot_left.rotation_degrees.x = lerpf(_knee_pivot_left.rotation_degrees.x, maxf(0.0, weight_phase) * 8.0, blend)
-	if _knee_pivot_right:
-		_knee_pivot_right.rotation_degrees.x = lerpf(_knee_pivot_right.rotation_degrees.x, maxf(0.0, -weight_phase) * 8.0, blend)
-
-	# Arms: gentle sway with occasional fidget (touching helmet, adjusting glove)
-	var fidget := maxf(0.0, sin(t * 0.12)) * maxf(0.0, sin(t * 0.12 - 0.2))  # ~every 26s
-	if _arm_pivot_left:
-		var arm_x := 2.0 + sin(t * 0.7) * 3.0 + fidget * 15.0  # Fidget reaches up
-		_arm_pivot_left.rotation_degrees.x = lerpf(_arm_pivot_left.rotation_degrees.x, arm_x, blend)
-		_arm_pivot_left.rotation_degrees.z = lerpf(_arm_pivot_left.rotation_degrees.z, _arm_left_rest_rot_z + sin(t * 0.5) * 2.0, blend)
-	if _arm_pivot_right:
-		_arm_pivot_right.rotation_degrees.x = lerpf(_arm_pivot_right.rotation_degrees.x, 2.0 + sin(t * 0.7 + 1.5) * 3.0, blend)
-		_arm_pivot_right.rotation_degrees.z = lerpf(_arm_pivot_right.rotation_degrees.z, _arm_right_rest_rot_z - sin(t * 0.5) * 2.0, blend)
-
-	# Elbows: natural relaxed bend, curls more during fidget
-	if _elbow_pivot_left:
-		_elbow_pivot_left.rotation_degrees.x = lerpf(_elbow_pivot_left.rotation_degrees.x, -10.0 + sin(t * 0.6) * 3.0 - fidget * 35.0, blend)
-	if _elbow_pivot_right:
-		_elbow_pivot_right.rotation_degrees.x = lerpf(_elbow_pivot_right.rotation_degrees.x, -10.0 + sin(t * 0.6 + 1.2) * 3.0, blend)
-
-	# Head: curious tilts, slow look-around, occasional upward glance
-	if _head:
-		var curiosity := sin(t * 0.15) * 5.0 + sin(t * 0.3) * 3.0  # Bigger look-around
-		_head.rotation_degrees.y = lerpf(_head.rotation_degrees.y, curiosity, blend)
-		_head.rotation_degrees.x = lerpf(_head.rotation_degrees.x, sin(t * 1.8) * 1.5 - deep_breath * 2.0, blend)
-		# Cute head tilt (teddy bear personality)
-		_head.rotation_degrees.z = lerpf(_head.rotation_degrees.z, sin(t * 0.18) * 4.0, blend)
+const HIP_Y := 0.65
+var _hips: Node3D
+var _spine: Node3D
+var _gait := 0.0
+var _run := 0.0
+var _moving := 0.0
+var _bank := 0.0
+var _last_yaw := 0.0
+var _yaw_init := false
 
 
-func _animate_walk(t: float, delta: float, leg_amplitude: float, arm_amplitude: float) -> void:
-	## Walk/Sprint cycle with organic motion. Includes hip rotation, shoulder counter-roll,
-	## asymmetric timing, body sway, and slope adaptation.
-	var blend := 8.0 * delta  # Slightly softer blend for smoother transitions
-	var phase := _anim_time * 4.0
-
-	var is_sprint := leg_amplitude > 25.0
-	var speed_factor := clampf(_move_speed / 14.0, 0.0, 1.0)  # 0 at walk, 1 at full sprint
-
-	# ── Slope adaptation ──
-	var slope_lean := clampf(_slope_angle * 0.4, -12.0, 15.0)  # Lean into hills
-	var slope_stride_mod := 1.0 - clampf(absf(_slope_angle) / 60.0, 0.0, 0.3)  # Shorter strides on slopes
-
-	# ── Torso: forward lean + slope lean + sway + bob ──
-	var base_lean := clampf(_move_speed * 0.35, 0.0, 5.0) + slope_lean
-	if is_sprint:
-		base_lean += 3.0  # Extra lean when sprinting
-	if _torso:
-		_torso.rotation_degrees.x = lerpf(_torso.rotation_degrees.x, base_lean, blend)
-		# Side-to-side sway (hips shift with each step) — key to not looking robotic
-		var sway := sin(phase) * (2.5 + speed_factor * 1.5)
-		_torso.rotation_degrees.z = lerpf(_torso.rotation_degrees.z, sway, blend)
-		# Hip rotation around Y axis (torso twists with walk cycle)
-		_torso.rotation_degrees.y = lerpf(_torso.rotation_degrees.y, sin(phase) * (3.0 + speed_factor * 3.0), blend)
-		# Bounce: double-frequency bob with slight asymmetry
-		var bob := absf(sin(phase * 2.0 + 0.2)) * (0.02 + speed_factor * 0.025)
-		_torso.position.y = lerpf(_torso.position.y, _torso_rest_y + bob, blend)
-
-	# ── Leg swing with asymmetric timing ──
-	# Real walking has a faster forward swing and slower push-back
-	var left_leg_raw := sin(phase)
-	var right_leg_raw := sin(phase + PI)
-	# Asymmetric: sharper forward, slower back
-	var left_leg_shaped := left_leg_raw + sin(phase * 2.0) * 0.15
-	var right_leg_shaped := right_leg_raw + sin((phase + PI) * 2.0) * 0.15
-
-	var stride := leg_amplitude * slope_stride_mod
-	if _leg_pivot_left:
-		_leg_pivot_left.rotation_degrees.x = lerpf(_leg_pivot_left.rotation_degrees.x, left_leg_shaped * stride, blend)
-		# Subtle outward splay during swing
-		_leg_pivot_left.rotation_degrees.z = lerpf(_leg_pivot_left.rotation_degrees.z, sin(phase + 0.5) * 1.5, blend)
-	if _leg_pivot_right:
-		_leg_pivot_right.rotation_degrees.x = lerpf(_leg_pivot_right.rotation_degrees.x, right_leg_shaped * stride, blend)
-		_leg_pivot_right.rotation_degrees.z = lerpf(_leg_pivot_right.rotation_degrees.z, sin(phase + PI + 0.5) * -1.5, blend)
-
-	# ── Knee bending — natural delayed response ──
-	var knee_bend_max: float = 45.0 if is_sprint else 22.0
-	var knee_bend_min: float = 5.0 if is_sprint else 2.0
-	# Uphill: more knee bend on the pushing leg
-	var slope_knee_bonus := clampf(_slope_angle * 0.3, 0.0, 10.0)
-
-	if _knee_pivot_left:
-		var forward_factor := maxf(0.0, sin(phase + 0.5))  # Delayed peak
-		var back_factor := maxf(0.0, -sin(phase + 0.2)) * 0.4  # Slight bend on push-back too
-		var knee_target := knee_bend_min + (forward_factor + back_factor) * (knee_bend_max - knee_bend_min) + slope_knee_bonus * forward_factor
-		_knee_pivot_left.rotation_degrees.x = lerpf(_knee_pivot_left.rotation_degrees.x, knee_target, blend)
-	if _knee_pivot_right:
-		var forward_factor := maxf(0.0, sin(phase + PI + 0.5))
-		var back_factor := maxf(0.0, -sin(phase + PI + 0.2)) * 0.4
-		var knee_target := knee_bend_min + (forward_factor + back_factor) * (knee_bend_max - knee_bend_min) + slope_knee_bonus * forward_factor
-		_knee_pivot_right.rotation_degrees.x = lerpf(_knee_pivot_right.rotation_degrees.x, knee_target, blend)
-
-	# ── Arms: counter-swing with natural bend and shoulder roll ──
-	var arm_swing := arm_amplitude * 0.65
-	var left_arm_sin := sin(phase + PI + 0.15)  # Slight phase offset — arms trail legs
-	var right_arm_sin := sin(phase + 0.15)
-
-	if _arm_pivot_left:
-		_arm_pivot_left.rotation_degrees.x = lerpf(_arm_pivot_left.rotation_degrees.x, left_arm_sin * arm_swing, blend)
-		# Arms swing slightly inward during forward swing (natural cross-body motion)
-		var inward := maxf(0.0, left_arm_sin) * 3.0
-		_arm_pivot_left.rotation_degrees.z = lerpf(_arm_pivot_left.rotation_degrees.z, _arm_left_rest_rot_z - inward, blend)
-	if _arm_pivot_right:
-		_arm_pivot_right.rotation_degrees.x = lerpf(_arm_pivot_right.rotation_degrees.x, right_arm_sin * arm_swing, blend)
-		var inward := maxf(0.0, right_arm_sin) * 3.0
-		_arm_pivot_right.rotation_degrees.z = lerpf(_arm_pivot_right.rotation_degrees.z, _arm_right_rest_rot_z + inward, blend)
-
-	# ── Elbows: natural bend with more curl when arm swings forward ──
-	var elbow_bend_max: float = 40.0 if is_sprint else 18.0
-	var elbow_bend_min: float = 8.0 if is_sprint else 5.0
-
-	if _elbow_pivot_left:
-		var forward_factor := maxf(0.0, left_arm_sin)
-		var elbow_target := -(elbow_bend_min + forward_factor * (elbow_bend_max - elbow_bend_min))
-		_elbow_pivot_left.rotation_degrees.x = lerpf(_elbow_pivot_left.rotation_degrees.x, elbow_target, blend)
-	if _elbow_pivot_right:
-		var forward_factor := maxf(0.0, right_arm_sin)
-		var elbow_target := -(elbow_bend_min + forward_factor * (elbow_bend_max - elbow_bend_min))
-		_elbow_pivot_right.rotation_degrees.x = lerpf(_elbow_pivot_right.rotation_degrees.x, elbow_target, blend)
-
-	# ── Head: counter-rotation for stability + look-ahead tilt ──
-	if _head:
-		_head.rotation_degrees.x = lerpf(_head.rotation_degrees.x, -base_lean * 0.3, blend)
-		# Head counter-sways opposite torso twist (keeps eyes level)
-		_head.rotation_degrees.y = lerpf(_head.rotation_degrees.y, -sin(phase) * 2.5, blend)
-		_head.rotation_degrees.z = lerpf(_head.rotation_degrees.z, -sin(phase) * 1.5, blend)
-		# Excited head bob during sprint (teddy bear energy)
-		if is_sprint:
-			_head.rotation_degrees.x += sin(phase * 2.0) * 2.0
+func _build_rig() -> void:
+	_hips = Node3D.new()
+	_hips.name = "Hips"
+	_hips.position = Vector3(0.0, HIP_Y, 0.0)
+	add_child(_hips)
+	_spine = Node3D.new()
+	_spine.name = "Spine"
+	_hips.add_child(_spine)
+	for n in [_leg_pivot_left, _leg_pivot_right, _belt]:
+		_reparent(n, _hips)
+	for n in [_torso, _seam_left, _seam_right, _chest_panel, _shoulder_left, _shoulder_right, _arm_pivot_left,
+			_arm_pivot_right, _backpack, _status_green, _status_amber, _status_red, _tube_left, _tube_right,
+			_helmet_ring, _head_root, _flame_left, _flame_right]:
+		_reparent(n, _spine)
 
 
+func _reparent(n: Node3D, to: Node3D) -> void:
+	if n == null:
+		return
+	var at := n.position
+	n.get_parent().remove_child(n)
+	to.add_child(n)
+	n.position = at - Vector3(0.0, HIP_Y, 0.0)
+
+
+## Yaw rate of the body → a lean into the turn (degrees, + = turning left).
+func _update_bank(delta: float) -> void:
+	var yaw := global_rotation.y
+	if not _yaw_init:
+		_last_yaw = yaw
+		_yaw_init = true
+	var rate := wrapf(yaw - _last_yaw, -PI, PI) / maxf(delta, 0.0001)
+	_last_yaw = yaw
+	var target := clampf(rate * _move_speed * 1.4, -16.0, 16.0) if _on_ground or _is_flying else 0.0
+	_bank = lerpf(_bank, target, clampf(6.0 * delta, 0.0, 1.0))
+
+
+static func _ease_to(cur: float, target: float, k: float) -> float:
+	return lerpf(cur, target, clampf(k, 0.0, 1.0))
+
+
+func _pose_leg(pivot: Node3D, knee: Node3D, hip_fwd: float, knee_flex: float, splay: float, k: float) -> void:
+	if pivot:
+		pivot.rotation_degrees.x = _ease_to(pivot.rotation_degrees.x, -hip_fwd, k)
+		pivot.rotation_degrees.z = _ease_to(pivot.rotation_degrees.z, splay, k)
+	if knee:
+		knee.rotation_degrees.x = _ease_to(knee.rotation_degrees.x, knee_flex, k)
+
+
+func _pose_arm(pivot: Node3D, elbow: Node3D, fwd: float, out: float, elbow_flex: float, k: float) -> void:
+	if pivot:
+		pivot.rotation_degrees.x = _ease_to(pivot.rotation_degrees.x, -fwd, k)
+		pivot.rotation_degrees.z = _ease_to(pivot.rotation_degrees.z, out, k)
+	if elbow:
+		elbow.rotation_degrees.x = _ease_to(elbow.rotation_degrees.x, -elbow_flex, k)
+
+
+func _animate_ground(t: float, delta: float) -> void:
+	var k := 14.0 * delta
+	var spd := _move_speed
+	_moving = _ease_to(_moving, clampf(spd / 1.2, 0.0, 1.0), 8.0 * delta)
+	_run = move_toward(_run, clampf((spd - 6.5) / 5.0, 0.0, 1.0), delta * 3.0)
+	# Two steps cover cycle_len metres; longer strides at a run.
+	var cycle_len := lerpf(2.1, 4.6, _run)
+	_gait = fmod(_gait + TAU * spd / cycle_len * delta, TAU)
+	var m := _moving
+	var r := _run
+	var ph := _gait
+	var slope := clampf(_slope_angle * 0.35, -10.0, 12.0)
+
+	# Legs: hip swing, knee lift peaking early in the swing, a little stance bend.
+	var hip_amp := lerpf(26.0, 44.0, r) * m
+	var knee_amp := lerpf(38.0, 100.0, r) * m
+	var idle_shift := sin(t * 0.45) * (1.0 - m)
+	for side in [0, 1]:
+		var p: float = ph + PI * side
+		var hip := hip_amp * sin(p)
+		var swing := pow(maxf(0.0, cos(p + 0.45)), 1.3)
+		var stance := maxf(0.0, -cos(p)) * lerpf(6.0, 14.0, r) * m
+		var knee := lerpf(4.0, 8.0, r) * m + knee_amp * swing + stance
+		knee += maxf(0.0, idle_shift * (1.0 if side == 0 else -1.0)) * 7.0  # contrapposto at rest
+		var splay := (-1.5 if side == 0 else 1.5) * (1.0 - r * 0.5)
+		if side == 0:
+			_pose_leg(_leg_pivot_left, _knee_pivot_left, hip + slope * 0.3, knee, splay, k)
+		else:
+			_pose_leg(_leg_pivot_right, _knee_pivot_right, hip + slope * 0.3, knee, splay, k)
+
+	# Arms: opposite to the legs; bent and pumping at a run, loose at a walk.
+	var arm_amp := lerpf(24.0, 58.0, r) * m
+	var breath := sin(t * 1.7) * (1.0 - m)
+	for side in [0, 1]:
+		var p2: float = ph + PI * side
+		var fwd := -arm_amp * sin(p2) + 4.0 + breath * 2.0
+		var elbow := lerpf(12.0, 88.0, r) + maxf(0.0, fwd) * lerpf(0.45, 0.25, r) + (1.0 - m) * 4.0
+		if side == 0:
+			_pose_arm(_arm_pivot_left, _elbow_pivot_left, fwd, _arm_left_rest_rot_z - r * 6.0 + sin(t * 0.5) * 1.5 * (1.0 - m), elbow, k)
+		else:
+			_pose_arm(_arm_pivot_right, _elbow_pivot_right, fwd, _arm_right_rest_rot_z + r * 6.0 - sin(t * 0.5) * 1.5 * (1.0 - m), elbow, k)
+
+	# Hips: bob (lowest at heel strike while walking, a crouched spring while running),
+	# side sway, the landing dip, and the bank into turns.
+	if _hips:
+		var bob := lerpf(0.035 * cos(2.0 * ph), -0.055 * cos(2.0 * ph) - 0.04, r) * m
+		bob += (breath * 0.008) - maxf(0.0, _land_squash) * 0.16
+		_hips.position.y = _ease_to(_hips.position.y, HIP_Y + bob, k)
+		_hips.rotation_degrees.z = _ease_to(_hips.rotation_degrees.z, 3.0 * sin(ph) * m * (1.0 - r) + idle_shift * 2.0 - _bank, k)
+		_hips.rotation_degrees.y = _ease_to(_hips.rotation_degrees.y, -5.0 * sin(ph) * m, k)
+		_hips.rotation_degrees.x = _ease_to(_hips.rotation_degrees.x, 0.0, k)
+	# Spine: lean with speed and slope, shoulders twist against the hips, breathing.
+	if _spine:
+		var lean := lerpf(2.0, lerpf(6.0, 15.0, r), m) + slope + breath * 1.2
+		_spine.rotation_degrees.x = _ease_to(_spine.rotation_degrees.x, lean, k)
+		_spine.rotation_degrees.y = _ease_to(_spine.rotation_degrees.y, 9.0 * sin(ph) * m * (0.6 + r * 0.6), k)
+		_spine.rotation_degrees.z = _ease_to(_spine.rotation_degrees.z, -1.5 * sin(ph) * m - _bank * 0.4, k)
+	# Head: steady eyes (counter the lean and twist); looks around when idle.
+	if _head_root:
+		var look := (sin(t * 0.15) * 14.0 + sin(t * 0.31) * 6.0) * (1.0 - m)
+		_head_root.rotation_degrees.x = _ease_to(_head_root.rotation_degrees.x, -lerpf(2.0, 10.0, r) * m * 0.7 + breath * 1.5, k)
+		_head_root.rotation_degrees.y = _ease_to(_head_root.rotation_degrees.y, -9.0 * sin(ph) * m * 0.8 + look, k)
+		_head_root.rotation_degrees.z = _ease_to(_head_root.rotation_degrees.z, _bank * 0.3 + sin(t * 0.2) * 3.0 * (1.0 - m), k)
+
+
+## Off the ground: a tuck while rising, arms out and legs reaching while falling.
+func _animate_air(t: float, delta: float) -> void:
+	var k := 9.0 * delta
+	var rising := clampf(_vertical_speed / 6.0, 0.0, 1.0)
+	var falling := clampf(-_vertical_speed / 10.0, 0.0, 1.0)
+	var flail := sin(t * 3.0) * 6.0 * falling
+	_pose_leg(_leg_pivot_left, _knee_pivot_left, lerpf(8.0, 38.0, rising) - falling * 4.0, lerpf(18.0, 75.0, rising), -4.0 - falling * 4.0, k)
+	_pose_leg(_leg_pivot_right, _knee_pivot_right, lerpf(-6.0, 18.0, rising) + falling * 6.0, lerpf(26.0, 55.0, rising), 4.0 + falling * 4.0, k)
+	_pose_arm(_arm_pivot_left, _elbow_pivot_left, lerpf(-15.0, 20.0, rising) + flail, _arm_left_rest_rot_z + lerpf(30.0, 12.0, rising) + falling * 25.0, 30.0 + flail, k)
+	_pose_arm(_arm_pivot_right, _elbow_pivot_right, lerpf(-15.0, 20.0, rising) - flail, _arm_right_rest_rot_z - lerpf(30.0, 12.0, rising) - falling * 25.0, 30.0 - flail, k)
+	if _hips:
+		_hips.position.y = _ease_to(_hips.position.y, HIP_Y, k)
+		_hips.rotation_degrees.x = _ease_to(_hips.rotation_degrees.x, 0.0, k)
+		_hips.rotation_degrees.z = _ease_to(_hips.rotation_degrees.z, 0.0, k)
+	if _spine:
+		_spine.rotation_degrees.x = _ease_to(_spine.rotation_degrees.x, lerpf(-4.0, 10.0, rising), k)
+		_spine.rotation_degrees.z = _ease_to(_spine.rotation_degrees.z, sin(t * 1.4) * 3.0 * falling, k)
+	if _head_root:
+		_head_root.rotation_degrees.x = _ease_to(_head_root.rotation_degrees.x, falling * 12.0 - rising * 4.0, k)
+
+
+## Flying: the jetpack pose — the whole body pitched into the direction of
+## travel, arms swept back along the sides, legs trailing, banking into turns.
 func _animate_fly(t: float, delta: float) -> void:
-	## Flying: dynamic pose that responds to direction. Arms stream back like a diver,
-	## body tilts with velocity, legs trail with wind resistance feel.
-	var blend := 5.0 * delta
-
-	# Tilt based on vertical speed — diving down or boosting up
-	var vert_tilt := clampf(_vertical_speed * 2.0, -20.0, 25.0)  # Nose down when descending
-	var horiz_speed := _move_speed
-	var speed_tilt := clampf(horiz_speed * 0.6, 0.0, 18.0)  # Lean forward when moving fast
-
-	# Wind buffet — subtle random perturbation at speed
-	var wind := sin(t * 3.7) * 2.0 + sin(t * 5.3) * 1.0
-
-	if _torso:
-		_torso.rotation_degrees.x = lerpf(_torso.rotation_degrees.x, speed_tilt + vert_tilt * 0.5, blend)
-		# Bank into turns — torso rolls based on lateral velocity relative to facing
-		var bank := clampf(_velocity.x * 0.3, -8.0, 8.0) + wind * 0.5
-		_torso.rotation_degrees.z = lerpf(_torso.rotation_degrees.z, bank, blend)
-		_torso.position.y = lerpf(_torso.position.y, _torso_rest_y, blend)
-
-	# Arms: stream back like a skydiver, hands trail behind at speed
-	# At low speed: relaxed spread; at high speed: swept back
-	var arm_sweep := clampf(horiz_speed * 1.5, 0.0, 25.0)  # How far back arms go
-	var arm_spread := lerpf(30.0, 12.0, clampf(horiz_speed / 20.0, 0.0, 1.0))  # Less spread at speed
-
-	if _arm_pivot_left:
-		_arm_pivot_left.rotation_degrees.x = lerpf(_arm_pivot_left.rotation_degrees.x, 10.0 + arm_sweep + sin(t * 1.2) * 3.0, blend)
-		_arm_pivot_left.rotation_degrees.z = lerpf(_arm_pivot_left.rotation_degrees.z, arm_spread + wind * 0.8, blend)
-	if _arm_pivot_right:
-		_arm_pivot_right.rotation_degrees.x = lerpf(_arm_pivot_right.rotation_degrees.x, 10.0 + arm_sweep + sin(t * 1.2 + 0.7) * 3.0, blend)
-		_arm_pivot_right.rotation_degrees.z = lerpf(_arm_pivot_right.rotation_degrees.z, -arm_spread - wind * 0.8, blend)
-
-	# Elbows: more bent at low speed (relaxed), straighter when streaming back
-	var elbow_bend := lerpf(-25.0, -8.0, clampf(horiz_speed / 20.0, 0.0, 1.0))
-	if _elbow_pivot_left:
-		_elbow_pivot_left.rotation_degrees.x = lerpf(_elbow_pivot_left.rotation_degrees.x, elbow_bend + sin(t * 1.8) * 4.0, blend)
-	if _elbow_pivot_right:
-		_elbow_pivot_right.rotation_degrees.x = lerpf(_elbow_pivot_right.rotation_degrees.x, elbow_bend + sin(t * 1.8 + 1.2) * 4.0, blend)
-
-	# Legs: trail behind, slightly apart, with knee bend that responds to speed
-	var leg_trail := 10.0 + clampf(horiz_speed * 0.5, 0.0, 15.0)
-	if _leg_pivot_left:
-		_leg_pivot_left.rotation_degrees.x = lerpf(_leg_pivot_left.rotation_degrees.x, leg_trail + sin(t * 0.9) * 3.0, blend)
-		_leg_pivot_left.rotation_degrees.z = lerpf(_leg_pivot_left.rotation_degrees.z, -4.0 + wind * 0.3, blend)
-	if _leg_pivot_right:
-		_leg_pivot_right.rotation_degrees.x = lerpf(_leg_pivot_right.rotation_degrees.x, leg_trail + sin(t * 0.9 + 1.5) * 3.0, blend)
-		_leg_pivot_right.rotation_degrees.z = lerpf(_leg_pivot_right.rotation_degrees.z, 4.0 - wind * 0.3, blend)
-
-	# Knees: relaxed dangle with gentle wind motion
-	if _knee_pivot_left:
-		_knee_pivot_left.rotation_degrees.x = lerpf(_knee_pivot_left.rotation_degrees.x, 15.0 + sin(t * 1.1) * 5.0 + wind * 0.5, blend)
-	if _knee_pivot_right:
-		_knee_pivot_right.rotation_degrees.x = lerpf(_knee_pivot_right.rotation_degrees.x, 15.0 + sin(t * 1.1 + 1.8) * 5.0 - wind * 0.5, blend)
-
-	# Head: counter-tilt to keep looking forward, slight wind wobble
-	if _head:
-		_head.rotation_degrees.x = lerpf(_head.rotation_degrees.x, -(speed_tilt + vert_tilt * 0.3) * 0.4, blend)
-		_head.rotation_degrees.z = lerpf(_head.rotation_degrees.z, wind * 0.6, blend)
-
-	# Jetpack flame intensity scales with speed
+	var k := 6.0 * delta
+	var sp := clampf(_move_speed / 30.0, 0.0, 1.0)
+	var climb := clampf(_vertical_speed / 10.0, -1.0, 1.0)
+	var wind := sin(t * 3.7) * 1.5 + sin(t * 5.3) * 0.8
+	var pitch := lerpf(8.0, 72.0, sp) - climb * 25.0
+	if _hips:
+		_hips.position.y = _ease_to(_hips.position.y, HIP_Y + 0.15, k)
+		_hips.rotation_degrees.x = _ease_to(_hips.rotation_degrees.x, pitch, k)
+		_hips.rotation_degrees.z = _ease_to(_hips.rotation_degrees.z, -_bank * 1.6 + wind, k)
+		_hips.rotation_degrees.y = _ease_to(_hips.rotation_degrees.y, 0.0, k)
+	if _spine:
+		_spine.rotation_degrees.x = _ease_to(_spine.rotation_degrees.x, -6.0 * sp, k)
+		_spine.rotation_degrees.y = _ease_to(_spine.rotation_degrees.y, 0.0, k)
+		_spine.rotation_degrees.z = _ease_to(_spine.rotation_degrees.z, 0.0, k)
+	var kick := sin(t * 2.2) * 6.0 * (1.0 - sp * 0.5)
+	_pose_leg(_leg_pivot_left, _knee_pivot_left, -4.0 + kick, 12.0 + kick * 0.5, -5.0, k)
+	_pose_leg(_leg_pivot_right, _knee_pivot_right, -4.0 - kick, 18.0 - kick * 0.5, 5.0, k)
+	var sweep := lerpf(10.0, 30.0, sp)
+	_pose_arm(_arm_pivot_left, _elbow_pivot_left, -sweep, _arm_left_rest_rot_z + lerpf(22.0, 10.0, sp) + wind, lerpf(25.0, 6.0, sp), k)
+	_pose_arm(_arm_pivot_right, _elbow_pivot_right, -sweep, _arm_right_rest_rot_z - lerpf(22.0, 10.0, sp) - wind, lerpf(25.0, 6.0, sp), k)
+	if _head_root:
+		_head_root.rotation_degrees.x = _ease_to(_head_root.rotation_degrees.x, -pitch * 0.75, k)
+		_head_root.rotation_degrees.z = _ease_to(_head_root.rotation_degrees.z, wind * 0.5, k)
 	if _flame_left and _flame_right:
-		var intensity := 0.6 + clampf(horiz_speed / 20.0, 0.0, 0.4) + sin(t * 12.0) * 0.15
+		var intensity := 0.6 + sp * 0.4 + sin(t * 12.0) * 0.15
 		_flame_left.amount_ratio = intensity
 		_flame_right.amount_ratio = intensity
 
 
-func _animate_falling(t: float, delta: float) -> void:
-	## Falling in low gravity — more controlled than Earth falling.
-	## Slight arm reach, legs prepare for landing, body adjusts to fall speed.
-	var blend := 6.0 * delta
-	var fall_speed := absf(minf(_vertical_speed, 0.0))  # How fast we're falling
-	var fall_intensity := clampf(fall_speed / 15.0, 0.0, 1.0)  # 0 = gentle, 1 = fast fall
+# ─── The suit: a tactical EVA suit over the rig ─────────────────────────
+# Graphite fabric, gunmetal armour plates on the chest, abdomen, shoulders,
+# thighs, knees, shins and forearms, and thin emissive trim seams in the
+# wearer's accent colour (from their Soul). Joint rings are slimmed down.
 
-	# Body: slight backward lean that increases with fall speed
+const FABRIC := Color(0.11, 0.11, 0.14)
+const ARMOUR := Color(0.30, 0.31, 0.36)
+var _plate_mat: StandardMaterial3D
+var _trim_mat: StandardMaterial3D
+var _screen_mat: StandardMaterial3D
+
+
+func _dress_suit() -> void:
+	_plate_mat = StandardMaterial3D.new()
+	_plate_mat.albedo_color = ARMOUR
+	_plate_mat.metallic = 0.75
+	_plate_mat.roughness = 0.32
+	_plate_mat.rim_enabled = true
+	_plate_mat.rim = 0.2
+	_trim_mat = StandardMaterial3D.new()
+	_trim_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_trim_mat.albedo_color = Color(0.45, 0.85, 1.0)
+	_trim_mat.emission_enabled = true
+	_trim_mat.emission = Color(0.45, 0.85, 1.0)
+	_trim_mat.emission_energy_multiplier = 1.6
+	_screen_mat = StandardMaterial3D.new()
+	_screen_mat.albedo_color = Color(0.02, 0.05, 0.08)
+	_screen_mat.emission_enabled = true
+	_screen_mat.emission = Color(0.2, 0.6, 0.9)
+	_screen_mat.emission_energy_multiplier = 0.9
+	_screen_mat.roughness = 0.1
+	# Fabric and the old trims: darker and quieter.
+	if _suit_shader_mat:
+		_suit_shader_mat.set_shader_parameter("base_color", Vector3(FABRIC.r, FABRIC.g, FABRIC.b))
+		_suit_shader_mat.set_shader_parameter("base_roughness", 0.7)
+	if _accent_shader_mat:
+		_accent_shader_mat.set_shader_parameter("base_color", Vector3(ARMOUR.r, ARMOUR.g, ARMOUR.b))
+	for ring in [_knee_left, _knee_right, _elbow_left, _elbow_right]:
+		if ring:
+			ring.visible = false
+	for ring in [_glove_cuff_left, _glove_cuff_right, _boot_cuff_left, _boot_cuff_right, _belt, _helmet_ring]:
+		if ring:
+			ring.scale = Vector3(1.0, 0.6, 1.0)
+			ring.material_override = _plate_mat
+	if _helmet_ring:
+		_helmet_ring.scale = Vector3(0.72, 0.8, 0.72)  # a collar, not a hoop
+	# Fabric, gloves and boots as plain PBR materials (the old fabric shader read as fluff).
+	var fabric := StandardMaterial3D.new()
+	fabric.albedo_color = FABRIC
+	fabric.roughness = 0.82
+	fabric.rim_enabled = true
+	fabric.rim = 0.15
+	_suit_mat = fabric
+	for n in [_torso, _arm_left, _arm_right, _forearm_left, _forearm_right, _leg_left, _leg_right, _shin_left, _shin_right]:
+		if n:
+			n.material_override = fabric
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.06, 0.06, 0.075)
+	dark.roughness = 0.55
+	dark.metallic = 0.2
+	for n in [_boot_left, _boot_right, _boot_toe_left, _boot_toe_right, _boot_heel_left, _boot_heel_right,
+			_glove_left, _glove_right, _finger_l1, _finger_l2, _finger_l3, _finger_l4, _finger_r1, _finger_r2,
+			_finger_r3, _finger_r4, _glove_thumb_left, _glove_thumb_right]:
+		if n:
+			n.material_override = dark
+	for n in [_boot_sole_left, _boot_sole_right, _boot_tread_left, _boot_tread_right]:
+		if n:
+			n.material_override = _plate_mat
+	# A neck, so the head sits on the body instead of floating over the collar.
+	var neck := _part(_spine, "Neck", "cyl", 0.085, Vector3(0.0, NECK_Y - HIP_Y + 0.02, 0.0), Vector3.ONE, fabric)
+	if neck:
+		(neck.mesh as CylinderMesh).top_radius = 0.075
+		(neck.mesh as CylinderMesh).height = 0.14
+	# Torso: flatter front-to-back, broader at the chest.
 	if _torso:
-		var tilt := lerpf(3.0, -5.0, fall_intensity)  # Lean back more at high speed
-		_torso.rotation_degrees.x = lerpf(_torso.rotation_degrees.x, tilt, blend)
-		_torso.rotation_degrees.z = lerpf(_torso.rotation_degrees.z, sin(t * 1.5) * 3.0 * fall_intensity, blend)
-		_torso.position.y = lerpf(_torso.position.y, _torso_rest_y, blend)
+		_torso.scale = Vector3(1.04, 1.0, 0.8)
+	_part(_spine, "ChestPlate", "sphere", 0.2, Vector3(0.0, 0.4, 0.09), Vector3(1.28, 0.78, 0.6), _plate_mat)
+	for i in 3:
+		_part(_spine, "AbPlate%d" % i, "box", 0.0, Vector3(0.0, 0.11 + i * 0.065, 0.175 - i * 0.01), Vector3(0.24 - i * 0.02, 0.05, 0.05), _plate_mat)
+	if _chest_panel:
+		_chest_panel.material_override = _screen_mat
+		_chest_panel.position = Vector3(0.0, 0.42, 0.21)
+		_chest_panel.scale = Vector3(0.8, 0.7, 0.5)
+	for sx in [-1.0, 1.0]:
+		_part(_spine, "Seam", "box", 0.0, Vector3(sx * 0.2, 0.3, 0.06), Vector3(0.012, 0.42, 0.012), _trim_mat)
+		_part(_spine, "CollarTrim", "box", 0.0, Vector3(sx * 0.1, 0.56, 0.14), Vector3(0.09, 0.012, 0.012), _trim_mat)
+	# Pauldrons over the shoulder balls.
+	for sh in [_shoulder_left, _shoulder_right]:
+		if sh:
+			sh.material_override = _plate_mat
+			sh.scale = Vector3(1.35, 0.78, 1.2)
+			sh.position.y += 0.03
+	# Limb armour, attached to the pivots so it moves with them.
+	for leg in [[_leg_pivot_left, _knee_pivot_left, -1.0], [_leg_pivot_right, _knee_pivot_right, 1.0]]:
+		var hip: Node3D = leg[0]
+		var knee: Node3D = leg[1]
+		var side: float = leg[2]
+		_part(hip, "ThighPlate", "box", 0.0, Vector3(0.0, -0.15, 0.085), Vector3(0.14, 0.2, 0.04), _plate_mat)
+		_part(hip, "ThighTrim", "box", 0.0, Vector3(side * 0.1, -0.15, 0.0), Vector3(0.01, 0.24, 0.01), _trim_mat)
+		_part(knee, "KneePad", "sphere", 0.07, Vector3(0.0, 0.0, 0.07), Vector3(0.95, 1.0, 0.6), _plate_mat)
+		_part(knee, "ShinGuard", "box", 0.0, Vector3(0.0, -0.13, 0.075), Vector3(0.12, 0.18, 0.04), _plate_mat)
+	for arm in [_elbow_pivot_left, _elbow_pivot_right]:
+		_part(arm, "Bracer", "box", 0.0, Vector3(0.0, -0.1, 0.05), Vector3(0.1, 0.14, 0.04), _plate_mat)
+		_part(arm, "BracerLight", "box", 0.0, Vector3(0.0, -0.08, 0.072), Vector3(0.05, 0.012, 0.008), _trim_mat)
+	# Backpack: armoured, with two thruster bells where the flames come out.
+	if _backpack:
+		_backpack.material_override = _plate_mat
+		for sx in [-1.0, 1.0]:
+			_part(_spine, "Thruster", "cyl", 0.045, Vector3(sx * 0.08, 0.1, -0.24), Vector3(1.0, 1.0, 1.0), _plate_mat)
 
-	# Arms: reach out for balance at low speed, up and back at high speed
-	var arm_raise := lerpf(15.0, 40.0, fall_intensity)  # More raised when falling fast
-	var arm_sway := 4.0 + fall_intensity * 6.0
-	if _arm_pivot_left:
-		_arm_pivot_left.rotation_degrees.z = lerpf(_arm_pivot_left.rotation_degrees.z, arm_raise + sin(t * 2.5) * arm_sway, blend)
-		_arm_pivot_left.rotation_degrees.x = lerpf(_arm_pivot_left.rotation_degrees.x, -8.0 + sin(t * 1.8) * 6.0, blend)
-	if _arm_pivot_right:
-		_arm_pivot_right.rotation_degrees.z = lerpf(_arm_pivot_right.rotation_degrees.z, -arm_raise + sin(t * 2.5 + 1.0) * arm_sway, blend)
-		_arm_pivot_right.rotation_degrees.x = lerpf(_arm_pivot_right.rotation_degrees.x, -8.0 + sin(t * 1.8 + PI) * 6.0, blend)
 
-	# Elbows: bent for balance, waving gently
-	if _elbow_pivot_left:
-		_elbow_pivot_left.rotation_degrees.x = lerpf(_elbow_pivot_left.rotation_degrees.x, -20.0 + sin(t * 2.2) * 8.0, blend)
-	if _elbow_pivot_right:
-		_elbow_pivot_right.rotation_degrees.x = lerpf(_elbow_pivot_right.rotation_degrees.x, -20.0 + sin(t * 2.2 + 1.5) * 8.0, blend)
+func _part(parent: Node3D, nm: String, shape: String, r: float, at: Vector3, sc: Vector3, mat: Material) -> MeshInstance3D:
+	if parent == null:
+		return null
+	var mi := MeshInstance3D.new()
+	mi.name = nm
+	match shape:
+		"sphere":
+			var s := SphereMesh.new()
+			s.radius = r
+			s.height = r * 2.0
+			s.radial_segments = 24
+			s.rings = 12
+			mi.mesh = s
+			mi.scale = sc
+		"cyl":
+			var c := CylinderMesh.new()
+			c.top_radius = r * 0.7
+			c.bottom_radius = r
+			c.height = 0.08
+			mi.mesh = c
+		_:
+			var b := BoxMesh.new()
+			b.size = sc
+			mi.mesh = b
+	mi.material_override = mat
+	mi.position = at
+	parent.add_child(mi)
+	return mi
 
-	# Legs: prepare for landing — slightly bent, feet down
-	var leg_spread := 3.0 + fall_intensity * 5.0
-	if _leg_pivot_left:
-		_leg_pivot_left.rotation_degrees.z = lerpf(_leg_pivot_left.rotation_degrees.z, -leg_spread, blend)
-		_leg_pivot_left.rotation_degrees.x = lerpf(_leg_pivot_left.rotation_degrees.x, 5.0 + sin(t * 1.3) * 3.0, blend)
-	if _leg_pivot_right:
-		_leg_pivot_right.rotation_degrees.z = lerpf(_leg_pivot_right.rotation_degrees.z, leg_spread, blend)
-		_leg_pivot_right.rotation_degrees.x = lerpf(_leg_pivot_right.rotation_degrees.x, 5.0 + sin(t * 1.3 + 1.0) * 3.0, blend)
 
-	# Knees: progressively bend to prepare for landing
-	var knee_prep := 8.0 + fall_intensity * 15.0
-	if _knee_pivot_left:
-		_knee_pivot_left.rotation_degrees.x = lerpf(_knee_pivot_left.rotation_degrees.x, knee_prep + sin(t * 1.5) * 3.0, blend)
-	if _knee_pivot_right:
-		_knee_pivot_right.rotation_degrees.x = lerpf(_knee_pivot_right.rotation_degrees.x, knee_prep + sin(t * 1.5 + PI) * 3.0, blend)
-
-	# Head: looks down at ground as fall intensifies, slight panic wobble
-	if _head:
-		_head.rotation_degrees.x = lerpf(_head.rotation_degrees.x, fall_intensity * 8.0, blend)
-		_head.rotation_degrees.z = lerpf(_head.rotation_degrees.z, sin(t * 4.0) * fall_intensity * 4.0, blend)
-		# Look around frantically when falling fast
-		_head.rotation_degrees.y = lerpf(_head.rotation_degrees.y, sin(t * 3.0) * fall_intensity * 6.0, blend)
+## Trim and chest screen take the wearer's accent colour.
+func _tint_suit(accent: Color) -> void:
+	if _trim_mat:
+		var c := accent.lerp(Color(0.45, 0.85, 1.0), 0.35)
+		_trim_mat.albedo_color = c
+		_trim_mat.emission = c
+	if _screen_mat:
+		_screen_mat.emission = accent.lerp(Color(0.2, 0.6, 0.9), 0.5)
 
 
 func _animate_details(t: float, delta: float) -> void:

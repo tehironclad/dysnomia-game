@@ -41,6 +41,17 @@ Every move previews from your wallet first. Nothing reports success until the ch
 
 F1 in game lists the same controls, read from the input map.
 
+## Your avatar
+
+You're a suited LAU in a GTA-style third-person view: the mouse orbits the camera, and your character
+turns to face where it runs.
+
+The head comes from your LAU's own on-chain name and symbol. RatKing's symbol is 🐀👑, so RatKing is a rat
+with a crown. Names and emoji for aliens, frogs/Pepe, dogs, cats, skulls, robots, hamsters, foxes, pigs,
+apes and birds work the same way. Everyone else is the clockwork LAU bear.
+
+You can also pick your own head on the identity card. That choice is stored on your machine only.
+
 ## Without a wallet
 
 Everything can be read without connecting: territories, bars, rooms, the Void, readiness. Only the writes

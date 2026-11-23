@@ -289,14 +289,14 @@ func _ground_movement(delta: float) -> void:
 
 		var direction := (right * input_dir.x + forward * input_dir.y).normalized()
 
-		# In free orbit mode, rotate player body to face movement direction
+		# Third person (GTA-style): the body turns to face where it moves, faster
+		# at a sprint. The body's forward is -Z, so face (-dir).
 		if direction.length() > 0.1:
 			var rig = _camera_rig as Node3D
-			if rig and rig.has_method("get_camera_mode_name") and rig.get_camera_mode_name() == "FREE":
-				var target_yaw := atan2(direction.x, direction.z)
-				var current_yaw := rotation.y
-				var diff := wrapf(target_yaw - current_yaw, -PI, PI)
-				rotation.y += diff * minf(10.0 * delta, 1.0)
+			if rig and rig.has_method("get_camera_mode_name") and rig.get_camera_mode_name() != "1ST":
+				var target_yaw := atan2(-direction.x, -direction.z)
+				var diff := wrapf(target_yaw - rotation.y, -PI, PI)
+				rotation.y += diff * minf((14.0 if is_sprinting else 9.0) * delta, 1.0)
 
 		if direction.length() > 0.1:
 			if on_floor:
@@ -356,6 +356,10 @@ func _fly_movement(delta: float) -> void:
 
 	if direction.length() > 0.1:
 		direction = direction.normalized()
+		# Face the horizontal direction of travel (third person), as on the ground.
+		var flat := Vector2(direction.x, direction.z)
+		if flat.length() > 0.2 and _camera_rig and _camera_rig.has_method("get_camera_mode_name") and _camera_rig.get_camera_mode_name() != "1ST":
+			rotation.y += wrapf(atan2(-flat.x, -flat.y) - rotation.y, -PI, PI) * minf(6.0 * delta, 1.0)
 		# Smooth acceleration with momentum — feels like jetpack thrust
 		var lerp_speed := 6.0 if is_sprinting else 8.0
 		velocity = velocity.lerp(direction * speed, lerp_speed * delta)

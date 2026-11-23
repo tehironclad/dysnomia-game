@@ -55,6 +55,8 @@
   previews against the chain (Su, Beat, door, room and Void lines, World watch). It is read-only.
 - `tools/perf.gd` samples draw calls, objects, primitives and object growth (under Xvfb), or script cost
   (headless; `--disable=<node>` to profile).
+- `tools/avatar_sheet.gd -- --out=<png> --mode=heads|poses|closeup [--head=rat --acc=crown]` renders the
+  avatar in a studio (needs Xvfb). Heads come from the LAU's Username/name/symbol (`AvatarHeads`).
 - No hard-coded keys: add an input action in `project.godot` and list it in `ControlsHelp.ACTIONS`
   (a test checks every listed action is bound).
 - Deep Field goldens: `node tools/golden/deepfield.js <entropy-ai-pulse>` reruns the site's real JS.
