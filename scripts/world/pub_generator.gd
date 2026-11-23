@@ -56,8 +56,8 @@ static func get_pub_params(seed_value: int) -> Dictionary:
 	# Window count (side walls)
 	var window_count: int = 2 + (s / 313) % 3  # 2-4
 
-	# People: bartender + 4..6 patrons (AmbientNPC is ~60 meshes each, so stay ≤ 7)
-	var patron_count: int = 4 + (s / 17) % 3
+	# People: bartender + 5..7 patrons (AmbientNPC is ~90 meshes each, so stay ≤ 8)
+	var patron_count: int = 5 + (s / 17) % 3
 
 	return {
 		"room_width": room_width,

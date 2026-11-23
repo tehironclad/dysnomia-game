@@ -59,8 +59,8 @@ func initialize(seed_value: int) -> void:
 	add_child(_life)
 	_life.setup(_layout, _interior, _shell.neon_nodes, int(_params["detail_seed"]) + 4242)
 
-	for i in 2:
-		var fan := find_child("HvacFan%d" % i, true, false)
+	for fan_name in ["HvacFan0", "HvacFan1", "AnnexFan"]:
+		var fan := find_child(fan_name, true, false)
 		if fan:
 			_hvac_fans.append(fan)
 
@@ -81,8 +81,6 @@ func _process(delta: float) -> void:
 		_shell.beacon.visible = ph < 0.12 or (ph > 0.3 and ph < 0.42)
 	for f in _hvac_fans:
 		f.rotate_y(delta * 9.0)
-	if _interior.display_material:
-		_interior.display_material.set_shader_parameter("time", _blink_t)
 	# Only animate the crowd when someone could see it
 	_cull_t -= delta
 	if _cull_t <= 0.0:
@@ -92,6 +90,8 @@ func _process(delta: float) -> void:
 			var near := cam.global_position.distance_to(global_position) < NPC_VISIBLE_RANGE
 			if near != _life.visible:
 				_life.set_active(near)
+				if _interior.qing_screen:
+					_interior.qing_screen.set_active(near)
 
 
 # ─── Sign ──────────────────────────────────────────────────────────────────
@@ -163,8 +163,8 @@ func update_territory_state() -> void:
 	# Interior rig brightens with territory power
 	for i in _interior.lights.size():
 		_interior.lights[i].light_energy = _interior.light_base[i] * (0.75 + _power * 0.6)
-	if _interior.display_material:
-		_interior.display_material.set_shader_parameter("territory_power", _power)
+	if _interior.qing_screen:
+		_interior.qing_screen.refresh()
 	if _shell.sign_light:
 		_shell.sign_light.light_energy = 2.0 + _power * 1.5
 

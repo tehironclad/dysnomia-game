@@ -17,8 +17,9 @@ var lights: Array[OmniLight3D] = []          # Interior rig (scaled by territory
 var light_base: Array[float] = []
 var neon_nodes: Array[MeshInstance3D] = []
 var tap_handles: Array[MeshInstance3D] = []
-var display_material: ShaderMaterial
-var bar_flash: OmniLight3D                   # Back-bar light, pulsed when a drink is poured
+var qing_screen: PubQingScreen
+var back_glow_mat: StandardMaterial3D
+var bar_flash: OmniLight3D                   # Bar light pulsed when a drink is poured
 var game_table_nodes: Array[Node3D] = []
 
 var _root: Node3D
@@ -54,6 +55,7 @@ func build(root: Node3D, layout: PubLayout, body: StaticBody3D) -> void:
 	_build_game_tables()
 	_build_hightops()
 	_build_lounge()
+	_build_booths()
 	_build_darts()
 	_build_jukebox()
 	_build_arcade()
@@ -110,6 +112,14 @@ func _build_bar() -> void:
 			_b.add_mesh(PubKit.cyl(0.032, 0.032, 0.2, 8), Transform3D(Basis(), Vector3(fx - 0.22 + float(k) * 0.11, fy + 0.3, bz + 0.2)),
 				PubKit.flat(Color.from_hsv(_rng.randf(), 0.6, 0.7), 0.3, 0.6))
 	_coll(Vector3(bl, 0.95, 0.6), Vector3(bcx, fy + 0.47, bz))
+	# Duckboard platform behind the counter (so the bartender stands tall over it)
+	var ph := PubLayout.PLATFORM_H
+	var pz0 := bz + 0.3
+	var pz1 := cz - 0.3
+	_b.box_at(Vector3(len - 0.05, ph, pz1 - pz0), Vector3(_L.bar_cx - 0.02, fy + ph * 0.5, (pz0 + pz1) * 0.5), _wood)
+	for i in int((pz1 - pz0) / 0.16):
+		_b.box_at(Vector3(len - 0.05, 0.01, 0.04), Vector3(_L.bar_cx - 0.02, fy + ph + 0.004, pz0 + 0.1 + float(i) * 0.16), _dark)
+	_coll(Vector3(len - 0.05, ph, pz1 - pz0), Vector3(_L.bar_cx - 0.02, fy + ph * 0.5, (pz0 + pz1) * 0.5))
 
 	# Beer taps: chrome tower with handles in the neon palette
 	var tx := _L.tap_x
@@ -151,7 +161,9 @@ func _build_back_bar() -> void:
 	# Backlit amber panel behind the bottles
 	var q := QuadMesh.new()
 	q.size = Vector2(sw, 1.55)
-	var glow := PubKit.mesh_instance(q, Vector3(cx, fy + 2.02, wall_z + 0.01), PubKit.neon(Color(1.0, 0.5, 0.18), 0.7), _root)
+	# Low-energy amber so the bottles silhouette against it instead of washing out
+	back_glow_mat = PubKit.neon(Color(0.9, 0.42, 0.14), 0.32).duplicate()
+	var glow := PubKit.mesh_instance(q, Vector3(cx, fy + 2.02, wall_z + 0.01), back_glow_mat, _root)
 	glow.name = "BackBarGlow"
 	# Uprights and three glass shelves
 	for sx in [-0.5, 0.5]:
@@ -161,7 +173,7 @@ func _build_back_bar() -> void:
 	var shelf_ys := [fy + 1.28, fy + 1.78, fy + 2.28]
 	for y in shelf_ys:
 		_b.box_at(Vector3(sw, 0.025, 0.28), Vector3(cx, y, wall_z + 0.15), shelf_glass)
-		_b.box_at(Vector3(sw, 0.012, 0.012), Vector3(cx, y - 0.02, wall_z + 0.29), PubKit.neon(Color(1.0, 0.7, 0.4), 4.0))
+		_b.box_at(Vector3(sw, 0.012, 0.012), Vector3(cx, y - 0.02, wall_z + 0.29), PubKit.neon(Color(1.0, 0.7, 0.4), 2.0))
 	# Side cabinets: plank backs, two wooden shelves each, more stock
 	var side_rows: Array = []
 	var side_w := minf(1.7, (_L.bar_x1 - _L.bar_x0 - sw) * 0.5 - 0.35)
@@ -171,7 +183,7 @@ func _build_back_bar() -> void:
 		for k in 2:
 			var y: float = fy + 1.45 + float(k) * 0.62
 			_b.box_at(Vector3(side_w, 0.045, 0.3), Vector3(mx, y, wall_z + 0.15), _top)
-			_b.box_at(Vector3(side_w - 0.1, 0.01, 0.01), Vector3(mx, y - 0.03, wall_z + 0.29), PubKit.neon(Color(1.0, 0.7, 0.4), 2.5))
+			_b.box_at(Vector3(side_w - 0.1, 0.01, 0.01), Vector3(mx, y - 0.03, wall_z + 0.29), PubKit.neon(Color(1.0, 0.7, 0.4), 1.6))
 			side_rows.append([y + 0.023, mx - side_w * 0.5 + 0.08, mx + side_w * 0.5 - 0.08, wall_z + 0.14])
 		for ex in [-0.5, 0.5]:
 			_b.box_at(Vector3(0.05, 1.6, 0.32), Vector3(mx + ex * side_w, fy + 1.95, wall_z + 0.16), _top)
@@ -184,8 +196,11 @@ func _build_back_bar() -> void:
 	src.free()
 	if meshes.is_empty():
 		return
-	var spirit_cols := [Color(0.85, 0.45, 0.1, 0.75), Color(0.2, 0.6, 0.25, 0.7), Color(0.3, 0.5, 0.95, 0.65),
-		Color(0.9, 0.85, 0.7, 0.45), Color(0.6, 0.12, 0.2, 0.75)]
+	# Spirits: tinted glass (no emission) in a spread of colours — amber whisky, green gin,
+	# blue curacao, clear vodka, ruby liqueur, smoky rum, violet, citrus
+	var spirit_cols := [Color(0.62, 0.3, 0.06, 0.8), Color(0.15, 0.42, 0.18, 0.75), Color(0.16, 0.3, 0.75, 0.7),
+		Color(0.85, 0.88, 0.9, 0.35), Color(0.5, 0.06, 0.12, 0.82), Color(0.3, 0.16, 0.06, 0.88),
+		Color(0.4, 0.18, 0.6, 0.75), Color(0.85, 0.7, 0.15, 0.7)]
 	var kinds := meshes.size() + spirit_cols.size()
 	var xfs: Array = []
 	for k in kinds:
@@ -199,8 +214,8 @@ func _build_back_bar() -> void:
 		var x: float = r[1]
 		while x < r[2]:
 			var k := _rng.randi() % kinds
-			var s := _rng.randf_range(0.88, 1.12)
-			var basis := Basis(Vector3.UP, _rng.randf_range(-0.6, 0.6)).scaled(Vector3(s, s * _rng.randf_range(0.9, 1.15), s))
+			var s := _rng.randf_range(0.82, 1.12)
+			var basis := Basis(Vector3.UP, _rng.randf_range(-0.6, 0.6)).scaled(Vector3(s, s * _rng.randf_range(0.78, 1.4), s))
 			xfs[k].append(Transform3D(basis, Vector3(x, r[0], r[3] + _rng.randf_range(-0.04, 0.04))))
 			x += _rng.randf_range(0.085, 0.13)
 			if _rng.randf() < 0.06:
@@ -220,7 +235,11 @@ func _build_back_bar() -> void:
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if k >= meshes.size():
 			var c: Color = spirit_cols[k - meshes.size()]
-			mmi.material_override = PubKit.glass(c, Color(c.r, c.g, c.b), 0.35)
+			var gm := PubKit.glass(c).duplicate() as StandardMaterial3D
+			gm.roughness = 0.08
+			gm.metallic = 0.0
+			gm.metallic_specular = 0.8
+			mmi.material_override = gm
 		_root.add_child(mmi)
 
 
@@ -396,19 +415,49 @@ func _drink_prop(pos: Vector3) -> void:
 
 
 func _build_lounge() -> void:
+	## Two sofa groups by the front windows: a sofa against the wall, one facing it, coffee table, rug.
+	for i in _L.lounges.size():
+		var c: Vector3 = _L.lounges[i]
+		PubKit.place(_root, "sofa_02", c + Vector3(0, 0, 1.15), 180.0, 1.0)
+		PubKit.place(_root, "sofa_02", c + Vector3(0, 0, -1.15), 0.0, 1.0)
+		for sz in [1.15, -1.15]:
+			_coll(Vector3(1.85, 0.75, 0.85), c + Vector3(0, 0.37, sz))
+		PubKit.place(_root, "round_wooden_table_01", c, _rng.randf_range(0, 360), Vector3(0.5, 0.48, 0.5))
+		_drink_prop(c + Vector3(0.1, 0.48, 0.08))
+		_drink_prop(c + Vector3(-0.12, 0.48, -0.06))
+		PubKit.place(_root, "potted_plant_04", c + Vector3(-0.05, 0.48, -0.15), _rng.randf_range(0, 360), 0.9)
+		_rug(Vector3(c.x, PubLayout.FY + 0.004, c.z - 0.05), Vector2(2.8, 3.3), 0.0, i == 1)
+
+
+func _build_booths() -> void:
+	## Diner-style booth row on the left wall: high-backed upholstered benches back to back,
+	## a wooden table in each bay and a little lamp.
 	var fy := PubLayout.FY
-	var w := _L.w
-	PubKit.place(_root, "sofa_02", _L.sofa_pos + Vector3(0.05, 0, 0), 90.0, 1.0)
-	_coll(Vector3(0.85, 0.75, 1.85), _L.sofa_pos + Vector3(0.0, 0.37, 0))
-	PubKit.place(_root, "round_wooden_table_01", _L.coffee_pos, 0.0, Vector3(0.45, 0.48, 0.45))
-	_drink_prop(_L.coffee_pos + Vector3(0.08, 0.48, 0.1))
-	_drink_prop(_L.coffee_pos + Vector3(-0.1, 0.48, -0.08))
-	# Rug under the lounge
-	_rug(Vector3(-w + 1.6, fy + 0.004, _L.sofa_pos.z), Vector2(2.6, 3.2), 0.0)
-	# Second sofa opposite on deeper rooms makes a proper booth
-	if _L.d >= 6.0:
-		PubKit.place(_root, "sofa_02", _L.sofa_pos + Vector3(2.4, 0, 0), -90.0, 1.0)
-		_coll(Vector3(0.85, 0.75, 1.85), _L.sofa_pos + Vector3(2.4, 0.37, 0))
+	var bx := _L.booth_x
+	var depth := 1.4                       # Out from the wall
+	var upholstery := PubKit.flat(Color(0.42, 0.07, 0.08), 0.5, 0.0)
+	var bench_zs: Array[float] = []
+	for zc in _L.booths:
+		bench_zs.append(zc - 0.78)
+		bench_zs.append(zc + 0.78)
+	for i in bench_zs.size():
+		var z: float = bench_zs[i]
+		var facing := 1.0 if i % 2 == 0 else -1.0   # Seat faces the table in its bay
+		var back_z := z - facing * 0.2
+		_b.box_at(Vector3(depth, 0.4, 0.5), Vector3(bx, fy + 0.2, z), _wood)
+		_b.box_at(Vector3(depth - 0.06, 0.1, 0.46), Vector3(bx, fy + 0.45, z + facing * 0.02), upholstery)
+		_b.box_at(Vector3(depth - 0.06, 0.66, 0.12), Vector3(bx, fy + 0.82, back_z), upholstery)
+		_b.box_at(Vector3(depth, 0.06, 0.16), Vector3(bx, fy + 1.18, back_z), _top)
+		_b.box_at(Vector3(0.03, 0.03, 0.46), Vector3(bx + depth * 0.5 - 0.02, fy + 0.5, z + facing * 0.02), _brass)
+	for zc in _L.booths:
+		_b.box_at(Vector3(1.15, 0.06, 0.78), Vector3(bx + 0.05, fy + 0.74, zc), _top)
+		_b.box_at(Vector3(0.12, 0.7, 0.12), Vector3(bx + 0.15, fy + 0.36, zc), _steel)
+		_b.box_at(Vector3(0.5, 0.03, 0.5), Vector3(bx + 0.15, fy + 0.015, zc), _steel)
+		PubKit.mesh_instance(PubKit.cyl(0.05, 0.06, 0.16, 12), Vector3(bx - 0.35, fy + 0.85, zc),
+			PubKit.glass(Color(1.0, 0.55, 0.3, 0.7), Color(1.0, 0.5, 0.2), 2.5), _root)
+		_drink_prop(Vector3(bx + 0.2, fy + 0.77, zc + 0.15))
+		_drink_prop(Vector3(bx + 0.05, fy + 0.77, zc - 0.2))
+		_coll(Vector3(depth, 1.2, 2.0), Vector3(bx, fy + 0.6, zc))
 
 
 func _build_darts() -> void:
@@ -496,18 +545,15 @@ func _build_arcade() -> void:
 
 
 func _build_display() -> void:
+	## Live QING dashboard (map, charge chart, bars, ticker) in a bezel.
 	var p := _L.display_pos
-	_b.box_at(Vector3(3.2, 1.65, 0.08), p + Vector3(0, 0, 0.0), _dark)
-	var q := QuadMesh.new()
-	q.size = Vector2(3.0, 1.5)
-	var shader = load("res://assets/shaders/pub_display.gdshader")
-	if shader:
-		display_material = ShaderMaterial.new()
-		display_material.shader = shader
-		PubKit.mesh_instance(q, p + Vector3(0, 0, 0.045), display_material, _root)
-	var cap := PubKit.label("QING POWER", 40, Color(0.5, 0.85, 1.0), 0.004)
-	cap.position = p + Vector3(0, 0.95, 0.05)
-	_root.add_child(cap)
+	_b.box_at(Vector3(3.3, 1.75, 0.1), p, _dark)
+	_b.box_at(Vector3(3.36, 0.04, 0.12), p + Vector3(0, -0.89, 0.0), _chrome)
+	qing_screen = PubQingScreen.new()
+	qing_screen.name = "QingScreen"
+	qing_screen.position = p + Vector3(0, 0, 0.056)
+	_root.add_child(qing_screen)
+	qing_screen.setup(Vector2(3.1, 1.55), int(_L.p["detail_seed"]), _L.p["accent_color"])
 
 
 # ─── Decor ─────────────────────────────────────────────────────────────────
@@ -516,21 +562,37 @@ func _build_wall_art() -> void:
 	var fy := PubLayout.FY
 	var w := _L.w
 	var d := _L.d
-	# Framed art above the lounge
-	var sz := _L.sofa_pos.z
-	PubKit.place(_root, "hanging_picture_frame_01", Vector3(-w + 0.04, fy + 2.15, sz - 0.55), 90.0, 1.0)
-	PubKit.place(_root, "hanging_picture_frame_02", Vector3(-w + 0.04, fy + 2.0, sz + 0.5), 90.0, 1.0)
-	# Neon script over the lounge
+	# Framed art: between the game-room windows, beside the door, over the kegs
+	PubKit.place(_root, "hanging_picture_frame_01", Vector3(w - 0.04, fy + 2.0, -d + 4.0), -90.0, 1.0)
+	PubKit.place(_root, "hanging_picture_frame_02", Vector3(-(PubLayout.DOOR_W * 0.5 + 0.95), fy + 2.05, d - 0.04), 180.0, 1.0)
+	# Event posters over the kegs, in brass frames
+	var bills := [["AFFECTION FAIR", "rides all cycle"], ["WAAT SLOTS", "jackpot night"]]
+	for i in bills.size():
+		var bx := _L.bar_x1 + 1.35 + float(i) * 0.95
+		var col := Color.from_hsv(fmod(0.08 + float(i) * 0.55, 1.0), 0.6, 0.8)
+		_b.box_at(Vector3(0.72, 0.98, 0.03), Vector3(bx, fy + 2.25, -d + 0.03), _brass)
+		_b.box_at(Vector3(0.64, 0.9, 0.01), Vector3(bx, fy + 2.25, -d + 0.05), PubKit.flat(col, 0.8))
+		var t := PubKit.label(bills[i][0] + "\n\n" + bills[i][1], 34, Color(0.06, 0.04, 0.05), 0.0032)
+		t.position = Vector3(bx, fy + 2.28, -d + 0.06)
+		t.width = 180.0
+		t.autowrap_mode = TextServer.AUTOWRAP_WORD
+		_root.add_child(t)
+	# Neon script over the booth row
+	var bz := d - 3.0
+	if not _L.booths.is_empty():
+		bz = 0.0
+		for z in _L.booths:
+			bz += z / float(_L.booths.size())
 	var nm := MeshInstance3D.new()
 	nm.mesh = PubKit.text_mesh("cold affection", 0.011, 0.02)
 	nm.material_override = PubKit.neon(_L.p["neon_a"], 5.0)
-	nm.position = Vector3(-w + 0.06, fy + 3.05, sz)
+	nm.position = Vector3(-w + 0.06, fy + 3.1, bz)
 	nm.rotation_degrees.y = 90.0
 	_root.add_child(nm)
 	neon_nodes.append(nm)
 	# Neon over the game tables (right wall, facing in)
 	var gm := MeshInstance3D.new()
-	gm.mesh = PubKit.text_mesh("PLAY  ·  WIN  ·  GM", 0.009, 0.02)
+	gm.mesh = PubKit.text_mesh("GAME ROOM", 0.011, 0.02)
 	gm.material_override = PubKit.neon(_L.p["neon_b"], 4.5)
 	gm.position = Vector3(w - 0.06, fy + 3.25, -d + 4.0)
 	gm.rotation_degrees.y = -90.0
@@ -538,8 +600,9 @@ func _build_wall_art() -> void:
 	neon_nodes.append(gm)
 	# Neon cocktail glass beside the drinks board
 	var cg := PubKit.neon(_L.p["neon_a"], 4.5)
-	var gx := _L.bar_cx - 0.2 - 2.55
-	var gy := fy + 3.5
+	# Sits clear of the board: left of its frame, level with its middle
+	var gx := _L.bar_cx - 0.2 - minf(4.6, _L.bar_x1 - _L.bar_x0 - 2.2) * 0.5 - 0.7
+	var gy := fy + 3.55
 	var gz := -d + 0.06
 	for sx in [-1.0, 1.0]:
 		_b.box_at(Vector3(0.025, 0.42, 0.025), Vector3(gx + sx * 0.11, gy + 0.1, gz), cg, Vector3(0, 0, sx * 0.55))
@@ -583,28 +646,29 @@ func _build_lights() -> void:
 	var fy := PubLayout.FY
 	var warm := Color(1.0, 0.74, 0.46)
 	var cz := _L.counter_z
-	# Pendants over the bar
-	var n := 3
-	for i in n:
-		var px := lerpf(_L.bar_x0 + 1.4, _L.bar_x1 - 1.0, float(i) / float(n - 1))
-		_pendant(Vector3(px, fy + 2.95, _L.counter_front - 0.05), 0.8)
-	_add_light(Vector3(_L.bar_cx - 2.0, fy + 2.0, cz + 0.4), warm, 1.5, 6.0)
-	_add_light(Vector3(_L.bar_cx + 2.0, fy + 2.0, cz + 0.4), warm, 1.5, 6.0)
-	bar_flash = _add_light(Vector3(_L.bar_cx - 0.2, fy + 2.0, -_L.d + 0.9), Color(1.0, 0.6, 0.3), 1.2, 3.6)
+	# Pendants over the bar ends only, so none hangs in front of the drinks board
+	var mw := minf(4.6, _L.bar_x1 - _L.bar_x0 - 2.2)
+	var menu_l := _L.bar_cx - 0.2 - mw * 0.5
+	var menu_r := _L.bar_cx - 0.2 + mw * 0.5
+	_pendant(Vector3((_L.bar_x0 + menu_l) * 0.5 - 0.3, fy + 2.95, _L.counter_front - 0.05), 0.8)
+	_pendant(Vector3((menu_r + _L.bar_x1) * 0.5 + 0.2, fy + 2.95, _L.counter_front - 0.05), 0.8)
+	bar_flash = _add_light(Vector3(_L.bar_cx - 1.8, fy + 2.0, cz + 0.3), warm, 1.6, 6.0)
+	_add_light(Vector3(_L.bar_cx + 2.2, fy + 2.0, cz + 0.4), warm, 1.5, 6.0)
 	# Game area
 	var g0: Vector3 = _L.game_tables[0]
-	var g1: Vector3 = _L.game_tables[mini(1, _L.game_tables.size() - 1)]
-	_add_light(Vector3((g0.x + g1.x) * 0.5, fy + 2.1, g0.z), Color(1.0, 0.86, 0.66), 1.6, 6.0)
-	if _L.game_tables.size() > 2:
-		var g2: Vector3 = _L.game_tables[2]
-		_add_light(Vector3(g2.x + 1.3, fy + 2.1, g2.z), Color(1.0, 0.86, 0.66), 1.4, 5.5)
-	# Lounge — warm, with a blush from the neon
-	_add_light(Vector3(-_L.w + 1.6, fy + 2.3, _L.sofa_pos.z), warm.lerp(_L.p["neon_a"], 0.25), 1.3, 6.5)
-	# Jukebox / arcade corner
-	_add_light(Vector3((_L.jukebox_pos.x + _L.arcade_pos.x) * 0.5, fy + 1.4, _L.d - 1.3), _L.p["neon_b"], 0.9, 4.0)
+	var gl: Vector3 = _L.game_tables[_L.game_tables.size() - 1]
+	_add_light(Vector3((g0.x + gl.x) * 0.5 + 0.7, fy + 2.3, (g0.z + gl.z) * 0.5), Color(1.0, 0.86, 0.66), 1.8, 7.0)
+	# Sofa groups — warm, one blushed by the jukebox neon, the other by the booth neon
+	var la: Vector3 = _L.lounges[0]
+	var lb: Vector3 = _L.lounges[1]
+	_add_light(Vector3(la.x + 1.2, fy + 2.2, la.z), warm.lerp(_L.p["neon_b"], 0.3), 1.4, 6.0)
+	_add_light(Vector3((lb.x + _L.booth_x) * 0.5, fy + 2.3, lb.z - 0.6), warm.lerp(_L.p["neon_a"], 0.2), 1.4, 6.5)
 	_fairy_lights()
-	# Soft fill high in the roof so nothing goes pitch black
-	_add_light(Vector3(0, _L.eave + 0.4, 0), Color(1.0, 0.8, 0.6), 0.55, maxf(_L.w, _L.d) + 3.0)
+	# Rafter uplights sitting on the tie beams: wash the roof so the ceiling isn't a black void
+	for sx in [-1.0, 1.0]:
+		var ul := _add_light(Vector3(sx * _L.w * 0.45, _L.eave + 0.05, 0.0), Color(1.0, 0.72, 0.48), 1.1, maxf(_L.d, 6.0))
+		ul.omni_attenuation = 0.8
+		_b.box_at(Vector3(0.3, 0.08, 0.2), Vector3(sx * _L.w * 0.45, _L.eave - 0.02, 0.0), _dark)
 	for l in lights:
 		light_base.append(l.light_energy)
 

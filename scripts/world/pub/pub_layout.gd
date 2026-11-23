@@ -43,13 +43,16 @@ var back_counter_z: float
 var order_x: float
 var tap_x: float
 var stools: Array[Vector3] = []
-var occupied_stools: Array[int] = []   # Stool spots taken by standing patrons
+var sit_stools: Array[int] = []        # Stools with a seated patron
+var occupied_stools: Array[int] = []   # Stool spots removed for a patron leaning on the bar
+const PLATFORM_H := 0.28               # Duckboards behind the bar so the bartender reads over it
 
 var game_tables: Array[Vector3] = []
 var hightops: Array[Vector3] = []
 var barrel_tables: Array[Vector3] = []
-var sofa_pos: Vector3
-var coffee_pos: Vector3
+var lounges: Array[Vector3] = []       # Sofa-group centres (two sofas facing across a coffee table)
+var booths: Array[float] = []          # Booth z-centres along the left wall
+var booth_x: float
 var dart_pos: Vector3
 var dart_throw: Vector3
 var jukebox_pos: Vector3
@@ -88,8 +91,11 @@ func _init(params: Dictionary) -> void:
 		if absf(x - order_x) > 0.8:
 			stools.append(Vector3(x, FY, counter_front + 0.38))
 		x += spacing
-	if stools.size() >= 4:
-		occupied_stools = [1, stools.size() - 1]
+	var ns := stools.size()
+	if ns >= 2:
+		sit_stools = [1, ns - 1]
+	if ns >= 5:
+		occupied_stools = [ns - 2]
 
 	var xa := w - 1.55
 	var xb := w - 4.3
@@ -99,16 +105,23 @@ func _init(params: Dictionary) -> void:
 	for i in clampi(params["game_table_count"], 2, 4):
 		game_tables.append(spots[i])
 
-	var ht := [Vector3(-1.9, FY, -d + 5.3), Vector3(0.9, FY, minf(d - 2.6, -d + 8.2)),
-		Vector3(-3.6, FY, minf(d - 1.4, -d + 7.8)), Vector3(-4.3, FY, -d + 5.7)]
-	for i in clampi(params["table_count"], 2, 4):
+	var ht := [Vector3(-1.9, FY, -d + 5.3), Vector3(0.9, FY, minf(d - 2.6, -d + 8.2)), Vector3(-4.3, FY, -d + 5.7)]
+	for i in clampi(params["table_count"], 2, 3):
 		hightops.append(ht[i])
-	# Upturned keg tables fill the open floor between the game tables and the door
-	barrel_tables.append(Vector3(w - 3.4, FY, d - 2.7))
-	barrel_tables.append(Vector3(2.5, FY, d - 1.7))
+	# An upturned keg table by the jukebox
+	barrel_tables.append(Vector3(w - 1.4, FY, d - 2.6))
 
-	sofa_pos = Vector3(-w + 0.6, FY, d - 2.3)
-	coffee_pos = Vector3(-w + 1.75, FY, d - 2.3)
+	# Two sofa groups along the front wall, either side of the door
+	lounges.append(Vector3((2.45 + w - 3.6) * 0.5, FY, d - 1.65))
+	lounges.append(Vector3((-w + 2.7 - 2.45) * 0.5, FY, d - 1.65))
+	# Booth row on the left wall, from the darts to the front corner
+	booth_x = -w + 0.72
+	var zb0 := -d + 5.0
+	var zb1 := d - 1.0
+	var nb := int((zb1 - zb0) / 2.0)
+	for i in nb:
+		booths.append(zb0 + (zb1 - zb0 - float(nb) * 2.0) * 0.5 + 1.0 + float(i) * 2.0)
+
 	dart_pos = Vector3(-w + 0.17, FY + 1.73, -d + 4.2)
 	dart_throw = Vector3(-w + 2.55, FY, -d + 4.2)
 	jukebox_pos = Vector3(w - 0.95, FY, d - 0.5)

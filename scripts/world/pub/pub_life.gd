@@ -29,6 +29,7 @@ var _serve_count := 0
 var _confetti: CPUParticles3D
 var _neon_mats: Array[StandardMaterial3D] = []
 var _neon_base: Array[float] = []
+var _standing: Array[Node3D] = []    # Idle standers that turn to the bar on a cheer
 
 
 func setup(layout: PubLayout, interior: PubInterior, shell_neon: Array[MeshInstance3D], seed_value: int) -> void:
@@ -43,36 +44,51 @@ func setup(layout: PubLayout, interior: PubInterior, shell_neon: Array[MeshInsta
 			_neon_mats.append(m)
 			_neon_base.append(m.emission_energy_multiplier)
 
-	# Bartender works a loop behind the counter: taps → register → shelves
+	# Bartender works a loop on the duckboards behind the counter: taps → register → shelves
 	var wz := _L.walkway_z
-	_bartender_loop = [Vector3(_L.tap_x, fy, wz), Vector3(_L.bar_x1 - 1.1, fy, wz),
-		Vector3(_L.bar_cx - 0.2, fy, wz - 0.15), Vector3(_L.bar_x0 + 1.3, fy, wz)]
+	var by := fy + PubLayout.PLATFORM_H
+	_bartender_loop = [Vector3(_L.tap_x, by, wz), Vector3(_L.bar_x1 - 1.1, by, wz),
+		Vector3(_L.bar_cx - 0.2, by, wz - 0.15), Vector3(_L.bar_x0 + 1.3, by, wz)]
 	bartender = _spawn(_rng.randi(), _bartender_loop, Vector3.ZERO)
 	bartender.name = "Bartender"
 	bartender.set("pause_range", Vector2(2.5, 7.0))
 
-	var count: int = _L.p["patron_count"]
-	# 1. A regular doing the rounds: bar → high-top → game tables → jukebox → back
-	var g_front: Vector3 = _L.game_tables[mini(2, _L.game_tables.size() - 1)] + Vector3(0, 0, 1.0)
+	# Patron spots, kept ≥ 0.6 m apart; groups face each other, regulars sit or lean.
 	var h0: Vector3 = _L.hightops[0]
-	var h1: Vector3 = _L.hightops[1]
-	var loop := [Vector3(_L.order_x, fy, _L.counter_front + 0.65), h0 + Vector3(0.75, 0, 0.55),
-		g_front, _L.jukebox_pos + Vector3(-0.2, 0, -1.25), h1 + Vector3(-0.8, 0, 0.0)]
-	_add_patron(_spawn(_rng.randi(), loop, Vector3.ZERO))
-	# 2–3. Two friends talking over the first high-top
-	_add_patron(_spawn(_rng.randi(), [], Vector3(1, 0, 0), h0 + Vector3(-0.62, 0, 0.05)))
-	_add_patron(_spawn(_rng.randi(), [], Vector3(-1, 0, 0.15), h0 + Vector3(0.62, 0, -0.05)))
-	# 4. Leaning on the bar
+	var la: Vector3 = _L.lounges[0]
+	var g0: Vector3 = _L.game_tables[0]
+	var seat := fy + 0.84 - 0.45          # Stool seat height minus hip offset
+	var sofa := fy + 0.41 - 0.45
+	var wander := [Vector3(_L.order_x + 0.3, fy, _L.counter_front + 0.75), Vector3(0.0, fy, -_L.d + 4.4),
+		Vector3(g0.x, fy, g0.z + 1.35), Vector3(_L.w - 2.6, fy, _L.d - 3.4), Vector3(1.6, fy, _L.d - 3.7)]
+	var spots: Array = [
+		["walk", wander, Vector3.ZERO, ""],
+		["idle", h0 + Vector3(-0.62, 0, 0.0), Vector3(1, 0, 0.1), "stand"],
+		["idle", h0 + Vector3(0.62, 0, 0.0), Vector3(-1, 0, -0.1), "stand"],
+	]
+	if _L.sit_stools.size() > 0:
+		spots.append(["idle", _L.stools[_L.sit_stools[0]] + Vector3(0, seat - fy, 0.06), Vector3(0.1, 0, -1), "sit"])
+	spots.append(["idle", la + Vector3(-0.45, sofa - fy, 1.05), Vector3(0.1, 0, -1), "sit"])
+	spots.append(["idle", la + Vector3(0.4, sofa - fy, -1.05), Vector3(-0.1, 0, 1), "sit"])
 	if _L.occupied_stools.size() > 0:
-		_add_patron(_spawn(_rng.randi(), [], Vector3(0.15, 0, -1), _L.stools[_L.occupied_stools[0]]))
-	else:
-		_add_patron(_spawn(_rng.randi(), [], Vector3(0, 0, -1), Vector3(_L.order_x - 1.6, fy, _L.counter_front + 0.4)))
-	# 5. Darts
-	if count >= 5:
-		_add_patron(_spawn(_rng.randi(), [], Vector3(-1, 0, 0), _L.dart_throw + Vector3(0.1, 0, 0.1)))
-	# 6. Second at the bar, half-turned to the room
-	if count >= 6 and _L.occupied_stools.size() > 1:
-		_add_patron(_spawn(_rng.randi(), [], Vector3(0.6, 0, -0.8), _L.stools[_L.occupied_stools[1]]))
+		spots.append(["idle", _L.stools[_L.occupied_stools[0]] + Vector3(0, 0, 0.1), Vector3(0, 0, -1), "lean"])
+	if not _L.booths.is_empty():
+		spots.append(["idle", Vector3(_L.booth_x + 0.1, fy + 0.05, _L.booths[0] + 0.72), Vector3(0, 0, -1), "sit"])
+	if _L.sit_stools.size() > 1:
+		spots.append(["idle", _L.stools[_L.sit_stools[1]] + Vector3(0, seat - fy, 0.06), Vector3(-0.2, 0, -1), "sit"])
+	var count: int = mini(int(_L.p["patron_count"]), 7)   # + bartender ≤ 8 NPCs
+	for i in mini(count, spots.size()):
+		var sp: Array = spots[i]
+		var n: Node3D
+		if sp[0] == "walk":
+			n = _spawn(_rng.randi(), sp[1], Vector3.ZERO)
+		else:
+			n = _spawn(_rng.randi(), [], sp[2], sp[1])
+			if sp[3] != "stand":
+				n.call("set_pose", sp[3])
+			else:
+				_standing.append(n)
+		_add_patron(n)
 
 	# Everyone is indoors under the roof: their ~90 meshes each needn't hit the sun's shadow pass
 	for gi in find_children("*", "GeometryInstance3D", true, false):
@@ -119,10 +135,7 @@ func _spawn(npc_seed: int, points: Array, facing: Vector3, pos: Vector3 = Vector
 	add_child(n)
 	if points.is_empty():
 		n.position = pos
-	n.setup(npc_seed, points, Vector3.ZERO)
-	if points.is_empty() and facing.length() > 0.01:
-		# AmbientNPC steers with -Z forward: point -Z along `facing`
-		n.rotation.y = atan2(-facing.x, -facing.z)
+	n.setup(npc_seed, points, facing if points.is_empty() else Vector3.ZERO)
 	return n
 
 
@@ -157,10 +170,16 @@ func play_drink_served(drink_id: String) -> void:
 		tw.tween_interval(0.7)
 		tw.tween_property(h, "rotation_degrees:x", 0.0, 0.3)
 	if _interior.bar_flash:
-		var base := _interior.bar_flash.light_energy
+		var l := _interior.bar_flash
+		var base: float = l.get_meta("serve_base", l.light_energy)
+		l.set_meta("serve_base", base)
 		var lt := create_tween()
-		lt.tween_property(_interior.bar_flash, "light_energy", base * 2.5, 0.2)
-		lt.tween_property(_interior.bar_flash, "light_energy", base, 1.2)
+		lt.tween_property(l, "light_energy", base * 1.8, 0.2)
+		lt.tween_property(l, "light_energy", base, 1.2)
+	if _interior.back_glow_mat:
+		var gt := create_tween()
+		gt.tween_property(_interior.back_glow_mat, "emission_energy_multiplier", 0.9, 0.25)
+		gt.tween_property(_interior.back_glow_mat, "emission_energy_multiplier", 0.32, 1.4)
 
 	for r in rounds:
 		var g := _make_glass(look[0], look[1])
@@ -235,15 +254,15 @@ func _make_glass(col: Color, kind: String) -> Node3D:
 func _send_bartender(spot: Vector3, hold: float) -> void:
 	if not is_instance_valid(bartender):
 		return
-	# AmbientNPC walks between its points; park it at the taps for the pour.
-	bartender.set("_points", [spot, spot + Vector3(0.3, 0, 0)])
-	bartender.set("_target_idx", 0)
-	bartender.set("_pause", 0.0)
-	var t := get_tree().create_timer(hold)
+	spot.y = PubLayout.FY + PubLayout.PLATFORM_H
+	bartender.call("go_to", spot, hold)
+	var t := get_tree().create_timer(hold + 2.0)
 	t.timeout.connect(func():
 		if is_instance_valid(bartender):
+			# Back to working the loop
 			bartender.set("_points", _bartender_loop.duplicate())
-			bartender.set("_target_idx", 1))
+			bartender.set("_target_idx", 1)
+			bartender.set("pause_range", Vector2(2.5, 7.0)))
 
 
 # ─── Round for the house ───────────────────────────────────────────────────
@@ -258,12 +277,14 @@ func play_house_cheer(lights: Array[OmniLight3D], light_base: Array[float]) -> v
 		var model: Node3D = n.get_node_or_null("Model")
 		if model == null:
 			continue
+		var y0: float = model.get_meta("base_y", model.position.y)
+		model.set_meta("base_y", y0)
 		var tw := create_tween()
 		tw.tween_interval(float(i) * 0.08)
 		for k in 3:
-			tw.tween_property(model, "position:y", 0.28, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-			tw.tween_property(model, "position:y", 0.0, 0.22).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
-		if n.get("_points") is Array and (n.get("_points") as Array).size() < 2:
+			tw.tween_property(model, "position:y", y0 + 0.24, 0.18).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+			tw.tween_property(model, "position:y", y0, 0.22).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+		if n in _standing:
 			var to := bar_focus - n.position
 			var want := atan2(-to.x, -to.z)
 			var rt := create_tween()
@@ -275,8 +296,10 @@ func play_house_cheer(lights: Array[OmniLight3D], light_base: Array[float]) -> v
 		var bm: Node3D = bartender.get_node_or_null("Model")
 		if bm:
 			var bt := create_tween()
-			bt.tween_property(bm, "position:y", 0.22, 0.2)
-			bt.tween_property(bm, "position:y", 0.0, 0.25).set_trans(Tween.TRANS_BOUNCE)
+			var b0: float = bm.get_meta("base_y", bm.position.y)
+			bm.set_meta("base_y", b0)
+			bt.tween_property(bm, "position:y", b0 + 0.22, 0.2)
+			bt.tween_property(bm, "position:y", b0, 0.25).set_trans(Tween.TRANS_BOUNCE)
 	# Lights flare warm then settle
 	for i in lights.size():
 		var l := lights[i]
