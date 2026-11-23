@@ -140,3 +140,19 @@ func get_logs(address: String, topics: Array, from_block: int, to_block: int) ->
 		"address": address, "topics": topics,
 		"fromBlock": "0x%x" % from_block, "toBlock": "0x%x" % to_block,
 	}])
+
+
+## eth_estimateGas for {from,to,data,value}. Adds "gas" (int) on success.
+func estimate_gas(from: String, to: String, data: String, value_wei: String = "0x0") -> Dictionary:
+	var r := await request("eth_estimateGas", [{"from": from, "to": to, "data": data, "value": value_wei}])
+	if r["ok"]:
+		r["gas"] = String(r["result"]).hex_to_int()
+	return r
+
+
+## eth_gasPrice. Adds "wei" (PackedInt64Array BigInt) on success.
+func gas_price() -> Dictionary:
+	var r := await request("eth_gasPrice")
+	if r["ok"]:
+		r["wei"] = BigInt.from_hex(String(r["result"]))
+	return r

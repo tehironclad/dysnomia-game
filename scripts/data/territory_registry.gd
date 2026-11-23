@@ -13,6 +13,8 @@ extends Node
 ## (it equals QING.Asset()). Raw words are 64-char hex (no 0x); lat/lon are
 ## display degrees only.
 
+## New territories found by a catch-up (NewQing logs), each with its block.
+signal founded(records: Array)
 signal updated(count: int)
 signal catch_up_finished(ok: bool, added: int)
 
@@ -143,6 +145,7 @@ func catch_up() -> bool:
 			for rec in fresh:
 				_upsert(rec)
 			added = fresh.size()
+			founded.emit(fresh)
 		cursor_block = scan["scanned_to"]
 		if not scan["ok"]:
 			_sort()

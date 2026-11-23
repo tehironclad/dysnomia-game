@@ -12,7 +12,7 @@ extends Node
 signal changed
 signal bars_moved(delta_hypobar: PackedInt64Array, block: int)
 
-const REFRESH_S := 30.0
+const REFRESH_S := 10.0  # about one PulseChain block
 
 var address := ""
 var entropy := PackedInt64Array()
@@ -50,6 +50,9 @@ func refresh() -> void:
 	var head := await Chain.refresh_head()
 	if head < 0:
 		_mark_unavailable("chain head unavailable")
+		_refreshing = false
+		return
+	if head == block:  # nothing new since the last read
 		_refreshing = false
 		return
 	var calls: Array = [

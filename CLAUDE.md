@@ -48,6 +48,9 @@
 - `godot --headless --path . -s res://tools/live_readiness.gd [-- --n=12]` prints identity + WORLD
   readiness for real players (read-only).
 - `screenshot.gd -- --session=<wallet>` views any wallet's identity read-only. Nothing is signed.
+  Add `--view=hud --open=su|room|beat|void` to render a move's panel (preview only).
+- `godot --headless --path . -s res://tools/live_moves.gd [-- --wallet=0x… --qing=0x…]` runs the Phase 5
+  previews against the chain (Su, Beat, door, room and Void lines). It is read-only.
 - Deep Field goldens: `node tools/golden/deepfield.js <entropy-ai-pulse>` reruns the site's real JS.
 - **Screenshots (the user OK'd this route, 2026-11-22):**
   `VK_ICD_FILENAMES=/opt/lavapipe/lvp_icd.json xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --resolution 1280x720 -s res://tools/screenshot.gd -- --out=<abs png> --scene=res://scenes/territory/territory_v2.tscn --view=aerial|ground`

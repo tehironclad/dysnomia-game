@@ -13,6 +13,20 @@ extends Node3D
 
 var territory: Dictionary = {}
 var state: TerritoryState
+var columns: BarColumns
+var monolith: VoidMonolith
+var phenomena: Phenomena
+var actions: CoreActions
+var _near := ""
+var view_mode := ""  # su | room | beat | void | ""
+
+const MONOLITH_AT := Vector2(-26.0, 18.0)
+const PROMPTS := {
+	"su": "E  Su: react with this territory (your bars grow, +1 YUE)",
+	"room": "E  the Room: its door, its lines",
+	"beat": "E  Beat at the Heart",
+	"void": "E  the Void: one board for everyone",
+}
 
 
 func _ready() -> void:
@@ -40,6 +54,27 @@ func _ready() -> void:
 	state.changed.connect(_on_state_changed)
 	state.setup(territory)
 	hud.bind(String(territory["address"]), state, sky)
+	columns = BarColumns.new()
+	columns.name = "BarColumns"
+	columns.setup(DeepField.to_color(terrain.params["color"]))
+	core.add_child(columns)
+	monolith = VoidMonolith.new()
+	monolith.name = "VoidMonolith"
+	add_child(monolith)
+	monolith.build()
+	monolith.position = Vector3(MONOLITH_AT.x, terrain.get_height_at(MONOLITH_AT.x, MONOLITH_AT.y) - 0.2, MONOLITH_AT.y)
+	monolith.look_at(Vector3(0.0, monolith.position.y, 0.0), Vector3.UP, true)
+	phenomena = Phenomena.new()
+	phenomena.name = "Phenomena"
+	add_child(phenomena)
+	phenomena.setup(String(territory["address"]), core, hud, monolith, state, terrain.heightfield.core_height)
+	actions = CoreActions.new()
+	actions.name = "Actions"
+	add_child(actions)
+	actions.setup(territory, state, core, hud, phenomena, monolith)
+	actions.opened.connect(func(): player.process_mode = Node.PROCESS_MODE_DISABLED)
+	actions.closed.connect(func(): if view_mode == "": player.process_mode = Node.PROCESS_MODE_INHERIT)
+	Session.changed.connect(_on_state_changed)
 	GameManager.territory_address = String(territory["address"])
 	GameManager.territory_name = String(territory.get("name", ""))
 	# The player arrives in front of the Room's door.
@@ -48,6 +83,7 @@ func _ready() -> void:
 	player.rotation.y = 0.0
 	if player.has_method("set_terrain_generator"):
 		player.set_terrain_generator(terrain)
+	view_mode = view
 	if view == "":
 		# Play: the player's camera. (With no current camera, Godot would pick
 		# the first in tree order: the preview camera, under the ground.)
@@ -96,6 +132,8 @@ func _on_state_changed() -> void:
 		core.set_door_closed(not BigInt.is_zero(BigInt.coerce(state.cover_charge.value)))
 	var reactors: int = int(state.reactors.value) if state.reactors.has_value() else 0
 	terrain.set_activity(0.85 + 0.15 * minf(1.0, reactors / 8.0), state.lit_bands())
+	if state.total_hypobar.has_value():
+		columns.update_board(state.board, state.block, Session.wallet)
 	Inspector.register(state, "Territory state (block %d)" % state.block,
 		"Ω, Hypobar per Su here: %s\nHypobar total %s · Epibar total %s\nReactors: %s\nLit bands on the ground: %d (one per power of ten of the Hypobar total).\nWells: Fornax %s · Eris %s · Tethys %s" % [
 			state.omega.display(), state.total_hypobar.display(_dec), state.total_epibar.display(_dec), state.reactors.display(),
@@ -110,7 +148,45 @@ static func _tok(v) -> String:
 	return TokenFormat.wei_to_tokens(BigInt.coerce(v))
 
 
+## Which live move is in reach of the player (positions relative to the Core).
+static func zone_at(local: Vector3, monolith_local: Vector3) -> String:
+	var xz := Vector2(local.x, local.z)
+	if xz.distance_to(Vector2(-TerritoryCore.PYLON_GAP, 0.0)) < 4.0 or xz.distance_to(Vector2(TerritoryCore.PYLON_GAP, 0.0)) < 4.0:
+		return "su"
+	if xz.length() < 3.0:
+		return "beat"
+	if xz.distance_to(Vector2(0.0, TerritoryCore.ROOM_RADIUS)) < 3.0:
+		return "room"
+	if xz.distance_to(Vector2(monolith_local.x, monolith_local.z)) < 4.5:
+		return "void"
+	return ""
+
+
+func _process(_delta: float) -> void:
+	if view_mode != "" or actions == null or actions.is_open():
+		return
+	var z := zone_at(player.global_position - core.global_position, monolith.global_position - core.global_position)
+	if z != _near:
+		_near = z
+		if z == "":
+			hud.hide_prompt()
+		else:
+			hud.show_prompt(PROMPTS[z])
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if actions != null and actions.is_open():
+		return
+	if event.is_action_pressed("interact") and _near != "":
+		get_viewport().set_input_as_handled()
+		hud.hide_prompt()
+		match _near:
+			"su": actions.open_su()
+			"room": actions.open_room()
+			"beat": actions.open_beat()
+			"void": actions.open_void()
+		_near = ""
+		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
 		get_viewport().set_input_as_handled()
 		Travel.field(get_tree())

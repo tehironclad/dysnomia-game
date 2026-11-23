@@ -8,6 +8,7 @@ var card: TerritoryCard
 var prompt: Label
 var clock: Label
 var hint: Label
+var ticker_box: VBoxContainer
 var _facts := {}  # key → FactLabel
 var _state: TerritoryState
 var _sky: DeepFieldSky
@@ -36,7 +37,7 @@ func _ready() -> void:
 	grid.add_theme_constant_override("h_separation", 14)
 	here.add_child(grid)
 	for row in [["omega", "HYPOBAR PER SU"], ["hypo", "HYPOBAR HERE"], ["epi", "EPIBAR HERE"],
-			["reactors", "REACTORS"], ["door", "COVER CHARGE"]]:
+			["reactors", "REACTORS"], ["door", "COVER CHARGE"], ["you", "YOU HERE"]]:
 		var l := Label.new()
 		l.theme_type_variation = "MutedLabel"
 		l.add_theme_font_size_override("font_size", 11)
@@ -63,11 +64,18 @@ func _ready() -> void:
 	prompt.size = Vector2(800, 30)
 	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_root.add_child(prompt)
+	ticker_box = VBoxContainer.new()
+	ticker_box.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	ticker_box.position = Vector2(-460, 80)
+	ticker_box.custom_minimum_size = Vector2(440, 0)
+	ticker_box.alignment = BoxContainer.ALIGNMENT_BEGIN
+	ticker_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(ticker_box)
 	hint = Label.new()
 	hint.theme_type_variation = "MutedLabel"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.position = Vector2(20, -36)
-	hint.text = "H  how is this drawn   ·   M  the field   ·   F1  controls   ·   Esc  mouse"
+	hint.text = "E  use (pylon: Su · door: Room · centre: Beat · monolith: Void)   ·   H  how is this drawn   ·   M  the field   ·   Esc  mouse"
 	_root.add_child(hint)
 
 
@@ -87,6 +95,48 @@ func _on_state() -> void:
 	_facts["epi"].set_fact(_state.total_epibar, dec)
 	_facts["reactors"].set_fact(_state.reactors)
 	_facts["door"].set_fact(_state.cover_charge, func(v): return "none — door open" if BigInt.is_zero(BigInt.coerce(v)) else tok.call(v) + " (asset)")
+	_facts["you"].set_fact(you_fact(_state, Session.wallet))
+
+
+## Your place on this territory's board (known players: a floor), with the
+## gap to the leader or to the next one above.
+static func you_fact(st: TerritoryState, wallet: String) -> Fact:
+	if wallet == "":
+		return Fact.empty("no wallet: connect at the front door")
+	if not st.total_hypobar.has_value():
+		return Fact.loading("YUE.Bar(QING)")
+	var rows: Array = st.board
+	for i in rows.size():
+		if rows[i]["wallet"] == wallet:
+			var mine: PackedInt64Array = rows[i]["hypobar"]
+			var txt := "#%d · %s Hypobar" % [i + 1, TokenFormat.group(BigInt.to_decimal(mine))]
+			if i > 0:
+				var gap := BigInt.sub(rows[i - 1]["hypobar"], mine)
+				txt += " · %s behind #%d" % [TokenFormat.group(BigInt.to_decimal(gap)), i]
+			else:
+				txt += " · leading" + ("" if rows.size() < 2 else " by %s" % TokenFormat.group(BigInt.to_decimal(BigInt.sub(mine, rows[1]["hypobar"]))))
+			return Fact.floor_of(txt, "YUE.Bar(QING) vs known players", "rank among %d known players" % Players.count(), st.block)
+	return Fact.floor_of("no bars here yet", "YUE.Bar(QING)", "known players only", st.block)
+
+
+## A phenomenon line (each carries its block). Fades after `ttl` seconds.
+func ticker(text: String, color: Color = DeepFieldTheme.ICE, ttl: float = 24.0) -> void:
+	var l := Label.new()
+	l.theme_type_variation = "MonoLabel"
+	l.add_theme_font_size_override("font_size", 12)
+	l.add_theme_color_override("font_color", color)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(440, 0)
+	l.text = text
+	ticker_box.add_child(l)
+	ticker_box.move_child(l, 0)
+	while ticker_box.get_child_count() > 6:
+		ticker_box.get_child(ticker_box.get_child_count() - 1).free()
+	var tw := l.create_tween()
+	tw.tween_interval(ttl)
+	tw.tween_property(l, "modulate:a", 0.0, 2.0)
+	tw.tween_callback(l.queue_free)
 
 
 func show_prompt(text: String) -> void:

@@ -28,6 +28,9 @@ var door_material: ShaderMaterial
 var _wells := {}  # key → {column: MeshInstance3D, label: Label3D, mat: StandardMaterial3D}
 var _t := 0.0
 var _pulse := 0.0
+var _sparks: Array = []  # [{node, t, from, to}] cascade sparks in flight
+var _wall_lines: Array = []  # Label3D etched on the Room's back wall, newest first
+const WALL_LINES := 6
 
 
 func build(p: Dictionary, q: Dictionary, ground_y: float) -> void:
@@ -230,6 +233,40 @@ func pulse() -> void:
 	_pulse = 1.0
 
 
+## Bars moved here (a Su or a CHOA.Chat landed): sparks run up both pylons
+## and into the Heart, which swells a little. `strength` 0..1 from the size.
+func cascade(strength: float = 0.5) -> void:
+	var tint := DeepField.to_color(params.get("color", "#7fd3ff")) if not params.is_empty() else DeepFieldTheme.ICE
+	for x in [-PYLON_GAP, PYLON_GAP]:
+		var s := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.35
+		sm.height = 0.7
+		s.mesh = sm
+		s.material_override = _glow(tint.lerp(Color.WHITE, 0.5), 4.0)
+		add_child(s)
+		_sparks.append({"node": s, "t": 0.0, "from": Vector3(x, 0.3, 0.0), "mid": Vector3(x, 14.0, 0.0), "to": Vector3(0.0, 11.0, 0.0)})
+	_pulse = maxf(_pulse, 0.25 + 0.35 * clampf(strength, 0.0, 1.0))
+
+
+## A room line (LogEvent from this QING) etched on the Room's back wall.
+func etch_line(text: String, block: int) -> void:
+	var l := _label("%s  · %d" % [text.left(64), block], 28)
+	l.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	l.modulate = Color(DeepFieldTheme.ICE, 0.0)
+	l.position = Vector3(0.0, 2.45, -ROOM_RADIUS + 0.45)
+	add_child(l)
+	_wall_lines.push_front(l)
+	while _wall_lines.size() > WALL_LINES:
+		(_wall_lines.pop_back() as Node).queue_free()
+	for i in _wall_lines.size():
+		var w: Label3D = _wall_lines[i]
+		w.position.y = 2.45 - i * 0.32
+		var a := 1.0 - i * 0.13
+		var tw := create_tween()
+		tw.tween_property(w, "modulate:a", a, 0.8 if i == 0 else 0.3)
+
+
 func _build_well(w: Dictionary) -> void:
 	var a := deg_to_rad(float(w["angle"]))
 	var at := Vector3(cos(a) * WELL_RADIUS, 0.0, sin(a) * WELL_RADIUS)  # 270° = behind the Room (-Z)
@@ -295,3 +332,14 @@ func _process(delta: float) -> void:
 		var s := 1.0 + 0.04 * sin(_t * 1.3) + 0.6 * _pulse
 		heart.scale = Vector3.ONE * s
 		heart.position.y = 11.0 + 0.25 * sin(_t * 0.7)
+	for sp in _sparks.duplicate():
+		sp["t"] += delta * 0.9
+		var u: float = sp["t"]
+		var n: MeshInstance3D = sp["node"]
+		if u >= 1.0:
+			n.queue_free()
+			_sparks.erase(sp)
+			continue
+		var a: Vector3 = sp["from"].lerp(sp["mid"], u)
+		var b: Vector3 = sp["mid"].lerp(sp["to"], u)
+		n.position = a.lerp(b, u)  # quadratic Bézier: up the pylon, then into the Heart
