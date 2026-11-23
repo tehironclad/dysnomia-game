@@ -5,6 +5,7 @@ render_mode cull_back;
 // mode 0: three bar meters (value_a/b/c)  1: oscilloscope (amplitude = value_a, rate = value_b)
 // mode 2: radar sweep (blip count ~ value_b)  3: scrolling data log (density ~ value_a)
 // mode 4: vertical segmented VU meter (level = value_a, peak flicker)
+// mode 5: club visualiser — spectrum bars in a cyan/violet/magenta gradient (energy = value_a)
 
 uniform int mode = 0;
 uniform vec3 accent : source_color = vec3(0.2, 0.9, 1.0);
@@ -93,6 +94,26 @@ vec3 vu(vec2 uv) {
 	return c * seg * (step(y, lvl) + 0.06);
 }
 
+vec3 visual(vec2 uv) {
+	float bars = 32.0;
+	float bx = floor(uv.x * bars);
+	float fx = fract(uv.x * bars);
+	float t = TIME;
+	float lvl = 0.25 + 0.55 * value_a * (0.5 + 0.5 * sin(t * (2.0 + hash(vec2(bx, 1.0)) * 5.0) + bx * 0.7));
+	lvl *= 0.75 + 0.25 * pow(0.5 + 0.5 * sin(t * 6.2832 * (1.4 + value_b)), 6.0);
+	lvl = clamp(lvl + 0.15 * sin(bx * 0.4 + t * 1.3), 0.05, 0.98);
+	float y = 1.0 - uv.y;
+	float seg = step(0.22, fract(y * 24.0)) * step(0.12, fx) * step(fx, 0.88);
+	vec3 c = mix(vec3(0.2, 0.9, 1.0), vec3(0.65, 0.3, 1.0), smoothstep(0.0, 0.6, y));
+	c = mix(c, vec3(1.0, 0.25, 0.7), smoothstep(0.6, 1.0, y));
+	float lit = step(y, lvl) * seg;
+	float peak = smoothstep(0.02, 0.0, abs(y - lvl - 0.03)) * step(0.12, fx) * step(fx, 0.88);
+	// Soft rings behind the bars
+	vec2 p = (uv - 0.5) * vec2(2.0, 1.2);
+	float ring = smoothstep(0.03, 0.0, abs(fract(length(p) * 3.0 - t * 0.6) - 0.5) - 0.46) * 0.25;
+	return c * (lit + peak * 1.5) + vec3(0.25, 0.6, 1.0) * ring * value_a;
+}
+
 void fragment() {
 	vec2 uv = UV;
 	vec3 col;
@@ -100,7 +121,8 @@ void fragment() {
 	else if (mode == 1) col = scope(uv);
 	else if (mode == 2) col = radar(uv);
 	else if (mode == 3) col = data_log(uv);
-	else col = vu(uv);
+	else if (mode == 4) col = vu(uv);
+	else col = visual(uv);
 	// CRT-ish scanlines + vignette + faint backlight
 	float scan = 0.82 + 0.18 * sin(uv.y * 360.0);
 	vec2 v = uv - 0.5;

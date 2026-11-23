@@ -39,8 +39,12 @@ var _lander_beacon: StandardMaterial3D
 var _windsock: Node3D
 var _terminal_seats: Array = []
 var _queue_line: Array = []
+var _stair_sill: float = 2.2
+var _crystal_mat: StandardMaterial3D
+var _conduit: ShaderMaterial
 var _rng := RandomNumberGenerator.new()
 var _time: float = 0.0
+var _charge: float = 0.3
 
 
 func initialize(seed_value: int) -> void:
@@ -53,6 +57,8 @@ func initialize(seed_value: int) -> void:
 	_build_shuttle()
 	_build_terminal()
 	_build_luggage_train()
+	_build_crystal_beacon()
+	_build_fuel_bowser()
 	_build_edge_lights()
 	_build_fuel_farm()
 	_build_control_hut()
@@ -83,6 +89,10 @@ func _apply_territory_state() -> void:
 		m.set_shader_parameter("value_c", epi)
 	if _pad_mat:
 		_pad_mat.set_shader_parameter("accent_glow", 0.4 + power * 2.6)
+	_charge = power
+	if _conduit:
+		_conduit.set_shader_parameter("energy", 0.8 + power * 3.2)
+		_conduit.set_shader_parameter("flow_speed", 0.3 + power * 1.5)
 
 
 func _process(delta: float) -> void:
@@ -98,6 +108,8 @@ func _process(delta: float) -> void:
 		if _chase_light:
 			_chase_light.position = _light_positions[_active_light_index] + Vector3(0, 0.5, 0)
 
+	if _crystal_mat:
+		_crystal_mat.emission_energy_multiplier = 2.0 + _charge * 3.0 + sin(_time * (1.2 + _charge * 3.0)) * 1.0
 	# Rotating hut beacon
 	if _beacon_pivot:
 		_beacon_pivot.rotation.y += delta * 3.2
@@ -175,7 +187,7 @@ func _build_shuttle() -> void:
 	var belly := Kit.pbr("metal_plate", 0.8, Color(0.32, 0.33, 0.35), false)
 	var dark := Kit.paint(Color(0.07, 0.07, 0.08), 0.45, 0.7)
 	var seam := Kit.paint(Color(0.45, 0.45, 0.47), 0.5, 0.5)
-	var cy := 2.75                     # Fuselage axis height above the pad
+	var cy := 3.3                      # Fuselage axis height above the pad (clear shadow gap)
 	var r := 1.45
 	var axis := Vector3(0, 0, PI * 0.5)  # Cylinder Y -> X
 	# Fuselage, belly fairing, nose, tail cone
@@ -222,13 +234,22 @@ func _build_shuttle() -> void:
 	_lander_beacon = Kit.glow(Color(1.0, 0.15, 0.1), 0.3, false)
 	Kit.ball(root, 0.1, Vector3(7.3, cy + 3.05, 0), _lander_beacon)
 	# Landing gear: 4 struts with oleo + pads + chocks
+	var chrome := Kit.paint(Color(0.72, 0.72, 0.74), 0.15, 1.0)
+	var hazard := Kit.hazard(5.0)
 	for gx: float in [-3.6, 3.4]:
 		for s: float in [-1.0, 1.0]:
-			var foot := Vector3(gx, 0.1, s * 1.75)
-			Kit.beam(root, Vector3(gx, cy - r + 0.25, s * 0.9), foot + Vector3(0, 0.4, 0), 0.12, belly)
-			Kit.beam(root, foot + Vector3(0, 0.45, 0), foot + Vector3(0, 0.05, 0), 0.08, Kit.paint(Color(0.7, 0.7, 0.72), 0.2, 1.0))
-			Kit.cyl(root, 0.42, 0.45, 0.12, foot, dark, 16)
-			Kit.box(root, Vector3(0.32, 0.2, 0.45), foot + Vector3(-0.62, 0.0, 0), Kit.paint(Color(0.9, 0.55, 0.08), 0.6, 0.0), Vector3.ZERO, false)
+			var foot := Vector3(gx, 0.0, s * 1.9)
+			var hip := Vector3(gx, cy - r + 0.3, s * 0.85)
+			# Gear bay fairing, main strut, oleo, drag brace, twin-wheel bogie
+			Kit.box(root, Vector3(0.9, 0.35, 0.6), hip + Vector3(0, -0.1, 0), belly)
+			Kit.beam(root, hip, foot + Vector3(0, 1.0, 0), 0.14, belly)
+			Kit.beam(root, foot + Vector3(0, 1.05, 0), foot + Vector3(0, 0.45, 0), 0.09, chrome)
+			Kit.beam(root, hip + Vector3(0.7, 0, 0), foot + Vector3(0, 0.85, 0), 0.06, dark)
+			Kit.box(root, Vector3(0.9, 0.12, 0.2), foot + Vector3(0, 0.42, 0), hazard)
+			for wx: float in [-0.3, 0.3]:
+				Kit.cyl(root, 0.32, 0.32, 0.22, foot + Vector3(wx, 0.32, 0), dark, 16, Vector3(PI * 0.5, 0, 0))
+				Kit.cyl(root, 0.16, 0.16, 0.24, foot + Vector3(wx, 0.32, 0), chrome, 10, Vector3(PI * 0.5, 0, 0), false)
+			Kit.box(root, Vector3(0.25, 0.18, 0.4), foot + Vector3(-0.75, 0.09, 0), Kit.paint(Color(0.9, 0.55, 0.08), 0.6, 0.0), Vector3.ZERO, false)
 	# Boarding door (+Z side, aft of the wing), open and lit from inside
 	var door := Vector3(3.2, cy - 0.15, r - 0.05)
 	Kit.box(root, Vector3(1.2, 2.1, 0.03), door + Vector3(0, 0, 0.06), Kit.hazard(4.0), Vector3.ZERO, false)
@@ -236,7 +257,8 @@ func _build_shuttle() -> void:
 	Kit.box(root, Vector3(1.0, 1.9, 0.08), door + Vector3(-0.7, 0, 0.35), hull, Vector3(0, 0.9, 0))
 	var door_light := Kit.omni(root, door + Vector3(0, 0.3, 1.3), Color(1.0, 0.88, 0.7), 1.3, 7.0)
 	door_light.name = "DoorLight"
-	_build_boarding_stairs(root, Vector3(3.2, 0.0, r + 0.25), cy - 1.1)
+	_stair_sill = cy - 1.1
+	_build_boarding_stairs(root, Vector3(3.2, 0.0, r + 0.25), _stair_sill)
 
 
 func _build_boarding_stairs(parent: Node3D, top_edge: Vector3, sill: float) -> void:
@@ -284,81 +306,116 @@ func _build_boarding_stairs(parent: Node3D, top_edge: Vector3, sill: float) -> v
 # ─── Shuttle terminal ───────────────────────────────────────────────
 
 func _build_terminal() -> void:
-	## A proper small passenger terminal on the +X side of the apron: steel frame, full-height
-	## glazing to the pad and the +Z approach, deep canopy, seating, check-in, rooftop signs,
-	## a departures board over the entrance, and a covered walkway to the airstair.
+	## Passenger terminal on the +X side of the apron (~5.8 x 12.5 m): corrugated walls, a
+	## dark-glass curtain wall to the pad with a lit interior you can see into (check-in,
+	## seating, screens, ceiling strips), barrel-vault roof with HVAC units, gable sign,
+	## departures board, entrance canopy, and a covered walkway to the airstair.
 	var root := Node3D.new()
 	root.name = "ShuttleTerminal"
-	root.position = Vector3(14.3, 0, 0.9)   # Footprint x 12.0..16.6, z -3.2..5.0
+	root.position = Vector3(13.9, 0, -0.25)   # Footprint x 11.0..16.8, z -6.5..6.0
 	add_child(root)
-	var W := 4.6    # along X
-	var L := 8.2    # along Z
-	var H := 3.4
+	var W := 5.8
+	var L := 12.5
+	var H := 4.0
 	var steel := Kit.paint(Color(0.16, 0.17, 0.19), 0.4, 0.8)
-	var panel := Kit.painted("container_side", Color(0.22, 0.24, 0.28), 0.5)
-	var glass := Kit.glass(Color(0.55, 0.72, 0.85, 0.2))
-	var warm := Kit.glow(Color(1.0, 0.86, 0.64), 1.5)
+	var wall := Kit.painted("container_side", Color(0.62, 0.64, 0.66), 0.5)
+	var dark_glass := Kit.glass(Color(0.1, 0.16, 0.22, 0.45))
+	var fl := 0.25
 	# Plinth + floor
-	Kit.box(root, Vector3(W + 1.6, 0.25, L + 1.4), Vector3(-0.4, 0.125, 0.4), Kit.pbr("brushed_concrete", 0.6, Color(0.62, 0.62, 0.6)))
-	Kit.box(root, Vector3(W - 0.1, 0.04, L - 0.1), Vector3(0, 0.27, 0), Kit.pbr("metal_plate", 0.7, Color(0.45, 0.46, 0.48), false))
-	# Solid back (+X) and -Z walls, lit interior back wall
-	Kit.box(root, Vector3(0.15, H, L), Vector3(W * 0.5, 0.25 + H * 0.5, 0), panel)
-	Kit.box(root, Vector3(W, H, 0.15), Vector3(0, 0.25 + H * 0.5, -L * 0.5), panel)
-	Kit.box(root, Vector3(0.02, H - 0.6, L - 0.6), Vector3(W * 0.5 - 0.09, 0.25 + H * 0.5, 0), warm, Vector3.ZERO, false)
-	# Glazing: full-height on the pad side (-X) and the approach end (+Z), with mullions
-	Kit.box(root, Vector3(0.04, H - 0.1, L - 0.2), Vector3(-W * 0.5, 0.25 + H * 0.5, 0), glass, Vector3.ZERO, false)
-	Kit.box(root, Vector3(W - 0.2, H - 1.6, 0.04), Vector3(0, 0.25 + (H - 1.6) * 0.5, L * 0.5), glass, Vector3.ZERO, false)
+	Kit.box(root, Vector3(W + 0.6, fl, L + 0.6), Vector3(0, fl * 0.5, 0), Kit.pbr("brushed_concrete", 0.6, Color(0.62, 0.62, 0.6)))
+	Kit.box(root, Vector3(W - 0.1, 0.04, L - 0.1), Vector3(0, fl + 0.02, 0), Kit.pbr("metal_plate", 0.7, Color(0.38, 0.39, 0.42), false))
+	# Corrugated back (+X) and -Z end, upper band of the +Z end
+	Kit.box(root, Vector3(0.15, H, L), Vector3(W * 0.5, fl + H * 0.5, 0), wall)
+	Kit.box(root, Vector3(W, H, 0.15), Vector3(0, fl + H * 0.5, -L * 0.5), wall)
+	Kit.box(root, Vector3(W, 1.5, 0.15), Vector3(0, fl + H - 0.75, L * 0.5), wall)
+	for z: float in [-3.5, 0.0, 3.5]:
+		Kit.box(root, Vector3(0.04, 0.6, 1.6), Vector3(W * 0.5 + 0.08, fl + H - 0.8, z), Kit.glow(Color(1.0, 0.85, 0.62), 0.9), Vector3.ZERO, false)
+	# Dark curtain wall on the pad side (-X) and the lower +Z end, with mullions
+	Kit.box(root, Vector3(0.04, H - 0.1, L - 0.2), Vector3(-W * 0.5, fl + H * 0.5, 0), dark_glass, Vector3.ZERO, false)
+	Kit.box(root, Vector3(W - 0.2, H - 1.5, 0.04), Vector3(0, fl + (H - 1.5) * 0.5, L * 0.5), dark_glass, Vector3.ZERO, false)
 	var mull: Array = []
-	for k in 6:
-		var z := -L * 0.5 + float(k) * L / 5.0
-		mull.append(Kit.beam_xform(Vector3(-W * 0.5, 0.25, z), Vector3(-W * 0.5, 0.25 + H, z), 0.05))
+	for k in 9:
+		var z := -L * 0.5 + float(k) * L / 8.0
+		mull.append(Kit.beam_xform(Vector3(-W * 0.5, fl, z), Vector3(-W * 0.5, fl + H, z), 0.05))
 	for k in 4:
 		var x := -W * 0.5 + float(k) * W / 3.0
-		mull.append(Kit.beam_xform(Vector3(x, 0.25, L * 0.5), Vector3(x, 0.25 + H, L * 0.5), 0.05))
-	mull.append(Kit.beam_xform(Vector3(-W * 0.5, 0.25 + 1.1, -L * 0.5), Vector3(-W * 0.5, 0.25 + 1.1, L * 0.5), 0.03))
+		mull.append(Kit.beam_xform(Vector3(x, fl, L * 0.5), Vector3(x, fl + H - 1.5, L * 0.5), 0.05))
+	for y: float in [fl + 2.4, fl + H]:
+		mull.append(Kit.beam_xform(Vector3(-W * 0.5, y, -L * 0.5), Vector3(-W * 0.5, y, L * 0.5), 0.04))
 	Kit.multi(root, Kit.unit_cylinder(6), mull, steel)
-	# Upper +Z wall carries the departures board
-	Kit.box(root, Vector3(W, 1.5, 0.15), Vector3(0, 0.25 + H - 0.75, L * 0.5), panel)
-	var board := Kit.box(root, Vector3(3.6, 1.15, 0.08), Vector3(0, 0.25 + H - 0.72, L * 0.5 + 0.12), Kit.paint(Color(0.02, 0.02, 0.025), 0.4, 0.3))
+	# Entrance on the pad side (walkway end): lit sliding-door frame
+	Kit.box(root, Vector3(0.1, 2.3, 0.08), Vector3(-W * 0.5 - 0.02, fl + 1.15, 2.85), Kit.glow(Kit.CYAN, 2.0), Vector3.ZERO, false)
+	Kit.box(root, Vector3(0.1, 2.3, 0.08), Vector3(-W * 0.5 - 0.02, fl + 1.15, 4.55), Kit.glow(Kit.CYAN, 2.0), Vector3.ZERO, false)
+	Kit.box(root, Vector3(0.1, 0.08, 1.78), Vector3(-W * 0.5 - 0.02, fl + 2.3, 3.7), Kit.glow(Kit.CYAN, 2.0), Vector3.ZERO, false)
+	# Barrel-vault roof (standing-seam), eaves overhang, HVAC units
+	var roof_mat := Kit.painted("container_side", Color(0.7, 0.72, 0.74), 0.4).duplicate() as StandardMaterial3D
+	roof_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	Kit.barrel_roof(root, W + 1.2, L + 0.8, 1.5, Vector3(0, fl + H, 0), roof_mat, 18)
+	Kit.box(root, Vector3(W + 1.2, 0.12, L + 0.8), Vector3(0, fl + H - 0.02, 0), steel, Vector3.ZERO, false)
+	for hz: float in [-3.2, 1.8]:
+		var hv := Vector3(0.9, fl + H + 1.45, hz)
+		Kit.box(root, Vector3(1.4, 0.7, 1.6), hv, Kit.paint(Color(0.78, 0.79, 0.78), 0.5, 0.4))
+		for fz: float in [-0.4, 0.4]:
+			Kit.cyl(root, 0.32, 0.32, 0.04, hv + Vector3(0, 0.36, fz), Kit.grille(Color(0.15, 0.15, 0.16), 0.03), 16, Vector3.ZERO, false)
+		Kit.box(root, Vector3(0.2, 0.08, 1.4), hv + Vector3(-0.75, -0.25, 0), Kit.paint(Color(0.3, 0.3, 0.31), 0.5, 0.7), Vector3.ZERO, false)
+	# Gable sign on the +Z end (faces the approach) + departures board below it
+	Kit.label(root, "SHUTTLE TERMINAL", Vector3(0, fl + H + 0.55, L * 0.5 + 0.42), 120, Color(0.6, 0.93, 1.0), 0.0, 2.6)
+	Kit.box(root, Vector3(4.6, 0.05, 0.05), Vector3(0, fl + H + 0.15, L * 0.5 + 0.42), Kit.glow(Kit.CYAN, 3.0), Vector3.ZERO, false)
+	var board := Kit.box(root, Vector3(4.0, 1.2, 0.08), Vector3(0, fl + H - 0.75, L * 0.5 + 0.12), Kit.paint(Color(0.02, 0.02, 0.025), 0.4, 0.3))
 	board.name = "DepartureBoard"
 	var bz := L * 0.5 + 0.17
-	Kit.label(root, "DEPARTURES", Vector3(0, 0.25 + H - 0.38, bz), 72, Color(0.55, 0.9, 1.0), 0.0, 1.8)
-	Kit.label(root, "JOINED QINGS ONLY", Vector3(0, 0.25 + H - 0.72, bz), 64, Color(1.0, 0.75, 0.25), 0.0, 1.8)
-	Kit.label(root, "BOARDING: PRESS E", Vector3(0, 0.25 + H - 1.06, bz), 64, Color(0.4, 1.0, 0.55), 0.0, 1.8)
-	# Roof slab with a deep canopy over the pad-side glazing and the +Z entrance
-	Kit.box(root, Vector3(W + 2.6, 0.22, L + 0.45), Vector3(-1.1, 0.25 + H + 0.11, 0.025), Kit.paint(Color(0.74, 0.75, 0.76), 0.45, 0.5))
-	Kit.box(root, Vector3(W + 2.6, 0.05, 0.05), Vector3(-1.1, 0.25 + H - 0.02, L * 0.5 + 0.25), Kit.glow(_accent, 3.0), Vector3.ZERO, false)
-	Kit.box(root, Vector3(0.05, 0.05, L + 0.45), Vector3(-W * 0.5 - 2.38, 0.25 + H - 0.02, 0.025), Kit.glow(_accent, 3.0), Vector3.ZERO, false)
-	for z: float in [-L * 0.5 + 0.2, 0.0, L * 0.5 + 0.1]:
-		Kit.beam(root, Vector3(-W * 0.5 - 2.2, 0.25, z), Vector3(-W * 0.5 - 2.2, 0.25 + H, z), 0.07, steel)
-	# Rooftop signs: one to the pad (-X), one to the approach (+Z)
-	Kit.box(root, Vector3(0.12, 0.9, 5.4), Vector3(-W * 0.5 + 0.3, 0.25 + H + 0.75, 0.2), steel)
-	Kit.label(root, "SHUTTLE TERMINAL", Vector3(-W * 0.5 + 0.23, 0.25 + H + 0.75, 0.2), 120, Color(0.6, 0.93, 1.0), -PI * 0.5, 2.4)
-	Kit.box(root, Vector3(4.3, 0.9, 0.12), Vector3(0.1, 0.25 + H + 0.75, L * 0.5 - 0.3), steel)
-	Kit.label(root, "SHUTTLE TERMINAL", Vector3(0.1, 0.25 + H + 0.75, L * 0.5 - 0.23), 105, Color(0.6, 0.93, 1.0), 0.0, 2.4)
-	# Interior: two benches with seated passengers, check-in counter with screen
-	var seat := Kit.paint(Color(0.1, 0.35, 0.7), 0.5, 0.2)
-	for bz2: float in [-2.2, 0.4]:
-		Kit.box(root, Vector3(0.5, 0.06, 2.0), Vector3(-0.6, 0.72, bz2), seat)
-		Kit.box(root, Vector3(0.08, 0.45, 2.0), Vector3(-0.38, 0.95, bz2), seat)
-		Kit.beam(root, Vector3(-0.6, 0.27, bz2 - 0.8), Vector3(-0.6, 0.7, bz2 - 0.8), 0.03, steel)
-		Kit.beam(root, Vector3(-0.6, 0.27, bz2 + 0.8), Vector3(-0.6, 0.7, bz2 + 0.8), 0.03, steel)
-	Kit.box(root, Vector3(0.6, 1.05, 1.8), Vector3(1.4, 0.78, 2.4), steel)
-	var scr := Kit.screen(3, Color(0.3, 0.85, 1.0), 77)
-	Kit.box(root, Vector3(0.05, 0.42, 0.7), Vector3(1.2, 1.55, 2.4), steel)
-	Kit.quad(root, Vector2(0.66, 0.38), Vector3(1.17, 1.55, 2.4), scr, Vector3(0, -PI * 0.5, 0))
-	_ops_screens.append(scr)
-	var inner := Kit.omni(root, Vector3(-1.6, 2.9, 1.0), Color(1.0, 0.86, 0.65), 1.6, 9.0)
+	Kit.label(root, "DEPARTURES", Vector3(0, fl + H - 0.4, bz), 76, Color(0.55, 0.9, 1.0), 0.0, 1.8)
+	Kit.label(root, "JOINED QINGS ONLY", Vector3(0, fl + H - 0.75, bz), 68, Color(1.0, 0.75, 0.25), 0.0, 1.8)
+	Kit.label(root, "BOARDING: PRESS E", Vector3(0, fl + H - 1.1, bz), 68, Color(0.4, 1.0, 0.55), 0.0, 1.8)
+	# Fascia sign along the pad-side eave
+	Kit.box(root, Vector3(0.1, 0.75, 8.0), Vector3(-W * 0.5 - 0.62, fl + H - 0.4, 0.5), steel)
+	Kit.label(root, "SHUTTLE TERMINAL", Vector3(-W * 0.5 - 0.68, fl + H - 0.4, 0.5), 130, Color(0.6, 0.93, 1.0), -PI * 0.5, 2.4)
+	# Entrance canopy on the pad side
+	Kit.box(root, Vector3(2.2, 0.12, 5.0), Vector3(-W * 0.5 - 1.1, fl + 3.0, 3.2), Kit.paint(Color(0.74, 0.75, 0.76), 0.45, 0.5))
+	Kit.box(root, Vector3(0.05, 0.05, 5.0), Vector3(-W * 0.5 - 2.18, fl + 2.93, 3.2), Kit.glow(Kit.CYAN, 3.0), Vector3.ZERO, false)
+	for z: float in [1.0, 5.4]:
+		Kit.beam(root, Vector3(-W * 0.5 - 2.0, fl, z), Vector3(-W * 0.5 - 2.0, fl + 3.0, z), 0.06, steel)
+	# Interior: check-in counter with screens, seating rows, departures screen, planters,
+	# ceiling light strips - all visible through the dark glass
+	var counter := Kit.paint(Color(0.85, 0.86, 0.88), 0.35, 0.2)
+	Kit.box(root, Vector3(0.7, 1.05, 3.6), Vector3(1.6, fl + 0.52, -3.4), counter)
+	Kit.box(root, Vector3(0.72, 0.1, 3.62), Vector3(1.6, fl + 1.1, -3.4), Kit.glow(Kit.CYAN, 1.5), Vector3.ZERO, false)
+	for k in 3:
+		var scr := Kit.screen(3 if k != 1 else 0, Color(0.3, 0.85, 1.0), 77 + k)
+		var sz := -4.6 + float(k) * 1.2
+		Kit.box(root, Vector3(0.05, 0.36, 0.5), Vector3(1.35, fl + 1.38, sz), steel, Vector3(0, 0, -0.15))
+		Kit.quad(root, Vector2(0.46, 0.32), Vector3(1.32, fl + 1.38, sz), scr, Vector3(0, -PI * 0.5, -0.15))
+		_ops_screens.append(scr)
+	var big := Kit.screen(3, Color(0.3, 0.85, 1.0), 80)
+	big.set_shader_parameter("brightness", 2.6)
+	Kit.box(root, Vector3(0.08, 1.3, 2.4), Vector3(W * 0.5 - 0.15, fl + 2.6, 1.0), steel)
+	Kit.quad(root, Vector2(2.3, 1.2), Vector3(W * 0.5 - 0.2, fl + 2.6, 1.0), big, Vector3(0, -PI * 0.5, 0))
+	_ops_screens.append(big)
+	var seat := Kit.paint(Color(0.1, 0.32, 0.68), 0.5, 0.2)
+	_terminal_seats = []
+	for row in 3:
+		var sx := -1.6 + float(row) * 1.15
+		for bz2: float in [-0.2, 2.6]:
+			Kit.box(root, Vector3(0.48, 0.07, 2.2), Vector3(sx, fl + 0.46, bz2), seat)
+			Kit.box(root, Vector3(0.07, 0.42, 2.2), Vector3(sx + 0.22, fl + 0.7, bz2), seat)
+			Kit.beam(root, Vector3(sx, fl, bz2 - 0.9), Vector3(sx, fl + 0.44, bz2 - 0.9), 0.03, steel)
+			Kit.beam(root, Vector3(sx, fl, bz2 + 0.9), Vector3(sx, fl + 0.44, bz2 + 0.9), 0.03, steel)
+		_terminal_seats.append(root.position + Vector3(sx - 0.05, fl, -0.6 + float(row) * 0.9))
+	for pz: float in [-5.6, 5.4]:
+		Kit.cyl(root, 0.3, 0.24, 0.5, Vector3(-W * 0.5 + 0.5, fl + 0.25, pz), Kit.paint(Color(0.25, 0.25, 0.27), 0.6, 0.3), 12)
+		Kit.ball(root, 0.42, Vector3(-W * 0.5 + 0.5, fl + 0.8, pz), Kit.paint(Color(0.12, 0.35, 0.16), 0.8, 0.0), 10)
+	var strips: Array = []
+	for k in 4:
+		strips.append(Transform3D(Basis.from_scale(Vector3(0.12, 0.04, L - 1.0)), Vector3(-1.8 + float(k) * 1.2, fl + H - 0.12, 0)))
+	Kit.multi(root, Kit.unit_box(), strips, Kit.glow(Color(1.0, 0.92, 0.8), 3.0), false)
+	var inner := Kit.omni(root, Vector3(-0.6, fl + 3.2, 0.5), Color(1.0, 0.88, 0.7), 2.2, 10.0)
 	inner.name = "TerminalLight"
-	Kit.light_pool(root, Vector3(-W * 0.5 - 1.2, 0.27, 0.6), 4.0, Color(1.0, 0.86, 0.65), 0.9)
-	Kit.light_pool(root, Vector3(0, 0.27, L * 0.5 + 0.9), 3.0, Color(1.0, 0.86, 0.65), 0.8)
-	# Downlights under the board so it reads from the approach
-	Kit.box(root, Vector3(3.4, 0.06, 0.12), Vector3(0, 0.25 + H + 0.02, L * 0.5 + 0.32), Kit.glow(Color(1.0, 0.9, 0.75), 3.0), Vector3.ZERO, false)
-	_terminal_seats = [root.position + Vector3(-0.75, 0.25, -2.6), root.position + Vector3(-0.75, 0.25, 0.9)]
+	Kit.light_pool(root, Vector3(-W * 0.5 - 1.6, 0.27, 2.0), 4.5, Color(1.0, 0.86, 0.65), 0.9)
+	Kit.light_pool(root, Vector3(0, 0.27, L * 0.5 + 1.0), 3.5, Color(1.0, 0.86, 0.65), 0.8)
 
-	# Covered walkway from the terminal's pad-side door to the foot of the airstair
-	var a := Vector3(11.6, 0, 3.4)
-	var b := Vector3(4.2, 0, 5.7)
+	# Covered walkway from the terminal entrance to the foot of the airstair
+	var a := Vector3(10.3, 0, 3.45)
+	var b := Vector3(4.3, 0, 6.0)
 	var dir := (b - a).normalized()
 	var side := Vector3(-dir.z, 0, dir.x)
 	var n := 4
@@ -385,8 +442,7 @@ func _build_terminal() -> void:
 		var prev := Vector3.INF
 		for k in 4:
 			var q := b - dir * (0.6 + float(k) * 1.4) + side * sd
-			var gy := PAD_HEIGHT if Vector2(q.x, q.z).length() < PAD_RADIUS else 0.0
-			q.y = gy
+			q.y = PAD_HEIGHT if Vector2(q.x, q.z).length() < PAD_RADIUS else 0.0
 			Kit.cyl(self, 0.035, 0.035, 0.95, q + Vector3(0, 0.47, 0), post, 8)
 			Kit.cyl(self, 0.15, 0.17, 0.04, q + Vector3(0, 0.02, 0), post, 12)
 			if prev != Vector3.INF:
@@ -511,7 +567,7 @@ func _build_fuel_farm() -> void:
 # ─── Control hut ────────────────────────────────────────────────────
 
 func _build_control_hut() -> void:
-	var hut := Kit.cabin(self, Vector3(13.4, 0, -6.6), 0.0, Vector3(5.2, 2.6, 2.4), "PAD CONTROL")
+	var hut := Kit.cabin(self, Vector3(-6.2, 0, -9.4), 0.0, Vector3(5.2, 2.6, 2.4), "PAD CONTROL", Color(1.0, 0.85, 0.6), true, Color(0.3, 0.42, 0.36))
 	hut.name = "ControlHut"
 	# Interior glow spills through the window
 	var inner := Kit.omni(hut, Vector3(1.2, 1.6, 1.9), Color(1.0, 0.85, 0.62), 1.2, 6.0)
@@ -545,9 +601,9 @@ func _build_control_hut() -> void:
 	hut.add_child(dish)
 	Kit.cyl(hut, 0.04, 0.04, 0.6, Vector3(0.3, 0.2 + 2.6 + 0.35, -0.7), bracket, 6)
 	# Outside: tool cart, gas bottles, a bench of barrels
-	Kit.prop(self, "tool_cart", Vector3(10.0, 0, -4.6), -0.9)
-	Kit.prop(self, "small_lpg_tank", Vector3(16.2, 0, -4.9), 0.3)
-	Kit.prop(self, "small_lpg_tank", Vector3(16.6, 0, -5.2), 1.3)
+	Kit.prop(self, "tool_cart", Vector3(-2.3, 0, -9.9), 0.3)
+	Kit.prop(self, "small_lpg_tank", Vector3(-9.4, 0, -10.3), 0.3)
+	Kit.prop(self, "small_lpg_tank", Vector3(-9.8, 0, -10.0), 1.3)
 
 
 # ─── Cargo ──────────────────────────────────────────────────────────
@@ -638,19 +694,111 @@ func _build_masts_and_windsock() -> void:
 
 
 func _build_crew(seed_value: int) -> void:
-	## Passengers queueing at the airstair, one boarding, two waiting inside the terminal,
-	## a marshal, a fueller and a baggage handler.
-	var foot: Vector3 = _queue_line[0] if _queue_line.size() == 2 else Vector3(4.2, 0, 5.7)
+	## Passengers queueing at the airstair (uneven spacing, bags, turned heads), one boarding,
+	## three waiting inside the terminal, a marshal, a fueller and a baggage handler.
+	var foot: Vector3 = _queue_line[0] if _queue_line.size() == 2 else Vector3(4.3, 0, 6.0)
 	var dir: Vector3 = _queue_line[1] if _queue_line.size() == 2 else Vector3(1, 0, 0)
-	for k in 3:
-		var q := foot - dir * (0.7 + float(k) * 0.95)
+	var side := Vector3(-dir.z, 0, dir.x)
+	var d := 0.6
+	for k in 4:
+		d += _rng.randf_range(0.7, 1.35)
+		var q := foot - dir * d + side * _rng.randf_range(-0.25, 0.25)
 		q.y = PAD_HEIGHT if Vector2(q.x, q.z).length() < PAD_RADIUS else 0.0
-		Kit.npc(self, seed_value + 840 + k, [], dir, Callable(), q)
-	var stair_foot := Vector3(2.75, PAD_HEIGHT, 5.9)
+		Kit.npc(self, seed_value + 840 + k, [], dir.rotated(Vector3.UP, _rng.randf_range(-0.7, 0.7)), Callable(), q)
+		if k % 2 == 0:
+			_suitcase(q + side * 0.42 + dir * 0.1, _rng.randf() * TAU, k)
+	var stair_foot := Vector3(2.55, PAD_HEIGHT, 6.6)
 	Kit.npc(self, seed_value + 811, [
-		foot + Vector3(0, PAD_HEIGHT, 0), stair_foot, Vector3(2.75, PAD_HEIGHT + 1.65, 1.95), stair_foot])
+		foot + Vector3(0, PAD_HEIGHT, 0), stair_foot, Vector3(2.55, PAD_HEIGHT + _stair_sill, 2.2), stair_foot])
 	for k in _terminal_seats.size():
 		Kit.npc(self, seed_value + 850 + k, [], Vector3(-1, 0, 0), Callable(), _terminal_seats[k], "sit")
-	Kit.npc(self, seed_value + 833, [], Vector3(-1, 0, 0.3), Callable(), Vector3(4.6, PAD_HEIGHT, 7.0))
-	Kit.npc(self, seed_value + 822, [], Vector3(-0.3, 0, -1), Callable(), Vector3(-9.3, 0, 0.6))
-	Kit.npc(self, seed_value + 866, [], Vector3(1, 0, -0.2), Callable(), Vector3(-1.7, PAD_HEIGHT, 6.2))
+	var mp := Vector3(5.2, 0, 7.3)
+	mp.y = PAD_HEIGHT if Vector2(mp.x, mp.z).length() < PAD_RADIUS else 0.0
+	Kit.npc(self, seed_value + 833, [], Vector3(-1, 0, 0.3), Callable(), mp)
+	Kit.npc(self, seed_value + 822, [], Vector3(1, 0, 0.2), Callable(), Vector3(-8.2, 0, 3.0))
+	Kit.npc(self, seed_value + 866, [], Vector3(1, 0, -0.2), Callable(), Vector3(-1.7, PAD_HEIGHT, 6.3))
+
+
+func _suitcase(p: Vector3, yaw: float, k: int) -> void:
+	## Wheeled carry-on with an extended handle.
+	var cols := [Color(0.55, 0.1, 0.12), Color(0.12, 0.25, 0.55), Color(0.15, 0.15, 0.16)]
+	var root := Node3D.new()
+	root.position = p
+	root.rotation.y = yaw
+	add_child(root)
+	var metal := Kit.paint(Color(0.6, 0.6, 0.62), 0.3, 1.0)
+	var black := Kit.paint(Color(0.05, 0.05, 0.05), 0.6, 0.2)
+	Kit.box(root, Vector3(0.36, 0.52, 0.22), Vector3(0, 0.32, 0), Kit.paint(cols[k % cols.size()], 0.5, 0.2))
+	Kit.beam(root, Vector3(-0.1, 0.58, -0.05), Vector3(-0.1, 0.95, -0.05), 0.012, metal, 6, false)
+	Kit.beam(root, Vector3(0.1, 0.58, -0.05), Vector3(0.1, 0.95, -0.05), 0.012, metal, 6, false)
+	Kit.box(root, Vector3(0.24, 0.03, 0.03), Vector3(0, 0.96, -0.05), black, Vector3.ZERO, false)
+	for x: float in [-0.13, 0.13]:
+		Kit.cyl(root, 0.035, 0.035, 0.03, Vector3(x, 0.04, -0.08), black, 8, Vector3(0, 0, PI * 0.5), false)
+
+
+func _build_crystal_beacon() -> void:
+	## Dysnomia touch: a cyan crystal relay beacon on the pad with a chain-power conduit
+	## feeding the shuttle's belly port. Glow and pulse speed follow territory CHARGE.
+	var base := Vector3(-5.3, PAD_HEIGHT, -5.0)
+	Kit.cyl(self, 0.75, 0.9, 0.35, base + Vector3(0, 0.175, 0), Kit.pbr("metal_plate", 0.8, Color(0.3, 0.31, 0.33), false), 6)
+	Kit.cyl(self, 0.92, 0.92, 0.06, base + Vector3(0, 0.33, 0), Kit.glow(Kit.CYAN, 3.0), 6, Vector3.ZERO, false)
+	_crystal_mat = Kit.glow(Kit.CYAN, 3.0, false)
+	var crystal := CylinderMesh.new()
+	crystal.top_radius = 0.0
+	crystal.bottom_radius = 1.0
+	crystal.height = 1.0
+	crystal.radial_segments = 6
+	crystal.rings = 1
+	var xs: Array = []
+	var specs := [[Vector3.ZERO, 2.4, 0.22, 0.0], [Vector3(0.35, 0, 0.1), 1.5, 0.14, 0.3], [Vector3(-0.3, 0, 0.25), 1.2, 0.12, -0.35], [Vector3(0.05, 0, -0.35), 1.7, 0.15, 0.2]]
+	for sp in specs:
+		var o: Vector3 = sp[0]
+		var h: float = sp[1]
+		var r: float = sp[2]
+		var tilt := Basis(Vector3(o.z, 0, -o.x).normalized() if o.length() > 0.01 else Vector3.RIGHT, sp[3])
+		var p := base + Vector3(0, 0.36, 0) + o
+		xs.append(Transform3D(tilt * Basis.from_scale(Vector3(r, h, r)), p + tilt * Vector3(0, h * 0.5, 0)))
+		xs.append(Transform3D(tilt * Basis(Vector3.RIGHT, PI) * Basis.from_scale(Vector3(r, 0.25, r)), p + tilt * Vector3(0, -0.1, 0)))
+	Kit.multi(self, crystal, xs, _crystal_mat, false)
+	Kit.light_pool(self, base + Vector3(0, 0.06, 0), 3.5, Kit.CYAN, 1.2)
+	Kit.light_cone(self, base + Vector3(0, 2.8, 0), Vector3.UP, 9.0, 0.08, 0.5, Kit.CYAN, 0.6)
+	# Chain-power conduit across the pad to the belly port
+	_conduit = Kit.conduit(Kit.CYAN, 1.0, 2.0)
+	var pts: Array[Vector3] = [base + Vector3(0.6, 0.1, 0.5), Vector3(-4.0, PAD_HEIGHT + 0.08, -3.2), Vector3(-3.0, PAD_HEIGHT + 0.08, -1.6),
+		Vector3(-2.4, PAD_HEIGHT + 0.08, -0.8), Vector3(-2.2, PAD_HEIGHT + 0.9, -0.5), Vector3(-2.1, PAD_HEIGHT + 2.2, -0.3)]
+	Kit.tube(self, pts, 0.07, _conduit)
+	Kit.label(self, "RELAY BEACON", base + Vector3(0, 0.18, 0.92), 30, Color(0.85, 0.95, 1.0), 0.0, 0.8)
+
+
+func _build_fuel_bowser() -> void:
+	## Fuel bowser truck parked off the pad's nose with its hose run to the shuttle.
+	var root := Node3D.new()
+	root.name = "FuelBowser"
+	root.position = Vector3(-9.6, 0, 4.4)
+	root.rotation.y = 0.15
+	add_child(root)
+	var cab := Kit.hull_material(Color(0.9, 0.55, 0.08), false)
+	var dark := Kit.paint(Color(0.05, 0.05, 0.055), 0.7, 0.2)
+	var steel := Kit.paint(Color(0.6, 0.61, 0.63), 0.3, 0.9)
+	Kit.box(root, Vector3(2.0, 0.3, 5.0), Vector3(0, 0.6, 0), steel)
+	Kit.box(root, Vector3(2.0, 1.4, 1.4), Vector3(0, 1.45, 1.75), cab)
+	Kit.box(root, Vector3(1.8, 0.6, 0.05), Vector3(0, 1.75, 2.46), Kit.glass(Color(0.3, 0.45, 0.55, 0.6)), Vector3(-0.2, 0, 0), false)
+	Kit.cyl(root, 0.85, 0.85, 3.2, Vector3(0, 1.65, -0.85), Kit.hull_material(Color(0.85, 0.86, 0.84), false), 20, Vector3(PI * 0.5, 0, 0))
+	Kit.cyl(root, 0.87, 0.87, 0.35, Vector3(0, 1.65, -0.85), Kit.hazard(3.0, Color(0.85, 0.12, 0.08), Color(0.92, 0.92, 0.9)), 20, Vector3(PI * 0.5, 0, 0), false)
+	Kit.label(root, "JET-A  NO SMOKING", Vector3(0.87, 1.65, -0.85), 50, Color(0.1, 0.1, 0.1), PI * 0.5)
+	for s: float in [-1.0, 1.0]:
+		for z: float in [1.7, -0.6, -1.9]:
+			Kit.cyl(root, 0.42, 0.42, 0.3, Vector3(s * 0.95, 0.42, z), dark, 16, Vector3(0, 0, PI * 0.5))
+	Kit.box(root, Vector3(0.1, 0.08, 0.3), Vector3(0.75, 1.0, 2.46), Kit.glow(Color(1.0, 0.92, 0.8), 4.0), Vector3.ZERO, false)
+	Kit.box(root, Vector3(0.1, 0.08, 0.3), Vector3(-0.75, 1.0, 2.46), Kit.glow(Color(1.0, 0.92, 0.8), 4.0), Vector3.ZERO, false)
+	Kit.ball(root, 0.08, Vector3(0, 2.2, 1.75), Kit.glow(Color(1.0, 0.5, 0.1), 3.0))
+	var hose: Array[Vector3] = [Vector3(-8.7, 1.2, 3.0), Vector3(-8.2, 0.08, 2.6), Vector3(-7.0, 0.08, 2.0), Vector3(-6.0, PAD_HEIGHT + 0.06, 1.4),
+		Vector3(-4.5, PAD_HEIGHT + 0.06, 1.0), Vector3(-3.6, PAD_HEIGHT + 0.9, 0.8), Vector3(-3.4, PAD_HEIGHT + 1.85, 0.6)]
+	Kit.tube(self, hose, 0.055, dark)
+
+
+func get_board_anchor() -> Transform3D:
+	## Reserved spot for a 3.2 x 1.8 m media billboard (bottom 1.2 m up) near the -Z apron
+	## edge, facing the approach from player spawn (-Z). Board front = local -Z. Outside the
+	## 12 m shuttle walk-up circle.
+	return Transform3D(Basis.IDENTITY, Vector3(6.0, 1.2 + 0.9, -10.6))
