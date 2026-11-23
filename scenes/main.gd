@@ -279,6 +279,9 @@ func _ready() -> void:
 	# Community media boards — one per wing, posts verified on-chain
 	_spawn_media_boards()
 
+	# Shared moments: rides, rounds, board posts, promotions reach everyone in the QING
+	_wire_community.call_deferred()
+
 	# Track current territory as visited
 	if not GameManager.territory_address.is_empty():
 		_stat_tracker.add_territory_visited(GameManager.territory_address)
@@ -474,6 +477,35 @@ func _spawn_shuttle_terminal() -> void:
 func _open_shuttle_map() -> void:
 	hud.hide_interact_prompt()
 	hud.open_world_map(true)
+
+
+# ─── Community moments ──────────────────────────────────────────────────
+
+func _wire_community() -> void:
+	var hub = get_node_or_null("CommunityHub")
+	if hub == null or _attraction_director == null:
+		return
+	_attraction_director.ride_boarded.connect(func(item: Dictionary) -> void:
+		hub.announce("ride", {"ride": str(item.get("name", item.get("id", "")))}))
+	_attraction_director.drink_served.connect(func(item: Dictionary) -> void:
+		if str(item.get("id", "")) == "house_round":
+			hub.announce("house_round", {}))
+	_attraction_director.board_posted.connect(func(wing: String, _caption: String) -> void:
+		hub.announce("board_post", {"board": wing}))
+	hub.moment_received.connect(func(kind: String, data: Dictionary, _from: String) -> void:
+		# Someone else bought a round in this QING — the whole Cantina cheers
+		if kind == "house_round" and data.get("here", false) and not data.get("self", false) \
+				and _pub_building and _pub_building.has_method("play_house_cheer"):
+			_pub_building.play_house_cheer())
+	if _standing:
+		_standing.standing_changed.connect(func(s: Dictionary) -> void:
+			if s.get("tier", 0) > _announced_tier and _announced_tier >= 0:
+				hub.announce("promotion", {"tier_name": str(s.get("title", "")), "fair": str(s.get("fair", ""))})
+			_announced_tier = s.get("tier", 0))
+		_announced_tier = _standing.current().get("tier", 0)
+
+
+var _announced_tier: int = -1
 
 
 # ─── Telegram invite ────────────────────────────────────────────────────

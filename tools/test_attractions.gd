@@ -75,6 +75,7 @@ func _process(_d: float) -> bool:
 			_test_travel_guards()
 			_test_pub_bar()
 			_test_boards()
+			_test_community()
 			_phase = 4
 			_frames = 0
 	elif _phase == 4:
@@ -228,3 +229,17 @@ func _test_boards() -> void:
 	_check("E opens the post form", current_scene._board_post_ui.is_open())
 	current_scene._board_post_ui.close()
 	board.board_focus.emit(board, false)
+
+
+func _test_community() -> void:
+	var hub = current_scene.get_node_or_null("CommunityHub")
+	_check("community hub present", hub != null)
+	if hub == null:
+		return
+	var got := {}
+	hub.moment_received.connect(func(kind, data, _from): got[kind] = data)
+	current_scene._attraction_director.drink_served.emit(AttractionCatalog.drink("house_round"))
+	_check("buying a round announces a moment", got.has("house_round"))
+	hub.moment_received.emit("house_round", {"here": true, "self": false}, "Bob")
+	_check("remote round triggers pub cheer without errors", true)
+	_check("invite text mentions Dysnomia", current_scene.invite_text().contains("Dysnomia"))
