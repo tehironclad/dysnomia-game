@@ -8,9 +8,9 @@ extends SceneTree
 ## (as main would place it, spawn lies toward local +X/−Z), then captures each shot of the
 ## preset: time of day, camera, and optionally a ride started with a dummy teddy rider and
 ## fast-forwarded to time t (camera can follow the rider).
-## Presets: all (default), tiers, night, noon, rides, rocket, wheel, drop, carousel.
+## Presets: all (default), r2, tiers, night, noon, rides, rocket, wheel, drop, carousel.
 ## A shot may set "tier" (0..3, default 3); the fair is rebuilt when it changes.
-## Env: PREVIEW_FULL=1 keeps SDFGI/SSIL/volumetric fog (slow on lavapipe).
+## Env: PREVIEW_ONLY=substr renders only matching shots; PREVIEW_FULL=1 keeps SDFGI/SSIL/volumetric fog (slow on lavapipe).
 
 const SPAWN_DIR := Vector3(100, 0, -80)   # fair at world (-100,h,80), spawn at (0,h,0)
 
@@ -39,6 +39,10 @@ func _initialize() -> void:
 		_outdir = args[1]
 	DirAccess.make_dir_recursive_absolute(_outdir)
 	_shots = _preset(preset)
+	# PREVIEW_ONLY=substr keeps only the shots whose name contains it
+	var only := OS.get_environment("PREVIEW_ONLY")
+	if only != "":
+		_shots = _shots.filter(func(sh: Dictionary) -> bool: return String(sh["name"]).contains(only))
 	var gm = root.get_node_or_null("GameManager")
 	if gm:
 		gm.territory_name = "Sunny QING"
@@ -85,6 +89,15 @@ func _preset(p: String) -> Array:
 		{"name": "fair_tier1", "tier": 1, "tod": 0.02, "cam": Vector3(44, 10, -38), "look": Vector3(-2, 4, 2)},
 		{"name": "fair_tier2", "tier": 2, "tod": 0.02, "cam": spawn_cam, "look": Vector3(-4, 9, 4)},
 		{"name": "fair_tier3", "tier": 3, "tod": 0.02, "cam": spawn_cam, "look": Vector3(-4, 14, 4), "lead_s": 2.0},
+	]
+	s["r2"] = [
+		{"name": "r2_fair_tier0", "tier": 0, "tod": 0.02, "cam": Vector3(44, 7, -38), "look": Vector3(4, 6, 2)},
+		{"name": "r2_fair_tier3", "tier": 3, "tod": 0.02, "cam": spawn_cam, "look": Vector3(-4, 14, 4), "lead_s": 2.0},
+		{"name": "r2_fair_night_midway", "tod": 0.02, "cam": Vector3(25.0, 1.9, -20.2), "look": Vector3(7.8, 3.2, -6.2)},
+		{"name": "r2_fair_stalls", "tod": 0.02, "cam": Vector3(19.4, 1.7, -17.4), "look": Vector3(21.9, 1.9, -10.3)},
+		{"name": "r2_fair_noon_aerial", "tod": 0.45, "cam": Vector3(-44, 40, -40), "look": Vector3(0, 0, 4)},
+		{"name": "r2_fair_liftoff", "tod": 0.02, "ride": "rocket", "t": 12.2, "lead": 3.2, "cam_ride": Vector3(-16, 4, 34), "look_ride": Vector3(0, 15, 0)},
+		{"name": "r2_fair_carousel", "tod": 0.02, "ride": "carousel", "t": 12.0, "lead": 1.0, "cam_ride": Vector3(-8.5, 2.4, 9.5), "look_ride": Vector3(0, 2.0, 0)},
 	]
 	if p == "all":
 		return s["tiers"] + s["night"] + s["noon"] + s["rocket"] + s["wheel"] + s["drop"] + s["carousel"]

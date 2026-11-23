@@ -389,13 +389,13 @@ func _build_effects() -> void:
 	_cabin_light.visible = false
 	_rocket.add_child(_cabin_light)
 	# Ground cloud: billows out across the pad and beyond
-	_pad_smoke = FairKit.smoke(240, 7.0, Vector2(3.0, 11.0), Color(0.78, 0.76, 0.74), 86.0,
-		Vector2(9.0, 18.0), 1.6, Vector3(0, 0.3, 0), 1.5, true, Vector3.UP)
+	_pad_smoke = FairKit.smoke(220, 7.0, Vector2(3.0, 10.0), Color(0.78, 0.76, 0.74), 30.0,
+		Vector2(0.5, 2.5), 1.8, Vector3(0, 0.12, 0), 2.2, true, Vector3.UP, 15.0)
 	_pad_smoke.position = Vector3(0, PAD_H + 0.3, 0)
 	add_child(_pad_smoke)
 	# Exhaust trail follows the rocket (world-space particles)
-	_trail = FairKit.smoke(220, 6.0, Vector2(2.4, 9.0), Color(0.8, 0.78, 0.76), 8.0,
-		Vector2(14.0, 22.0), 1.6, Vector3(0, 0.1, 0), 0.6, true, Vector3.DOWN)
+	_trail = FairKit.smoke(140, 4.0, Vector2(2.0, 7.0), Color(0.8, 0.78, 0.76), 10.0,
+		Vector2(10.0, 16.0), 2.2, Vector3(0, 0.1, 0), 0.6, true, Vector3.DOWN)
 	_trail.position = Vector3(0, -6.0, 0)
 	_trail.visibility_aabb = AABB(Vector3(-60, -450, -60), Vector3(120, 500, 120))
 	_rocket.add_child(_trail)
@@ -488,7 +488,7 @@ func _ride_tick(t: float, _delta: float) -> void:
 	_flare.light_energy = 16.0 * thr * (0.9 + 0.1 * sin(t * 53.0))
 	_hull_mat.set_shader_parameter("scorch", 0.4 + 0.6 * smoothstep(T_LIFT, T_LIFT + 6.0, t))
 	_pad_smoke.emitting = (t > T_IGN and t < T_LIFT + 3.5) or (thr > 0.0 and h < 25.0 and t > _t_apo)
-	_trail.emitting = thr > 0.0 and t > T_LIFT
+	_trail.emitting = thr > 0.0 and t > T_LIFT and h < 45.0   # exhaust cloud stays low, near the pad
 	_vent.emitting = t < T_IGN
 	# Chutes
 	var chute := 0.0
