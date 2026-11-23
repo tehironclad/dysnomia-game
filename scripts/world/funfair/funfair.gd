@@ -147,9 +147,13 @@ func _territory_display_name() -> String:
 # ─── Ground ─────────────────────────────────────────────────────────────
 
 func _build_ground() -> void:
-	var planks := FairKit.pbr("metal_plate_02", Color(0.82, 0.85, 0.9), 0.5, 1.0)   # metal deck midway
-	var pavers := FairKit.pbr("asphalt_02", Color(0.92, 0.92, 0.96), 0.3)
-	var kerb := FairKit.pbr("asphalt_02", Color(0.92, 0.92, 0.96), 0.3)
+	var planks := FairKit.pbr("metal_plate_02", Color(0.55, 0.57, 0.62), 0.5)   # metal deck midway (low albedo: no blow-out under the lamps)
+	var pavers := FairKit.pbr("asphalt_02", Color(0.72, 0.72, 0.76), 0.3)
+	var kerb := FairKit.pbr("asphalt_02", Color(0.6, 0.6, 0.64), 0.3)
+	# Dark regolith apron under the stall fronts on both sides of the deck
+	var apron_len := absf(ARCH_S) - PLAZA_R + 1.0
+	var apron := FairKit.box(self, Vector3((MIDWAY_HALF + 3.2) * 2.0, PATH_Y * 0.5, apron_len), _p(ARCH_S + apron_len * 0.5, 0, PATH_Y * 0.25), FairKit.pbr("asphalt_02", Color(0.45, 0.45, 0.48), 0.3))
+	apron.rotation.y = _yaw_to(U)
 	# Boardwalk midway from the arch to the plaza
 	var mlen := absf(ARCH_S) - PLAZA_R + 3.0
 	var mid := _p(ARCH_S + mlen * 0.5 - 1.0, 0, PATH_Y * 0.5)
@@ -1194,6 +1198,7 @@ func _build_survey_lot() -> void:
 		FairKit.box(sign_root, Vector3(0.25, 6.2, 0.25), Vector3(sx, 3.1, 0), post)
 		FairKit.box(sign_root, Vector3(0.06, 4.0, 0.06), Vector3(sx, 4.0, 0.16), FairKit.glow(FairKit.NEON_CYAN, 4.0, 1.0))
 		FairKit.solid_box(sign_root, Vector3(0.5, 3.0, 0.5), Vector3(sx, 1.5, 0))
+	FairKit.box(sign_root, Vector3(10.2, 3.6, 0.04), Vector3(0, 4.2, -0.08), FairKit.paint(Color(0.02, 0.04, 0.06), 0.4, 0.3))   # opaque backer: nothing shows through the text
 	FairKit.box(sign_root, Vector3(10.2, 3.6, 0.04), Vector3(0, 4.2, 0), FairKit.holo_mat(FairKit.NEON_CYAN, 0.35))
 	FairKit.box(sign_root, Vector3(10.4, 0.06, 0.08), Vector3(0, 6.05, 0), FairKit.glow(FairKit.NEON_CYAN, 4.0, 1.0))
 	FairKit.box(sign_root, Vector3(10.4, 0.06, 0.08), Vector3(0, 2.35, 0), FairKit.glow(FairKit.NEON_CYAN, 4.0, 1.0))
@@ -1207,10 +1212,10 @@ func _build_survey_lot() -> void:
 	_hint_label = FairKit.label(sign_root, _hint_text, Vector3(0, 3.35, 0.05), 54, FairKit.NEON_CYAN * 2.4)
 	_fit_label(_hint_label, 9.0)
 	FairKit.label(sign_root, "SURVEYED LOT · GROW THIS QING'S STANDING TO OPEN THE FAIR", Vector3(0, 2.7, 0.05), 28, Color(1.4, 1.4, 1.5))
-	FairKit.label(sign_root, "AFFECTION FAIR — SITE RESERVED", Vector3(0, 4.4, -0.05), 80, Color(1.8, 1.7, 1.4), PI)
+	FairKit.label(sign_root, "AFFECTION FAIR — SITE RESERVED", Vector3(0, 4.4, -0.13), 80, Color(1.8, 1.7, 1.4), PI)
 	# Site office trailer and two floodlight masts so the lot reads at night
 	_site_trailer(_p(ARCH_S + 9.0, 13.0), -V)
-	for e in [_p(-14.0, 14.0), _p(6.0, -12.0)]:
+	for e in [_p(-14.0, 14.0), _p(6.0, -12.0), _p(-24.0, -9.0)]:
 		_floodlight_mast(e)
 	# Work light, generator, crates — the crew has been here
 	var wl := _p(ARCH_S + 8.0, -7.0)
