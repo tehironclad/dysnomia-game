@@ -39,6 +39,7 @@ const FlagManagerScript = preload("res://scripts/world/flag_manager.gd")
 const AttractionUIScript = preload("res://scripts/ui/attraction_ui.gd")
 const AttractionDirectorScript = preload("res://scripts/world/attraction_director.gd")
 const FUNFAIR_SCRIPT_PATH := "res://scripts/world/funfair/funfair.gd"
+const QingStandingScript = preload("res://scripts/world/qing_standing.gd")
 
 var _sun_light: DirectionalLight3D
 var _sky_material: ShaderMaterial
@@ -81,6 +82,9 @@ const FAIR_Z: float = 80.0
 var _funfair: Node3D
 var _attraction_ui: CanvasLayer
 var _attraction_director: Node
+var _standing: Node  # QingStanding — decides how much fair this QING has earned
+var _fair_tier: int = -1
+var _fair_rebuild_pending: bool = false
 var _veg_material: ShaderMaterial
 var _beat_particles: GPUParticles3D
 var _beat_camera_shake: float = 0.0
@@ -148,8 +152,10 @@ func _ready() -> void:
 	# Spawn pub building east of player spawn
 	_spawn_pub()
 
-	# Spawn the Affection Fair and wire every AFFECTION-spending spot (rides, bar)
-	_spawn_funfair()
+	# QING Standing decides how much fair this territory has earned, then spawn it
+	# and wire every AFFECTION-spending spot (rides, bar)
+	_init_standing()
+	_spawn_funfair(_standing.current()["tier"])
 	_init_attractions()
 
 	# Position player at center, above terrain (after flattening)
@@ -870,16 +876,70 @@ func _flatten_fair_site() -> void:
 	territory.flatten_area(FAIR_X, FAIR_Z, 40.0, 40.0, 20.0)
 
 
-func _spawn_funfair() -> void:
+func _init_standing() -> void:
+	_standing = QingStandingScript.new()
+	_standing.name = "QingStanding"
+	add_child(_standing)
+	_standing.standing_changed.connect(_on_standing_changed)
+
+
+func _on_standing_changed(s: Dictionary) -> void:
+	if _funfair and _funfair.has_method("set_unlock_hint"):
+		_funfair.set_unlock_hint(QingStandingScript.unlock_hint(s))
+	if _attraction_ui:
+		_attraction_ui.show_standing(s, GameManager.territory_name)
+	if _funfair == null or s["tier"] == _fair_tier:
+		return
+	# Tier changed: rebuild the fair — but never out from under someone mid-ride
+	if _attraction_director and _attraction_director.is_riding():
+		_fair_rebuild_pending = true
+		return
+	_rebuild_funfair(s["tier"])
+
+
+func _rebuild_funfair(tier: int) -> void:
+	_fair_rebuild_pending = false
+	if _attraction_director:
+		_attraction_director.clear_rides()
+	if _funfair:
+		_funfair.queue_free()
+		_funfair = null
+	_spawn_funfair(tier)
+	if _attraction_director and _funfair and _funfair.has_method("get_rides"):
+		for ride in _funfair.get_rides():
+			_attraction_director.register_ride(ride)
+
+
+func cmd_standing(tier: int) -> String:
+	## Console: `standing 0..3` forces a tier for testing, `standing -1` returns to live data.
+	_standing.tier_override = tier
+	_standing.recompute()
+	var s: Dictionary = _standing.current()
+	return "Standing %d (%s) → tier %d %s%s" % [s["score"], s["title"], s["tier"], s["fair"],
+		" [override]" if s["overridden"] else ""]
+
+
+func _spawn_funfair(tier: int = 3) -> void:
 	if not ResourceLoader.exists(FUNFAIR_SCRIPT_PATH):
 		return
+	_fair_tier = tier
 	_funfair = Node3D.new()
 	_funfair.set_script(load(FUNFAIR_SCRIPT_PATH))
 	_funfair.name = "AffectionFair"
 	var y: float = territory.get_height_at(FAIR_X, FAIR_Z)
 	_funfair.position = Vector3(FAIR_X, y, FAIR_Z)
 	add_child(_funfair)
-	_funfair.initialize(GameManager.terrain_seed)
+	# Older fair builds take only a seed; tiered builds take (seed, tier)
+	var init_args: int = 1
+	for m in _funfair.get_method_list():
+		if m["name"] == "initialize":
+			init_args = m["args"].size()
+	if init_args >= 2:
+		_funfair.initialize(GameManager.terrain_seed, tier)
+	else:
+		_funfair.initialize(GameManager.terrain_seed)
+	if _standing and _funfair.has_method("set_unlock_hint"):
+		_funfair.set_unlock_hint(QingStandingScript.unlock_hint(_standing.current()))
 
 
 func _init_attractions() -> void:
@@ -909,6 +969,8 @@ func _on_ride_state_changed(riding: bool) -> void:
 		_weapon_system.set_process_unhandled_input(not riding)
 	if riding:
 		hud.hide_interact_prompt()
+	elif _fair_rebuild_pending and _standing:
+		_rebuild_funfair.call_deferred(_standing.current()["tier"])
 
 
 func _on_pub_enter() -> void:
@@ -1342,6 +1404,10 @@ func _init_debug_tools() -> void:
 	# Register game-specific console commands
 	_game_console = GameConsole.new()
 	_game_console.initialize(player, _terrain_material, _sky_material)
+	var console_node := get_node_or_null("/root/Console")
+	if console_node and console_node.has_method("create_command"):
+		console_node.create_command("standing", cmd_standing,
+			"Force QING Standing tier 0-3 (fair size); -1 = live on-chain data.")
 
 
 func _toggle_console() -> void:

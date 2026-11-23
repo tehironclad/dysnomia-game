@@ -23,6 +23,9 @@ signal global_chat_received(messages: Array)
 signal guest_list_loaded(guests: Array)
 signal admitted_territories_loaded(territories: Array)
 signal token_balances_updated(balances: Dictionary)
+signal qing_activity_updated(qing_address: String, messages: int, unique_visitors: int)
+signal keeper_bars_loaded(qing_address: String, hypobar: int, epibar: int)
+signal qing_stats_loaded(qing_address: String, stats: Dictionary)
 
 const ContractReaderScript = preload("res://scripts/chain/contract_reader.gd")
 const WalletBridgeScript = preload("res://scripts/chain/wallet_bridge.gd")
@@ -622,6 +625,7 @@ func _on_chat_logs_received_fallback(messages: Array) -> void:
 	for msg in messages:
 		if not (msg is Dictionary):
 			continue
+		_count_qing_activity(msg)
 		var block: int = msg.get("block", 0)
 		var is_dup := false
 		for existing in _chat_messages:
@@ -642,6 +646,86 @@ func _on_chat_logs_received_fallback(messages: Array) -> void:
 	if new_count > 0:
 		print("[ChainManager] %d new chat messages via chain fallback (total: %d)" % [new_count, _chat_messages.size()])
 	chat_messages_received.emit(_chat_messages.duplicate())
+
+
+# ─── QING activity (feeds QingStanding) ─────────────────────────────────
+# Cumulative on-chain chat activity per QING: total messages and unique visitors (by LAU
+# soul, falling back to username). The chain fallback reads from block 0, so the first
+# read is the full history and later polls only add new blocks.
+
+var _qing_activity: Dictionary = {}  # qing -> {"keys": {msg_key: true}, "visitors": {id: true}}
+
+
+func _count_qing_activity(msg: Dictionary) -> void:
+	var qing := str(msg.get("qing", "")).to_lower()
+	if qing.is_empty():
+		qing = GameManager.territory_address.to_lower()
+	if qing.is_empty() or qing == "0x0":
+		return
+	if not _qing_activity.has(qing):
+		_qing_activity[qing] = {"keys": {}, "visitors": {}}
+	var a: Dictionary = _qing_activity[qing]
+	var key := "%s|%s|%s" % [msg.get("block", 0), msg.get("username", ""), msg.get("message", "")]
+	if a["keys"].has(key):
+		return
+	a["keys"][key] = true
+	var who := str(msg.get("soul", ""))
+	if who.is_empty() or who == "0":
+		who = str(msg.get("username", "Anon"))
+	a["visitors"][who] = true
+	_activity_emit_pending = true
+	if not _activity_emit_queued:
+		_activity_emit_queued = true
+		_emit_qing_activity.call_deferred(qing)
+
+
+var _activity_emit_pending := false
+var _activity_emit_queued := false
+
+
+func _emit_qing_activity(qing: String) -> void:
+	_activity_emit_queued = false
+	if not _activity_emit_pending or not _qing_activity.has(qing):
+		return
+	_activity_emit_pending = false
+	var a: Dictionary = _qing_activity[qing]
+	qing_activity_updated.emit(qing, a["keys"].size(), a["visitors"].size())
+
+
+func get_qing_activity(qing_address: String) -> Dictionary:
+	var a: Dictionary = _qing_activity.get(qing_address.to_lower(), {})
+	if a.is_empty():
+		return {"messages": 0, "unique_visitors": 0, "known": false}
+	return {"messages": a["keys"].size(), "unique_visitors": a["visitors"].size(), "known": true}
+
+
+func read_keeper_bars(owner_address: String, qing_address: String) -> void:
+	## The keeper's own YUE.Bar for their QING — how much they've built up their place.
+	_reader.read_yue_bar_for(owner_address, qing_address, func(h: int, e: int) -> void:
+		keeper_bars_loaded.emit(qing_address, h, e))
+
+
+var _qing_stats_http: HTTPRequest
+
+func load_qing_stats(qing_address: String) -> void:
+	## Optional off-chain visit/reaction counts: GET /api/qing-stats?qing=ADDRESS →
+	## {"visits": int, "unique_visitors": int, "reactions": int}. Silently absent if the
+	## endpoint doesn't exist (the entropy API deployment is currently offline).
+	if _qing_stats_http == null:
+		_qing_stats_http = HTTPRequest.new()
+		_qing_stats_http.timeout = 10.0
+		add_child(_qing_stats_http)
+	elif _qing_stats_http.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return
+	_qing_stats_http.request_completed.connect(
+		func(result: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
+			if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+				return
+			var parsed = JSON.parse_string(body.get_string_from_utf8())
+			if parsed is Dictionary:
+				qing_stats_loaded.emit(qing_address, parsed),
+		CONNECT_ONE_SHOT)
+	_qing_stats_http.request(ENTROPY_API_BASE + "/api/qing-stats?qing=" + qing_address.to_lower())
 
 
 func _merge_api_chat_messages(api_messages: Array, is_global: bool) -> void:
@@ -682,6 +766,8 @@ func _merge_api_chat_messages(api_messages: Array, is_global: bool) -> void:
 			"qing_name": api_msg.get("qingName", ""),
 			"tx_hash": api_msg.get("txHash", ""),
 		}
+		if not is_global:
+			_count_qing_activity(entry)
 		if is_global:
 			_global_chat_messages.append(entry)
 		else:

@@ -531,6 +531,31 @@ func _read_bar_from_yue(yue_addr: String) -> void:
 	)
 
 
+func read_yue_bar_for(wallet_address: String, qing_address: String, on_done: Callable) -> void:
+	## Standalone YUE.Bar read for any wallet: CHAN.Yan(wallet) → YUE, then YUE.Bar(qing).
+	## Calls on_done(hypobar: int, epibar: int); (0, 0) on any failure.
+	if not HexUtils.is_valid_address(wallet_address) or not HexUtils.is_valid_address(qing_address):
+		on_done.call(0, 0)
+		return
+	_rpc.eth_call(CHAN_ADDRESS, SEL_YAN + HexUtils.pad_address(wallet_address),
+		func(yan_hex: String) -> void:
+			var yue := HexUtils.parse_address_result(yan_hex)
+			if yue.is_empty() or not HexUtils.is_valid_address(yue):
+				on_done.call(0, 0)
+				return
+			_rpc.eth_call(yue, SEL_BAR + HexUtils.pad_address(qing_address),
+				func(bar_hex: String) -> void:
+					var hex := HexUtils.strip_0x(bar_hex)
+					if hex.length() < 128:
+						on_done.call(0, 0)
+						return
+					on_done.call(
+						HexUtils.hex_mod("0x" + hex.substr(0, 64), GameManager.MOTZKIN_PRIME),
+						HexUtils.hex_mod("0x" + hex.substr(64, 64), GameManager.MOTZKIN_PRIME)),
+				func(_e: String) -> void: on_done.call(0, 0)),
+		func(_e: String) -> void: on_done.call(0, 0))
+
+
 func _on_bar_result(result_hex: String) -> void:
 	var hex := HexUtils.strip_0x(result_hex)
 	# Response: 2 × 32-byte words = 128 hex chars (hypobar, epibar)

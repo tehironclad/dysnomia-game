@@ -44,6 +44,17 @@ func register_ride(ride: RideBase) -> void:
 	ride.ride_finished.connect(_on_ride_finished)
 
 
+func clear_rides() -> void:
+	## The fair is being rebuilt (Standing tier changed) — forget every ride reference.
+	if _focus_ride:
+		_ui.hide_ticket()
+		_player.clear_interact_handler(_on_interact)
+	_focus_ride = null
+	for pid in _purchases.keys():
+		if _purchases[pid]["ride"] != null:
+			_purchases.erase(pid)
+
+
 func register_pub(pub: Node3D) -> void:
 	_pub = pub
 	if pub.has_signal("bar_focus"):

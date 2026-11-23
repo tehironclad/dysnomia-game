@@ -36,6 +36,11 @@ var _report_timer: float = 0.0
 var _toast: Label
 var _toast_timer: float = 0.0
 
+var _standing: PanelContainer
+var _standing_body: RichTextLabel
+var _standing_timer: float = 0.0
+var _standing_last_tier: int = -1
+
 
 func _ready() -> void:
 	layer = 20
@@ -44,6 +49,7 @@ func _ready() -> void:
 	_build_caption()
 	_build_report()
 	_build_toast()
+	_build_standing()
 
 
 func _process(delta: float) -> void:
@@ -51,6 +57,10 @@ func _process(delta: float) -> void:
 		_report_timer -= delta
 		if _report_timer <= 0.0:
 			_fade_out(_report)
+	if _standing_timer > 0.0:
+		_standing_timer -= delta
+		if _standing_timer <= 0.0:
+			_fade_out(_standing)
 	if _toast_timer > 0.0:
 		_toast_timer -= delta
 		if _toast_timer <= 0.0:
@@ -179,6 +189,28 @@ func toast(text: String, color: Color = Color.WHITE, seconds: float = 4.0) -> vo
 	_toast.add_theme_color_override("font_color", color)
 	_toast_timer = seconds
 	_fade_in(_toast)
+
+
+func show_standing(s: Dictionary, qing_name: String) -> void:
+	## Arrival banner: this QING's Standing, what it has, and what it needs next.
+	## Shown on the first reading and whenever the tier changes.
+	if s.get("tier", 0) == _standing_last_tier:
+		return
+	var promoted: bool = _standing_last_tier >= 0 and s["tier"] > _standing_last_tier
+	_standing_last_tier = s["tier"]
+	var name := qing_name if not qing_name.is_empty() else "This QING"
+	var t := "[color=#%s][b]%s[/b][/color]   [color=#bbbbcc]QING STANDING[/color]\n" % [PULSE.to_html(false), name.to_upper()]
+	if promoted:
+		t += "[color=#%s][b]PROMOTED![/b][/color]  " % OK.to_html(false)
+	t += "[b]%d[/b] · %s · Affection Fair: [b]%s[/b]\n" % [s["score"], s["title"], s["fair"]]
+	if s.get("next_tier", -1) >= 0:
+		t += "[color=#bbbbcc]%d more to reach %s → %s.  %s[/color]" % [
+			s["next_min"] - s["score"], s["next_title"], s["next_unlock"], s["best_lever"]]
+	else:
+		t += "[color=#bbbbcc]Top tier — one of the best QINGs on Dysnomia.[/color]"
+	_standing_body.text = t
+	_standing_timer = 10.0
+	_fade_in(_standing)
 
 
 static func format_big(v: int) -> String:
@@ -319,6 +351,24 @@ func _build_report() -> void:
 	_report_body.add_theme_font_size_override("bold_font_size", 15)
 	_report_body.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_report.add_child(_report_body)
+
+
+func _build_standing() -> void:
+	_standing = _panel(PULSE)
+	_standing.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_standing.offset_left = -330
+	_standing.offset_right = 330
+	_standing.offset_top = 24
+	_standing.offset_bottom = 120
+	_standing_body = RichTextLabel.new()
+	_standing_body.bbcode_enabled = true
+	_standing_body.fit_content = true
+	_standing_body.scroll_active = false
+	_standing_body.custom_minimum_size = Vector2(620, 0)
+	_standing_body.add_theme_font_size_override("normal_font_size", 15)
+	_standing_body.add_theme_font_size_override("bold_font_size", 15)
+	_standing_body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_standing.add_child(_standing_body)
 
 
 func _build_toast() -> void:

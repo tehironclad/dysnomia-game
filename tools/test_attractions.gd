@@ -71,6 +71,7 @@ func _process(_d: float) -> bool:
 			_check("player set down at exit", player.global_position.distance_to(exit) < 2.0)
 			_check("director idle", not director.is_riding())
 			_test_paid_path()
+			_test_standing()
 			print("[test] %s" % ("ALL PASSED" if _fails == 0 else "%d FAILED" % _fails))
 			quit(_fails)
 	return false
@@ -97,3 +98,48 @@ func _test_paid_path() -> void:
 	var ui = current_scene._attraction_ui
 	ui.show_bar_report(r, "Test QING")
 	_check("bar report card visible", ui._report.visible)
+
+
+func _test_standing() -> void:
+	var cm = root.get_node("ChainManager")
+	var gm = root.get_node("GameManager")
+	var st = current_scene._standing
+	_check("standing node exists", st != null)
+	_check("tier thresholds 0/149/150/400/750", _QS().tier_for_score(0)["tier"] == 0
+		and _QS().tier_for_score(149)["tier"] == 0 and _QS().tier_for_score(150)["tier"] == 1
+		and _QS().tier_for_score(400)["tier"] == 2 and _QS().tier_for_score(750)["tier"] == 3)
+	# Quiet QING: nothing on-chain → Outpost, fair is just a surveyed lot
+	gm.territory_address = "0x1111111111111111111111111111111111111111"
+	gm.territory_charge = 0
+	st.refresh()
+	_check("quiet QING is tier 0", st.current()["tier"] == 0)
+	# Activity from on-chain chat: 3 messages, 2 unique souls, one duplicate ignored
+	var promoted := {}
+	st.standing_changed.connect(func(s): promoted["tier"] = s["tier"])
+	for m in [{"soul": "7", "username": "a", "message": "gm", "block": 1},
+			{"soul": "7", "username": "a", "message": "gm again", "block": 2},
+			{"soul": "9", "username": "b", "message": "hi", "block": 3},
+			{"soul": "9", "username": "b", "message": "hi", "block": 3}]:
+		cm._count_qing_activity(m)
+	cm._emit_qing_activity(gm.territory_address.to_lower())
+	var a: Dictionary = cm.get_qing_activity(gm.territory_address)
+	_check("activity dedup: 3 messages", a["messages"] == 3)
+	_check("activity unique visitors: 2", a["unique_visitors"] == 2)
+	# A busy, terraformed QING: big charge + many visitors → top tiers
+	gm.territory_charge = 900_000_000_000
+	st._visitors = 12
+	st._messages = 80
+	st._keeper_hypo = 400_000_000_000
+	st._keeper_epi = 300_000_000_000
+	st.recompute()
+	var s: Dictionary = st.current()
+	print("[test] busy QING standing = ", s["score"], " tier ", s["tier"], " parts ", s["parts"])
+	_check("busy QING reaches tier 3", s["tier"] == 3)
+	_check("promotion signal fired", promoted.get("tier", -1) == 3)
+	_check("console override works", current_scene.cmd_standing(1).contains("tier 1"))
+	current_scene.cmd_standing(-1)
+	_check("override cleared", st.current()["tier"] == 3)
+
+
+func _QS() -> GDScript:
+	return load("res://scripts/world/qing_standing.gd")
