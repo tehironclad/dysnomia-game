@@ -230,8 +230,16 @@ func get_wallet_address() -> String:
 
 # ─── Multiplayer Commands ────────────────────────────────────────────────
 
+## Set by MultiplayerManager while the native Realtime client (realtime_client.gd) owns
+## the QING channel. The browser page then stays out of the channel so the same wallet
+## isn't present twice; it is re-used as a fallback if the native socket can't connect.
+static var native_mp_active: bool = false
+
+
 func send_mp_join(qing_address: String, wallet: String, username: String, tier: int) -> void:
 	## Tell wallet.html to join a Supabase channel for the given territory.
+	if native_mp_active:
+		return
 	_send_json({
 		"type": "mp_join",
 		"qing": qing_address,
@@ -248,6 +256,8 @@ func send_mp_leave() -> void:
 
 func send_mp_position(x: float, y: float, z: float, yaw: float, vx: float, vz: float) -> void:
 	## Broadcast local player position to the Supabase channel.
+	if native_mp_active:
+		return
 	_send_json({
 		"type": "mp_position",
 		"x": x, "y": y, "z": z,

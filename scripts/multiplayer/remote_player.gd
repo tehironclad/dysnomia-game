@@ -37,6 +37,13 @@ var _arm_pivot_l: Node3D
 var _arm_pivot_r: Node3D
 var _visor_mesh: MeshInstance3D
 var _is_speaking: bool = false
+var _bubble: Label3D
+var _bubble_timer: float = 0.0
+var _emote_id: int = -1
+var _emote_timer: float = 0.0
+
+const BUBBLE_TIME: float = 6.0
+const EMOTE_ANIM_TIME: float = 2.4
 
 # ── Materials (shared within this remote player) ──
 var _fur_mat: StandardMaterial3D
@@ -62,9 +69,8 @@ func initialize(p_wallet: String, p_username: String, p_tier: int, p_level: int)
 	last_update_time = Time.get_ticks_msec()
 	_stale_timer = 0.0
 
-	# Update label
-	var tier_icon := _get_tier_icon(tier)
-	_label.text = "%s %s" % [tier_icon, username]
+	# Update name tag (coloured by tier; guests in soft grey)
+	_refresh_label()
 
 	# Scale based on tier (0.85 base → 0.94 at tier 9)
 	var s := 0.85 + tier * 0.01
@@ -72,6 +78,45 @@ func initialize(p_wallet: String, p_username: String, p_tier: int, p_level: int)
 
 	# Tint based on wallet hash for variety
 	_apply_wallet_tint()
+
+
+func set_presence_info(p_username: String, p_tier: int) -> void:
+	## Presence re-track (username loaded later, tier promotion…).
+	if p_username == username and p_tier == tier:
+		return
+	username = p_username
+	tier = p_tier
+	var s := 0.85 + clampi(tier, 0, 9) * 0.01
+	scale = Vector3(s, s, s)
+	_refresh_label()
+
+
+func _refresh_label() -> void:
+	if not _label:
+		return
+	var tier_icon := _get_tier_icon(tier)
+	var shown := username if not username.is_empty() else wallet.left(8)
+	_label.text = ("%s %s" % [tier_icon, shown]).strip_edges()
+	_label.modulate = name_tag_color(tier, wallet.begins_with("guest-"))
+
+
+static func name_tag_color(t: int, is_guest: bool = false) -> Color:
+	## Name-tag colour ladder by QING Standing / evolution tier (0–9).
+	if is_guest:
+		return Color(0.78, 0.8, 0.84)
+	var ladder: Array[Color] = [
+		Color(0.85, 0.92, 1.0),   # 0 — pale blue (default)
+		Color(0.55, 0.95, 0.6),   # 1 — green
+		Color(0.4, 0.95, 0.9),    # 2 — teal
+		Color(0.45, 0.7, 1.0),    # 3 — blue
+		Color(0.72, 0.55, 1.0),   # 4 — violet
+		Color(1.0, 0.5, 0.9),     # 5 — magenta
+		Color(1.0, 0.62, 0.3),    # 6 — orange
+		Color(1.0, 0.85, 0.3),    # 7 — gold
+		Color(1.0, 0.45, 0.35),   # 8 — ember
+		Color(1.0, 0.97, 0.75),   # 9 — radiant
+	]
+	return ladder[clampi(t, 0, ladder.size() - 1)]
 
 
 func update_position(pos: Vector3, yaw: float, vx: float, vz: float) -> void:
@@ -140,7 +185,18 @@ func _process(delta: float) -> void:
 	# ── Limb animation based on velocity ──
 	var v_speed := sqrt(vx * vx + vz * vz)
 	_last_speed += (v_speed - _last_speed) * minf(1.0, 5.0 * delta)
-	_animate_limbs()
+	if _emote_timer > 0.0:
+		_emote_timer -= delta
+		_animate_emote()
+	else:
+		_animate_limbs()
+	if _bubble_timer > 0.0:
+		_bubble_timer -= delta
+		if _bubble_timer <= 0.0 and _bubble and is_instance_valid(_bubble):
+			var tw := create_tween()
+			tw.tween_property(_bubble, "modulate:a", 0.0, 0.6)
+			tw.tween_callback(_bubble.queue_free)
+			_bubble = null
 
 	# Label is a child, so it follows automatically via local position
 
@@ -336,11 +392,47 @@ func _build_label() -> void:
 	_label.pixel_size = 0.005
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label.no_depth_test = true
-	_label.modulate = Color(0.8, 0.9, 1.0)
+	_label.modulate = name_tag_color(tier, wallet.begins_with("guest-"))
 	_label.outline_size = 8
 	_label.outline_modulate = Color(0, 0, 0, 0.7)
-	_label.position = Vector3(0, 2.3, 0)
+	_label.position = Vector3(0, 2.05, 0)
 	add_child(_label)
+
+
+func show_chat(text: String) -> void:
+	## Short speech bubble above the head (replaces any current bubble).
+	var t := text.strip_edges()
+	if t.is_empty():
+		return
+	if t.length() > 90:
+		t = t.left(89) + "…"
+	if _bubble and is_instance_valid(_bubble):
+		_bubble.queue_free()
+	_bubble = make_bubble(t)
+	_bubble.position = Vector3(0, 2.45, 0)
+	add_child(_bubble)
+	_bubble_timer = BUBBLE_TIME + t.length() * 0.04
+
+
+func get_last_chat() -> String:
+	return _bubble.text if _bubble and is_instance_valid(_bubble) else ""
+
+
+static func make_bubble(t: String) -> Label3D:
+	var b := Label3D.new()
+	b.name = "ChatBubble"
+	b.text = t
+	b.font_size = 40
+	b.pixel_size = 0.0045
+	b.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	b.no_depth_test = true
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.width = 520.0
+	b.modulate = Color(1, 1, 1)
+	b.outline_size = 14
+	b.outline_modulate = Color(0.06, 0.04, 0.12, 0.92)
+	b.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	return b
 
 
 func _apply_wallet_tint() -> void:
@@ -383,6 +475,50 @@ func show_emote(emote_id: int) -> void:
 	tw.tween_property(emote_label, "position:y", 3.5, 2.0).set_ease(Tween.EASE_OUT)
 	tw.tween_property(emote_label, "modulate:a", 0.0, 2.0).set_ease(Tween.EASE_IN).set_delay(0.5)
 	tw.chain().tween_callback(emote_label.queue_free)
+	_emote_id = emote_id
+	_emote_timer = EMOTE_ANIM_TIME
+	last_emote_id = emote_id
+
+
+var last_emote_id: int = -1
+
+
+func _animate_emote() -> void:
+	## Simple limb poses so emotes read from a distance.
+	if not _arm_pivot_r:
+		return
+	var t := Time.get_ticks_msec() * 0.001
+	_leg_pivot_l.rotation.x = 0.0
+	_leg_pivot_r.rotation.x = 0.0
+	_arm_pivot_l.rotation = Vector3.ZERO
+	_arm_pivot_r.rotation = Vector3.ZERO
+	match _emote_id:
+		0:  # Wave
+			_arm_pivot_r.rotation.z = 2.6 + sin(t * 12.0) * 0.35
+		1:  # Salute
+			_arm_pivot_r.rotation = Vector3(-0.4, 0.0, 2.2)
+		2:  # Dance
+			_arm_pivot_l.rotation.z = -2.2 + sin(t * 8.0) * 0.5
+			_arm_pivot_r.rotation.z = 2.2 + sin(t * 8.0 + PI) * 0.5
+			_leg_pivot_l.rotation.x = sin(t * 8.0) * 0.4
+			_leg_pivot_r.rotation.x = sin(t * 8.0 + PI) * 0.4
+		4:  # Point
+			_arm_pivot_r.rotation.x = -1.5
+		5:  # Laugh
+			_arm_pivot_l.rotation.x = -0.6 + sin(t * 18.0) * 0.1
+			_arm_pivot_r.rotation.x = -0.6 + sin(t * 18.0) * 0.1
+		6:  # Shrug
+			_arm_pivot_l.rotation.z = -0.9
+			_arm_pivot_r.rotation.z = 0.9
+		7:  # Clap
+			var c := absf(sin(t * 10.0)) * 0.5
+			_arm_pivot_l.rotation = Vector3(-1.2, 0.0, 0.5 - c)
+			_arm_pivot_r.rotation = Vector3(-1.2, 0.0, -0.5 + c)
+		_:
+			pass
+	if _emote_timer <= 0.0:
+		_arm_pivot_l.rotation = Vector3.ZERO
+		_arm_pivot_r.rotation = Vector3.ZERO
 
 
 func cleanup() -> void:

@@ -32,6 +32,13 @@ var lau_address: String = ""
 # Wallet Bridge
 var wallet_bridge_port: int = 38420
 
+# Multiplayer / community (native Supabase Realtime — see scripts/multiplayer/realtime_client.gd).
+# Same project as assets/web/wallet.html so browser-bridge and native players share channels.
+# Swap these in user://settings.cfg [multiplayer] (or env DYSNOMIA_REALTIME_URL / _KEY).
+var realtime_enabled: bool = true
+var realtime_url: String = "https://tftfafepodpolrufefrt.supabase.co"
+var realtime_anon_key: String = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmdGZhZmVwb2Rwb2xydWZlZnJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzODMzOTksImV4cCI6MjA4Njk1OTM5OX0.yv0xiZrI7oyZpeq6lCZ6XqOkGhE5ZPuWd4rbL2EfnN8"
+
 const SETTINGS_PATH = "user://settings.cfg"
 
 # Quality preset definitions — what each level enables
@@ -110,6 +117,9 @@ func save_settings() -> void:
 	config.set_value("chain", "rpc_url", rpc_url)
 	config.set_value("identity", "lau_address", lau_address)
 	config.set_value("wallet", "bridge_port", wallet_bridge_port)
+	config.set_value("multiplayer", "realtime_enabled", realtime_enabled)
+	config.set_value("multiplayer", "realtime_url", realtime_url)
+	config.set_value("multiplayer", "realtime_anon_key", realtime_anon_key)
 	config.save(SETTINGS_PATH)
 
 
@@ -133,3 +143,6 @@ func load_settings() -> void:
 	rpc_url = config.get_value("chain", "rpc_url", rpc_url)
 	lau_address = config.get_value("identity", "lau_address", lau_address)
 	wallet_bridge_port = config.get_value("wallet", "bridge_port", wallet_bridge_port)
+	realtime_enabled = config.get_value("multiplayer", "realtime_enabled", realtime_enabled)
+	realtime_url = config.get_value("multiplayer", "realtime_url", realtime_url)
+	realtime_anon_key = config.get_value("multiplayer", "realtime_anon_key", realtime_anon_key)
