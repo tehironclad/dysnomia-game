@@ -5,7 +5,9 @@
   board to tick as WPs land.
 - [`docs/LEARNINGS.md`](docs/LEARNINGS.md): the facts. Addresses, selectors, formulas, coordinates, RPC
   rules, the truth contract, and the Deep Field visual rules.
-- `dysnomia-game-spec.md` is the Feb 2026 spec. Its on-chain mechanics are partly wrong; LEARNINGS wins.
+- `dysnomia-game-spec.md` is the v2 spec (2026-11-23); LEARNINGS still wins on facts.
+- [`docs/BUILDING.md`](docs/BUILDING.md): checks, every tool, perf budgets. `docs/WALLET_TESTS.md`: the manual
+  signing checklist. `docs/RELEASE_CHECKLIST.md`.
 
 **Hard rules:**
 - **Never fabricate chain-shaped data.** Loading, empty, unavailable and zero are different states; a
@@ -50,7 +52,11 @@
 - `screenshot.gd -- --session=<wallet>` views any wallet's identity read-only. Nothing is signed.
   Add `--view=hud --open=su|room|beat|void` to render a move's panel (preview only).
 - `godot --headless --path . -s res://tools/live_moves.gd [-- --wallet=0x… --qing=0x…]` runs the Phase 5
-  previews against the chain (Su, Beat, door, room and Void lines). It is read-only.
+  previews against the chain (Su, Beat, door, room and Void lines, World watch). It is read-only.
+- `tools/perf.gd` samples draw calls, objects, primitives and object growth (under Xvfb), or script cost
+  (headless; `--disable=<node>` to profile).
+- No hard-coded keys: add an input action in `project.godot` and list it in `ControlsHelp.ACTIONS`
+  (a test checks every listed action is bound).
 - Deep Field goldens: `node tools/golden/deepfield.js <entropy-ai-pulse>` reruns the site's real JS.
 - **Screenshots (the user OK'd this route, 2026-11-22):**
   `VK_ICD_FILENAMES=/opt/lavapipe/lvp_icd.json xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --resolution 1280x720 -s res://tools/screenshot.gd -- --out=<abs png> --scene=res://scenes/territory/territory_v2.tscn --view=aerial|ground`

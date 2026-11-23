@@ -149,9 +149,16 @@ func hide_prompt() -> void:
 	prompt.text = ""
 
 
-func _process(_delta: float) -> void:
+var _clock_t := 0.0
+
+
+func _process(delta: float) -> void:
 	if _sky == null:
 		return
+	_clock_t -= delta
+	if _clock_t > 0.0:
+		return
+	_clock_t = 0.25  # the clock text is rebuilt 4×/s, not every frame
 	var t := _sky.now_unix()
 	clock.text = (("block %d\n%s" % [Chain.head_block, DysnomiaTime.format(t)]) if t >= 0 else "block —\ntime unknown") \
 		+ "\nWORLD " + {"latent": "latent", "stirring": "· deployer moved", "unverified": "· unverified code", "live": "LIVE", "unknown": "—"}.get(World.status, "—")

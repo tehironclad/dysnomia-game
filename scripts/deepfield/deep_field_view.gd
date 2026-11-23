@@ -70,6 +70,18 @@ func _update_aspect() -> void:
 		_mat.set_shader_parameter("aspect", size.x / size.y)
 
 
+## Renders a SubViewport holding a Deep Field picture at `hz` instead of every
+## frame (WP 7.5): the picture only drifts slowly, so 4 Hz looks the same and
+## costs a fraction of the GPU time.
+static func throttle(vp: SubViewport, hz: float = 4.0) -> void:
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var t := Timer.new()
+	t.wait_time = 1.0 / hz
+	t.autostart = true
+	t.timeout.connect(func(): vp.render_target_update_mode = SubViewport.UPDATE_ONCE)
+	vp.add_child(t)
+
+
 func _process(delta: float) -> void:
 	if animate_bands and _mat and not params.is_empty():
 		_t += delta

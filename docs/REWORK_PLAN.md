@@ -479,7 +479,7 @@ P3  [x] 3.1 [x] 3.2 [x] 3.3                                   ── M1 Viewport
 P4  [x] 4.1 [x] 4.2 [x] 4.3 [x] 4.4 [x] 4.5
 P5  [x] 5.1 [x] 5.2 [x] 5.3 [x] 5.4 [x] 5.5 [x] 5.6 (AFFECTION reactor deferred)           ── M2 Live loop
 P6  [x] 6.1 [x] 6.2 [ ] 6.3 (at launch: WORLD still latent, nonce 712)                       ── M3 WORLD-ready
-P7  [x] 7.1 [x] 7.2 [x] 7.3 [x] 7.4 [ ] 7.5 [ ] 7.6           ── M4 v2.0
+P7  [x] 7.1 [x] 7.2 [x] 7.3 [x] 7.4 [x] 7.5 [x] 7.6           ── M4 v2.0
 ```
 
 ---

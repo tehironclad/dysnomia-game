@@ -68,6 +68,7 @@ func _ready() -> void:
 	_view.max_iter = 100
 	vp.add_child(_view)
 	add_child(vp)
+	DeepFieldView.throttle(vp, 4.0)
 	_emblem = MeshInstance3D.new()
 	var q := QuadMesh.new()
 	q.size = Vector2(0.22, 0.22)

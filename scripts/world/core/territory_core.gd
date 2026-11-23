@@ -122,7 +122,6 @@ func _build_pylon(pname: String, at: Vector3, mirror: bool, tint: Color) -> void
 	# The plate: the territory's Julia set (c on the Rod, c̄ on the Cone).
 	var vp := SubViewport.new()
 	vp.size = Vector2i(256, 256)
-	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	vp.transparent_bg = false
 	var view := DeepFieldView.new()
 	view.size = Vector2(256, 256)
@@ -131,6 +130,7 @@ func _build_pylon(pname: String, at: Vector3, mirror: bool, tint: Color) -> void
 	root.add_child(vp)
 	view.apply_params(params)
 	view.set_mirror(mirror)
+	DeepFieldView.throttle(vp, 6.0)
 	var plate := MeshInstance3D.new()
 	var quad := QuadMesh.new()
 	quad.size = Vector2(5.0, 5.0)
@@ -332,13 +332,14 @@ func _process(delta: float) -> void:
 		var s := 1.0 + 0.04 * sin(_t * 1.3) + 0.6 * _pulse
 		heart.scale = Vector3.ONE * s
 		heart.position.y = 11.0 + 0.25 * sin(_t * 0.7)
-	for sp in _sparks.duplicate():
+	for i in range(_sparks.size() - 1, -1, -1):  # backwards: removal without a copy
+		var sp: Dictionary = _sparks[i]
 		sp["t"] += delta * 0.9
 		var u: float = sp["t"]
 		var n: MeshInstance3D = sp["node"]
 		if u >= 1.0:
 			n.queue_free()
-			_sparks.erase(sp)
+			_sparks.remove_at(i)
 			continue
 		var a: Vector3 = sp["from"].lerp(sp["mid"], u)
 		var b: Vector3 = sp["mid"].lerp(sp["to"], u)
