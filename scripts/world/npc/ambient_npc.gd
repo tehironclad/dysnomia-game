@@ -9,8 +9,24 @@ extends Node3D
 ##   npc.setup(rng_seed, [], Vector3.FORWARD)            # stands idle facing a direction
 ##
 ## Points are in the parent's local space; y is the floor height there.
+##
+## Locals get a seeded suit colour (the player keeps PulseChain purple), can sit or lean
+## (set_pose), and cull themselves beyond CULL_DISTANCE so crowds stay cheap.
 
 const PlayerModelScript = preload("res://scripts/player/player_model.gd")
+
+const CULL_DISTANCE := 70.0
+## Work and leisure suits seen around a QING — seeded per local
+const SUIT_COLORS := [
+	Color(0.22, 0.14, 0.38),  # PulseChain purple
+	Color(0.20, 0.24, 0.30),  # slate
+	Color(0.85, 0.42, 0.10),  # hi-vis orange (crew)
+	Color(0.82, 0.83, 0.86),  # classic white
+	Color(0.10, 0.36, 0.40),  # teal
+	Color(0.48, 0.10, 0.14),  # crimson
+	Color(0.30, 0.34, 0.18),  # olive
+	Color(0.12, 0.16, 0.34),  # navy
+]
 
 @export var walk_speed: float = 1.4
 @export var pause_range: Vector2 = Vector2(1.5, 6.0)  # Seconds to linger at each point
@@ -34,6 +50,8 @@ func setup(seed_value: int, points: Array = [], facing: Vector3 = Vector3.FORWAR
 	add_child(_model)
 	_model.apply_appearance(PlayerAppearance.generate([
 		_rng.randi(), _rng.randi(), _rng.randi()]))
+	set_suit_color(SUIT_COLORS[_rng.randi() % SUIT_COLORS.size()])
+	_apply_culling(_model)
 	# Locals don't carry the player's crow or shoulder turret
 	for n in ["CrowPivot", "LaserMountPivot"]:
 		var c := _model.find_child(n, true, false)
@@ -84,3 +102,53 @@ func go_to(point: Vector3, linger: float = 4.0) -> void:
 	_target_idx = 1
 	_pause = 0.0
 	pause_range = Vector2(linger, linger)
+
+
+func set_suit_color(c: Color) -> void:
+	var m: StandardMaterial3D = _model.get("_suit_mat")
+	if m:
+		m.albedo_color = c
+	var sm: ShaderMaterial = _model.get("_suit_shader_mat")
+	if sm:
+		# Each model builds its own suit material, so this only recolours this local
+		sm.set_shader_parameter("base_color", Vector3(c.r, c.g, c.b))
+
+
+func set_pose(pose: String) -> void:
+	## "stand" (default, animated idle), "sit" (on a stool/bench ~0.45 m below the hips),
+	## or "lean" (elbows on a bar). Sit/lean freeze the model's procedural animation.
+	_points = []
+	if pose == "stand":
+		_model.set_process(true)
+		_model.position.y = 0.0
+		return
+	_model.update_movement(Vector3.ZERO, true, false)
+	_model.set_process(false)
+	var legs := [_model.get("_leg_pivot_left"), _model.get("_leg_pivot_right")]
+	var knees := [_model.get("_knee_pivot_left"), _model.get("_knee_pivot_right")]
+	var arms := [_model.get("_arm_pivot_left"), _model.get("_arm_pivot_right")]
+	var elbows := [_model.get("_elbow_pivot_left"), _model.get("_elbow_pivot_right")]
+	if pose == "sit":
+		for i in 2:
+			if legs[i]: legs[i].rotation_degrees = Vector3(-85.0, 0.0, (-6.0 if i == 0 else 6.0))
+			if knees[i]: knees[i].rotation_degrees = Vector3(85.0, 0.0, 0.0)
+			if arms[i]: arms[i].rotation_degrees = Vector3(-25.0, 0.0, (10.0 if i == 0 else -10.0))
+			if elbows[i]: elbows[i].rotation_degrees = Vector3(-35.0, 0.0, 0.0)
+		_model.position.y = -0.42 * _model.scale.y
+	elif pose == "lean":
+		for i in 2:
+			if arms[i]: arms[i].rotation_degrees = Vector3(-70.0, 0.0, (14.0 if i == 0 else -14.0))
+			if elbows[i]: elbows[i].rotation_degrees = Vector3(-60.0, 0.0, 0.0)
+			if legs[i]: legs[i].rotation_degrees = Vector3((6.0 if i == 0 else -4.0), 0.0, 0.0)
+		_model.rotation.x = deg_to_rad(-8.0)
+
+
+func _apply_culling(n: Node) -> void:
+	if n is GeometryInstance3D:
+		var g := n as GeometryInstance3D
+		g.visibility_range_end = CULL_DISTANCE
+		g.visibility_range_end_margin = 6.0
+		g.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for c in n.get_children():
+		_apply_culling(c)
