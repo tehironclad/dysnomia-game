@@ -19,6 +19,7 @@ var phenomena: Phenomena
 var actions: CoreActions
 var lattice: WorldLattice
 var help: ControlsHelp
+var guide: GuidePanel
 var score: TerritoryScore
 var _settings: PanelContainer
 var _monitor: Control
@@ -94,6 +95,12 @@ func _ready() -> void:
 	help = ControlsHelp.new()
 	help.position = Vector2(20, 240)
 	hud.add_child(help)
+	guide = GuidePanel.new()
+	guide.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	guide.position = Vector2(-560, 130)
+	hud.add_child(guide)
+	if view == "":
+		Acts.set_flag("", "arrived")
 	actions.opened.connect(func(): player.process_mode = Node.PROCESS_MODE_DISABLED)
 	actions.closed.connect(func(): if view_mode == "": player.process_mode = Node.PROCESS_MODE_INHERIT)
 	Session.changed.connect(_on_state_changed)
@@ -220,6 +227,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		Travel.field(get_tree())
 	elif event.is_action_pressed("controls_help"):
 		help.toggle()
+	elif event.is_action_pressed("guide"):
+		guide.toggle()
 	elif event.is_action_pressed("settings"):
 		_toggle_settings()
 	elif event.is_action_pressed("toggle_debug"):

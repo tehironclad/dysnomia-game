@@ -3,7 +3,8 @@ extends SceneTree
 ## run under xvfb-run with Vulkan, e.g. lavapipe; see CLAUDE.md).
 ##   godot --path . -s res://tools/screenshot.gd -- --out=/abs/shot.png
 ##       [--scene=res://scenes/main.tscn] [--qing=0x…] [--frames=90] [--quality=0..3]
-##       [--session=0x…] [--open=su|room|beat|void] (with --view=hud: a move's panel, previewed only)
+##       [--session=0x…] [--open=su|room|beat|void|world] (with --view=hud: a move's panel, previewed only)
+##       [--toggle=guide|help] (with --view=hud: show that panel)
 ## With --qing, the territory is loaded from the chain first (read-only).
 
 var _out := ""
@@ -13,7 +14,8 @@ var _frames := 90
 var _quality := -1
 var _warp := ""
 var _session := ""
-var _open := ""  # su | room | beat | void: open that move's panel (previews only)
+var _open := ""
+var _toggle := ""  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
 func _initialize() -> void:
@@ -28,6 +30,8 @@ func _initialize() -> void:
 			_frames = int(a.substr(9))
 		elif a.begins_with("--session="):
 			_session = a.substr(10)  # read-only: view a wallet's identity (no signing)
+		elif a.begins_with("--toggle="):
+			_toggle = a.substr(9)
 		elif a.begins_with("--open="):
 			_open = a.substr(7)
 		elif a.begins_with("--warp="):
@@ -64,6 +68,8 @@ func _run() -> void:
 		var acts = current_scene.get("actions") if current_scene else null
 		if acts:
 			acts.call("open_" + _open)
+	if _toggle != "" and current_scene and current_scene.get(_toggle) != null:
+		current_scene.get(_toggle).toggle()
 	for i in _frames:
 		await process_frame
 	await RenderingServer.frame_post_draw

@@ -11,6 +11,7 @@ var _status: Label
 var _wallet_btn: Button
 var _card: IdentityCard
 var _onboarding: OnboardingPanel
+var _guide: GuidePanel
 var _settings: PanelContainer
 var _bg_q: Dictionary = {}
 var _t := 0.0
@@ -72,6 +73,10 @@ func _ready() -> void:
 	void_btn.text = "ENTER THE VOID  ·  create your identity"
 	void_btn.pressed.connect(func(): _onboarding.visible = not _onboarding.visible)
 	left.add_child(void_btn)
+	var guide_btn := Button.new()
+	guide_btn.text = "Guide · the acts"
+	guide_btn.pressed.connect(func(): _guide.toggle())
+	left.add_child(guide_btn)
 	var settings_btn := Button.new()
 	settings_btn.text = "Settings"
 	settings_btn.pressed.connect(_toggle_settings)
@@ -91,6 +96,8 @@ func _ready() -> void:
 	_onboarding = OnboardingPanel.new()
 	_onboarding.visible = false
 	right.add_child(_onboarding)
+	_guide = GuidePanel.new()
+	right.add_child(_guide)
 	var caption := Label.new()
 	caption.theme_type_variation = "MutedLabel"
 	caption.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)

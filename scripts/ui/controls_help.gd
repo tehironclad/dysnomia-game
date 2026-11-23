@@ -8,7 +8,7 @@ const ACTIONS := [
 	["jump", "Jump (triple jump in low gravity)"], ["sprint", "Sprint"], ["crouch_descend", "Crouch / descend (flying)"],
 	["toggle_fly", "Fly"], ["toggle_camera", "First / third person"], ["interact", "Use: pylon Su · door Room · centre Beat · plinth WORLD · monolith Void"],
 	["inspect", "How is this drawn?"], ["open_field", "The Field (all territories)"], ["flashlight", "Flashlight"],
-	["settings", "Settings"], ["toggle_debug", "Performance overlay"], ["controls_help", "This list"],
+	["guide", "Guide: the acts"], ["settings", "Settings"], ["toggle_debug", "Performance overlay"], ["controls_help", "This list"],
 ]
 
 var _text: Label

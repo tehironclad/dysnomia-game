@@ -219,6 +219,7 @@ func _do_beat(p: Dictionary) -> void:
 		return
 	core.pulse()
 	Cues.play(self, "beat")
+	Acts.set_flag(Session.wallet, "beat")
 	hud.ticker("YOUR BEAT · %s · block %d" % [_tname(), res["block"]], Color("#64e3a8"))
 	action.set_status("The Heart beat: mined in block %d, status 1." % res["block"], Color("#64e3a8"))
 	state.refresh()
@@ -281,6 +282,7 @@ func _join() -> void:
 	await _refresh_door()
 	if _room.admitted:
 		chat.set_status("Admitted (QING.Admitted(LAU) is true at block %d). The door is open to you for a day." % _room.block)
+		Acts.set_flag(Session.wallet, "door")
 		core.set_door_closed(false)
 	else:
 		chat.set_status("Join was mined, but Admitted(LAU) still reads false at block %d." % _room.block)
@@ -317,6 +319,8 @@ func _post(text: String) -> void:
 	else:
 		chat.append_lines(mine)
 		chat.set_status("Posted: read back from the chain in block %d." % res["block"])
+		if _chat_mode == "room":
+			Acts.set_flag(Session.wallet, "door")
 	if _chat_mode == "room":
 		core.cascade(0.5)  # CHOA.Chat reacts like Su (bars grow, no YUE)
 		state.refresh()
