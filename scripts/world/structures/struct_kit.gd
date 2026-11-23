@@ -21,6 +21,9 @@ const CONDUIT_SHADER := preload("res://assets/shaders/struct_conduit.gdshader")
 const POOL_SHADER := preload("res://assets/shaders/struct_glowpool.gdshader")
 const BEAM_SHADER := preload("res://assets/shaders/struct_beam.gdshader")
 const PAD_SHADER := preload("res://assets/shaders/struct_pad.gdshader")
+const HULL_SHADER := preload("res://assets/shaders/struct_hull.gdshader")
+const GRILLE_SHADER := preload("res://assets/shaders/struct_grille.gdshader")
+const CYAN := Color(0.25, 0.85, 1.0)  # Dysnomia relay cyan
 
 static var _scenes: Dictionary = {}
 static var _mats: Dictionary = {}
@@ -753,8 +756,9 @@ static func sign_board(parent: Node3D, text: String, pos: Vector3, rot_y: float,
 
 # ─── NPCs ───────────────────────────────────────────────────────────────
 
-static func npc(parent: Node3D, seed_value: int, points: Array, facing: Vector3 = Vector3.FORWARD, height_fn: Callable = Callable()) -> Node3D:
-	## AmbientNPC if that system is present in this build; null otherwise.
+static func npc(parent: Node3D, seed_value: int, points: Array, facing: Vector3 = Vector3.FORWARD, height_fn: Callable = Callable(), pos: Vector3 = Vector3.INF, pose: String = "") -> Node3D:
+	## AmbientNPC if that system is present in this build; null otherwise. Standing locals
+	## (no walk points) face `facing`; `pos` places them, `pose` = "sit" / "lean" / "stand".
 	if not ResourceLoader.exists(NPC_PATH):
 		return null
 	var scr: Script = load(NPC_PATH)
@@ -764,8 +768,136 @@ static func npc(parent: Node3D, seed_value: int, points: Array, facing: Vector3 
 	parent.add_child(n)
 	if n.has_method("setup"):
 		n.setup(seed_value, points, facing, height_fn)
-	if points.size() < 2 and facing.length() > 0.01:
-		# Walkers steer with node -Z forward; give standing locals the same convention so
-		# `facing` is the direction they look.
-		n.rotation.y = atan2(-facing.x, -facing.z)
+	if pos != Vector3.INF:
+		n.position = pos
+	if pose != "" and n.has_method("set_pose"):
+		n.set_pose(pose)
 	return n
+
+
+static func crowd(parent: Node3D, seed_value: int, area_min: Vector3, area_max: Vector3, count: int, facing: Vector3) -> void:
+	## A loose standing crowd in an XZ box (y = area_min.y), everyone roughly facing `facing`.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var placed: Array[Vector3] = []
+	var tries := 0
+	while placed.size() < count and tries < count * 30:
+		tries += 1
+		var p := Vector3(rng.randf_range(area_min.x, area_max.x), area_min.y, rng.randf_range(area_min.z, area_max.z))
+		var ok := true
+		for q in placed:
+			if q.distance_to(p) < 0.85:
+				ok = false
+				break
+		if not ok:
+			continue
+		placed.append(p)
+		var f := facing.rotated(Vector3.UP, rng.randf_range(-0.45, 0.45))
+		npc(parent, seed_value + 17 * placed.size(), [], f, Callable(), p)
+
+
+# ─── Terrain-aware helpers ──────────────────────────────────────────────
+
+static func ground_h(node: Node3D, x: float, z: float) -> float:
+	## Terrain height at node-local (x, z), relative to the node. 0 if no terrain reachable.
+	var p := node.get_parent()
+	if p == null:
+		return 0.0
+	var terr = p.get("territory")
+	if terr and is_instance_valid(terr) and terr.has_method("get_height_at"):
+		return float(terr.get_height_at(node.position.x + x, node.position.z + z)) - node.position.y
+	return 0.0
+
+
+static func skirt(node: Node3D, half: Vector2, top: float, reach: float, mat: Material, step: float = 2.0) -> MeshInstance3D:
+	## Embankment around a rectangular slab: a strip from the slab edge (y = top) sloping out
+	## `reach` metres to just below the real terrain, so slabs never read as floating.
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var ring: Array[Vector2] = []
+	var corners := [Vector2(half.x, half.y), Vector2(-half.x, half.y), Vector2(-half.x, -half.y), Vector2(half.x, -half.y)]
+	for k in 4:
+		var a: Vector2 = corners[k]
+		var b: Vector2 = corners[(k + 1) % 4]
+		var n := maxi(1, int(ceil(a.distance_to(b) / step)))
+		for i in n:
+			ring.append(a.lerp(b, float(i) / float(n)))
+	var inner: Array[Vector3] = []
+	var outer: Array[Vector3] = []
+	for p in ring:
+		var dir := Vector2(signf(p.x) if absf(absf(p.x) - half.x) < 0.01 else 0.0, signf(p.y) if absf(absf(p.y) - half.y) < 0.01 else 0.0)
+		var o := p + dir.normalized() * reach
+		inner.append(Vector3(p.x, top, p.y))
+		outer.append(Vector3(o.x, ground_h(node, o.x, o.y) - 0.25, o.y))
+	var cnt := ring.size()
+	for i in cnt:
+		var j := (i + 1) % cnt
+		for tri in [[inner[i], outer[i], outer[j]], [inner[i], outer[j], inner[j]]]:
+			var v0: Vector3 = tri[0]
+			var v1: Vector3 = tri[1]
+			var v2: Vector3 = tri[2]
+			if (v1 - v0).cross(v2 - v0).y > 0.0:  # Godot front faces wind clockwise
+				var t := v1
+				v1 = v2
+				v2 = t
+			for v: Vector3 in [v0, v1, v2]:
+				st.set_uv(Vector2(v.x, v.z) * 0.3)
+				st.add_vertex(v)
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.name = "Skirt"
+	mi.mesh = st.commit()
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	node.add_child(mi)
+	return mi
+
+
+static func hull_material(base: Color, tiles: bool = true) -> ShaderMaterial:
+	## Spacecraft skin: panel seams, rivet-dark grime, heat-tile underside, streaky wear.
+	var key := "hull|%s|%s" % [base.to_html(), tiles]
+	if _mats.has(key):
+		return _mats[key]
+	var m := ShaderMaterial.new()
+	m.shader = HULL_SHADER
+	m.set_shader_parameter("base_color", base)
+	m.set_shader_parameter("tiles", 1.0 if tiles else 0.0)
+	_mats[key] = m
+	return m
+
+
+static func grille(metal: Color = Color(0.09, 0.09, 0.1), pitch: float = 0.035) -> ShaderMaterial:
+	var key := "grille|%s|%.3f" % [metal.to_html(), pitch]
+	if _mats.has(key):
+		return _mats[key]
+	var m := ShaderMaterial.new()
+	m.shader = GRILLE_SHADER
+	m.set_shader_parameter("metal_color", metal)
+	m.set_shader_parameter("pitch", pitch)
+	_mats[key] = m
+	return m
+
+
+static func crowd_barrier(parent: Node3D, a: Vector3, b: Vector3) -> void:
+	## Steel crowd-control barrier sections (1.2 m) with feet, from a to b.
+	var steel := paint(Color(0.62, 0.63, 0.65), 0.35, 0.9)
+	var d := a.distance_to(b)
+	var n := maxi(1, int(round(d / 1.2)))
+	var xs: Array = []
+	var dir := (b - a).normalized()
+	var side := Vector3(-dir.z, 0, dir.x)
+	for i in n:
+		var p0 := a.lerp(b, float(i) / float(n)) + dir * 0.03
+		var p1 := a.lerp(b, float(i + 1) / float(n)) - dir * 0.03
+		for h: float in [0.12, 1.08]:
+			xs.append(beam_xform(p0 + Vector3(0, h, 0), p1 + Vector3(0, h, 0), 0.022))
+		xs.append(beam_xform(p0 + Vector3(0, 0.1, 0), p0 + Vector3(0, 1.1, 0), 0.022))
+		xs.append(beam_xform(p1 + Vector3(0, 0.1, 0), p1 + Vector3(0, 1.1, 0), 0.022))
+		for k in 7:
+			var q := p0.lerp(p1, (float(k) + 1.0) / 8.0)
+			xs.append(beam_xform(q + Vector3(0, 0.12, 0), q + Vector3(0, 1.08, 0), 0.008))
+		for p: Vector3 in [p0, p1]:
+			xs.append(beam_xform(p - side * 0.32 + Vector3(0, 0.02, 0), p + side * 0.32 + Vector3(0, 0.02, 0), 0.02))
+			xs.append(beam_xform(p - side * 0.3 + Vector3(0, 0.02, 0), p + Vector3(0, 0.1, 0), 0.015))
+			xs.append(beam_xform(p + side * 0.3 + Vector3(0, 0.02, 0), p + Vector3(0, 0.1, 0), 0.015))
+	multi(parent, unit_cylinder(6), xs, steel, false)
