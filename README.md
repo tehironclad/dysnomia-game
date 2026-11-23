@@ -31,6 +31,7 @@ Every move previews from your wallet first. Nothing reports success until the ch
 | Key | Action |
 |---|---|
 | WASD · Space · Shift · Ctrl | move · jump (triple) · sprint · crouch |
+| Mouse (click the game to capture it) · arrow keys · right stick | look around (arrows work while running) |
 | Tab · Z | fly · first/third person |
 | E | use (Su, Room, Beat, WORLD, Void) |
 | H | how is this drawn? (sources and formulas) |

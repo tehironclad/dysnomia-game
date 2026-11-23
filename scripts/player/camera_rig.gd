@@ -49,8 +49,19 @@ func _apply_config() -> void:
 	camera.far = Config.render_distance
 
 
+## Keyboard / gamepad look speed (radians per second): arrow keys and the
+## right stick turn the camera, which works while running (laptop touchpads
+## are often switched off while keys are held).
+const KEY_LOOK_SPEED := 2.4
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	# Click into the game to grab the mouse for looking around (Esc releases it).
+	# Clicks on open panels and buttons never get here: the GUI takes them first.
 	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+			get_viewport().set_input_as_handled()
 		return
 
 	# Mouse look
@@ -81,6 +92,15 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	# Arrow keys / right stick look (any time, including while running).
+	var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
+	if look.length() > 0.05:
+		var invert_mult: float = -1.0 if Config and Config.invert_y else 1.0
+		if _camera_mode == CameraMode.FIRST_PERSON:
+			get_parent().rotate_y(-look.x * KEY_LOOK_SPEED * delta)
+		else:
+			_yaw -= look.x * KEY_LOOK_SPEED * delta
+		_pitch = clampf(_pitch - look.y * KEY_LOOK_SPEED * 0.6 * delta * invert_mult, deg_to_rad(pitch_min_deg), deg_to_rad(pitch_max_deg))
 	# Apply pitch to spring arm
 	spring_arm.rotation.x = _pitch
 

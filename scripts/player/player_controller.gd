@@ -525,38 +525,37 @@ func _on_fly_mode_changed(flying: bool) -> void:
 # ─── Flashlight ──────────────────────────────────────────────────────────
 
 func _create_flashlight() -> void:
-	## Create a bright SpotLight3D mounted on the player's helmet.
-	## Attached to a dedicated pivot that follows camera yaw+pitch so the beam
-	## always illuminates what the player is looking at (forward, not the back).
+	## A lamp on the character's chest/helmet line, in FRONT of the face, shining
+	## where the character faces (the body's -Z) and tilting with the camera's
+	## pitch. The player's own model is on render layer 2, which this light
+	## skips, so it never lights the back of your own head.
 	_flashlight = SpotLight3D.new()
 	_flashlight.name = "Flashlight"
-	_flashlight.light_energy = 3.5
+	_flashlight.light_energy = 6.0
 	_flashlight.light_color = Color(0.95, 0.93, 0.87)  # Warm white
 	_flashlight.spot_range = 60.0
-	_flashlight.spot_angle = 32.0
+	_flashlight.spot_angle = 34.0
 	_flashlight.spot_attenuation = 0.7
 	_flashlight.shadow_enabled = true
 	_flashlight.shadow_bias = 0.04
 	_flashlight.visible = false
-	_flashlight.light_cull_mask = 0xFFFFFFFD  # Exclude layer 2 (player model)
-
-	# Create a pivot node at helmet height that copies camera pitch.
-	# The pivot is a child of the camera_rig (which already yaw-follows the player).
-	# SpotLight3D shines along -Z in local space, and the pivot's -Z faces forward.
+	_flashlight.light_cull_mask = 0xFFFFFFFD  # every layer but 2 (the player's own model)
 	var flash_pivot := Node3D.new()
 	flash_pivot.name = "FlashlightPivot"
-	_camera_rig.add_child(flash_pivot)
-	# Position at head height
-	flash_pivot.position = Vector3(0.0, 1.6, 0.0)
-
+	add_child(flash_pivot)  # on the body: it turns with the character, not the camera
+	flash_pivot.position = Vector3(0.0, 1.5, 0.0)
 	flash_pivot.add_child(_flashlight)
-	# Gentle downward tilt to light the ground ahead
-	_flashlight.rotation_degrees.x = -5.0
-	# Offset well forward + slightly right (helmet lamp style) to clear the bear's head geometry
-	_flashlight.position = Vector3(0.15, 0.0, 1.2)
-
-	# Store reference so we can update pitch each frame
+	_flashlight.position = Vector3(0.0, 0.0, -0.45)  # ahead of the face
 	_flashlight_pivot = flash_pivot
+
+
+## Puts every mesh of the player's own model on render layer 2 (seen by the
+## camera, skipped by the flashlight).
+func _mark_self_layer() -> void:
+	var model := get_node_or_null("PlayerModel")
+	if model:
+		for mi in model.find_children("*", "VisualInstance3D", true, false):
+			(mi as VisualInstance3D).layers = 2
 
 
 func _toggle_flashlight() -> void:
@@ -565,6 +564,8 @@ func _toggle_flashlight() -> void:
 		return
 	_flashlight_auto = false
 	_flashlight_on = not _flashlight_on
+	if _flashlight_on:
+		_mark_self_layer()
 	_flashlight.visible = _flashlight_on
 
 
@@ -572,9 +573,10 @@ func _update_flashlight() -> void:
 	## Auto-enable flashlight at night if auto-mode is active.
 	## Also sync flashlight pivot pitch with camera pitch each frame.
 	if _flashlight_pivot:
+		# Tilt with the camera's pitch (looking up or down), a little below level.
 		var spring_arm: SpringArm3D = _camera_rig.get_node_or_null("SpringArm3D") if _camera_rig else null
 		if spring_arm:
-			_flashlight_pivot.rotation.x = spring_arm.rotation.x
+			_flashlight_pivot.rotation.x = clampf(spring_arm.rotation.x - 0.18, -1.2, 0.9)
 
 	if not _flashlight or not _flashlight_auto:
 		return

@@ -107,6 +107,7 @@ func _build(kind: String) -> void:
 	_collect_materials()
 	_dress()
 	_build_back()
+	_self_layer()
 	if head_kind != "":
 		set_head(head_kind)
 
@@ -311,6 +312,14 @@ func set_head(kind: String, accessories: Array = []) -> void:
 	if _grey:
 		_grey = false
 		modulate_grey(true)
+	_self_layer()
+
+
+## Every mesh of the avatar on render layer 2: the camera sees it, the player's
+## own flashlight (light_cull_mask without layer 2) never lights it.
+func _self_layer() -> void:
+	for vi in find_children("*", "VisualInstance3D", true, false):
+		(vi as VisualInstance3D).layers = 2
 
 
 func update_movement(vel: Vector3, on_floor: bool, flying: bool) -> void:

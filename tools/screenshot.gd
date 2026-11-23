@@ -16,7 +16,8 @@ var _warp := ""
 var _session := ""
 var _open := ""
 var _toggle := ""
-var _head := ""  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
+var _head := ""
+var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
 func _initialize() -> void:
@@ -31,6 +32,8 @@ func _initialize() -> void:
 			_frames = int(a.substr(9))
 		elif a.begins_with("--session="):
 			_session = a.substr(10)  # read-only: view a wallet's identity (no signing)
+		elif a == "--flashlight":
+			_flash = true
 		elif a.begins_with("--head="):
 			_head = a.substr(7)
 		elif a.begins_with("--toggle="):
@@ -86,6 +89,10 @@ func _run() -> void:
 			if model:
 				var parts := _head.split(":")
 				model.set_head(parts[0], Array(parts[1].split(",")) if parts.size() > 1 else [])
+	if _flash and current_scene and current_scene.get_node_or_null("Player"):
+		for i in 10:
+			await process_frame
+		current_scene.get_node("Player")._toggle_flashlight()
 	if _toggle != "" and current_scene and current_scene.get(_toggle) != null:
 		current_scene.get(_toggle).toggle()
 	for i in _frames:

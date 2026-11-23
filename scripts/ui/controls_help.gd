@@ -6,6 +6,7 @@ extends PanelContainer
 const ACTIONS := [
 	["move_forward", "Move forward"], ["move_back", "Move back"], ["move_left", "Move left"], ["move_right", "Move right"],
 	["jump", "Jump (triple jump in low gravity)"], ["sprint", "Sprint"], ["crouch_descend", "Crouch / descend (flying)"],
+	["look_left", "Look left (arrow keys / right stick: look while running)"], ["look_up", "Look up"],
 	["toggle_fly", "Fly"], ["toggle_camera", "First / third person"], ["interact", "Use: pylon Su · door: enter the hall · centre Beat · plinth WORLD · monolith: the Void"],
 	["inspect", "How is this drawn?"], ["open_field", "The Field (all territories)"], ["flashlight", "Flashlight"],
 	["chat", "Speak (in a hall or the Void)"], ["opportunities", "Opportunities: hot spots, leads in reach, crowns, streak"], ["guide", "Guide: the acts"], ["settings", "Settings"], ["toggle_debug", "Performance overlay"], ["controls_help", "This list"],
@@ -51,7 +52,8 @@ static func lines() -> String:
 	for a in ACTIONS:
 		out.append("%-10s %s" % [key_of(a[0]), a[1]])
 	out.append("%-10s %s" % ["Mouse", "Look"])
-	out.append("%-10s %s" % ["Esc", "Release / capture the mouse; close a panel"])
+	out.append("%-10s %s" % ["Click", "Capture the mouse to look around"])
+	out.append("%-10s %s" % ["Esc", "Release the mouse; close a panel"])
 	return "\n".join(out)
 
 
