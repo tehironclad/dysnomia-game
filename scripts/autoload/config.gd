@@ -95,6 +95,15 @@ func apply_camera(cam: Camera3D) -> void:
 func apply() -> void:
 	var p := preset()
 	if is_instance_valid(_environment):
+		# The Compatibility (OpenGL) renderer, for PCs without a real GPU, lights
+		# the scene darker than Forward+: lift it so the ground stays readable.
+		# Its ambient light doesn't come from a custom sky shader, so give it a fill.
+		if RenderingServer.get_current_rendering_method() == "gl_compatibility":
+			_environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+			_environment.ambient_light_color = Color(0.55, 0.6, 0.75)
+			_environment.ambient_light_energy = 1.1
+			_environment.adjustment_enabled = true
+			_environment.adjustment_brightness = 1.25
 		_environment.ssao_enabled = p["ssao"]
 		_environment.ssil_enabled = p["ssil"]
 		_environment.glow_enabled = p["glow"]
@@ -105,6 +114,8 @@ func apply() -> void:
 	if is_instance_valid(_terrain_material):
 		_terrain_material.set_shader_parameter("max_iter", int(p["iter"]))
 		_terrain_material.set_shader_parameter("detail_strength", float(p["detail"]))
+		var compat := RenderingServer.get_current_rendering_method() == "gl_compatibility"
+		_terrain_material.set_shader_parameter("ground_lift", 4.0 if compat else 1.0)
 	if is_instance_valid(_sky_material):
 		_sky_material.set_shader_parameter("simple", bool(p["simple_sky"]))
 	var vp := get_viewport()

@@ -31,6 +31,7 @@ uniform int dev_tier = 0;
 uniform float dev_energy = 0.0;      // Epibar total, 0..1
 uniform float detail_scale = 0.18;   // tiles per metre (≈ 5.5 m tiles)
 uniform float detail_strength = 1.0;
+uniform float ground_lift = 1.0;     // >1 on the Compatibility renderer, which lights darker
 
 varying vec3 world_pos;
 
@@ -158,7 +159,7 @@ void fragment() {
 	vec3 nm = mix(texture(regolith_normal, uv1).rgb, texture(regolith_normal, uv2).rgb, 0.35);
 	NORMAL_MAP = mix(vec3(0.5, 0.5, 1.0), nm, near_f);
 	NORMAL_MAP_DEPTH = 1.2;
-	ALBEDO = albedo;
+	ALBEDO = albedo * ground_lift;
 	ROUGHNESS = mix(0.92, texture(regolith_rough, uv1).r, near_f * 0.6);
 	SPECULAR = 0.05;
 	EMISSION = light;

@@ -100,6 +100,13 @@ city.
 - **The Void.** The monolith takes you to an open space with a glass platform and a nebula sky. Void lines
   drift around you, the newest closest. Press T to speak; the portal takes you back.
 
+## Slow PC / no graphics card (Windows)
+
+Double-click **`play_low_end.bat`** in the project folder. It starts Godot with the lightweight
+Compatibility (OpenGL) renderer and the Potato quality preset. **`play.bat`** starts the normal renderer.
+Both expect Godot at `Downloads\Godot_v4.6.1-stable_win64.exe\Godot_v4.6.1-stable_win64.exe`; edit the
+`GODOT=` line if yours is elsewhere. Press F2 in game to change quality.
+
 ## Without a wallet
 
 Everything can be read without connecting: territories, bars, rooms, the Void, readiness. Only the writes
