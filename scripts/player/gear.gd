@@ -102,6 +102,8 @@ func refresh() -> void:
 		# The head: the LAU's own on-chain text decides (🐀👑 RatKing → rat + crown),
 		# unless the player picked one for themselves on this machine.
 		var ps: PlayerState = Session.player
+		if model.has_method("set_body"):
+			model.set_body(AvatarHeads.local_body(w))
 		var pick := AvatarHeads.local_choice(w)
 		model.set_head(pick if pick != "" else ps.head_kind(), AvatarHeads.accessories_for(ps.username, ps.lau_name, ps.lau_symbol))
 		# No bars anywhere: the bear is drawn grey (no colour until it has acted).

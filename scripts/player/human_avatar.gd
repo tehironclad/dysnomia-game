@@ -47,6 +47,9 @@ var _land_t := 0.0
 var _bank := 0.0
 var _last_yaw := 0.0
 var _grey := false
+var _fly_blend := 0.0
+var _fly_speed := 0.0
+var _fly_pitch := 0.0
 var _materials: Array = []  # [StandardMaterial3D, original albedo texture]
 var _suit_mat: StandardMaterial3D
 var _plate_mat: StandardMaterial3D
@@ -77,7 +80,15 @@ static func library() -> AnimationLibrary:
 
 func _build(kind: String) -> void:
 	if body:
-		body.queue_free()
+		# The flames live on the old body's jetpack: bring them home first.
+		for f in [extras._flame_left, extras._flame_right]:
+			if f and f.get_parent() != extras:
+				f.get_parent().remove_child(f)
+				extras.add_child(f)
+		body.free()
+		_head_attach = null
+		_head = null
+		_back = null
 	body_kind = kind if BODIES.has(kind) else "male"
 	body = load(BODIES[body_kind]).instantiate()
 	body.name = "Body"
@@ -329,16 +340,15 @@ func _process(delta: float) -> void:
 		return
 	var speed := Vector2(_vel.x, _vel.z).length()
 	if _flying:
-		# The swim stroke reads as flying; it lies prone, so lift it to the capsule's centre.
-		if speed > 2.0:
-			_play("Swim_Fwd", clampf(0.6 + speed / 25.0, 0.6, 1.6))
-		else:
-			_play("Jump")
-		body.position.y = lerpf(body.position.y, 0.85 if speed > 2.0 else 0.0, clampf(5.0 * delta, 0.0, 1.0))
+		# Flying: the Idle clip keeps the torso alive; the arms and legs are posed
+		# over it (_fly_pose) and the whole body pitches into the direction of travel.
+		_play("Idle")
+		_fly_blend = minf(1.0, _fly_blend + delta * 3.0)
+		_fly_speed = speed
 		extras.set_flames(true, Vector3.ZERO, Vector3.ZERO, 0.6 + clampf(speed / 30.0, 0.0, 0.4))
 	else:
 		extras.set_flames(false, Vector3.ZERO, Vector3.ZERO)
-		body.position.y = lerpf(body.position.y, 0.0, clampf(8.0 * delta, 0.0, 1.0))
+		_fly_blend = maxf(0.0, _fly_blend - delta * 4.0)
 		if not _on_floor:
 			if _was_on_floor and _vel.y > 1.0:
 				_play("Jump_Start")
@@ -363,6 +373,10 @@ func _process(delta: float) -> void:
 		_fall_speed = 0.0
 	_was_on_floor = _on_floor
 	anim.advance(delta)
+	if _fly_blend > 0.0:
+		_fly_pose(delta)
+	else:
+		body.transform = Transform3D.IDENTITY
 	# Hide the human head under a creature head: collapse the Head bone.
 	if _hide_human_head and _head_bone >= 0:
 		skeleton.set_bone_pose_scale(_head_bone, Vector3.ONE * 0.001)
@@ -371,7 +385,59 @@ func _process(delta: float) -> void:
 	var rate := wrapf(yaw - _last_yaw, -PI, PI) / maxf(delta, 0.0001)
 	_last_yaw = yaw
 	_bank = lerpf(_bank, clampf(-rate * speed * 0.02, -0.25, 0.25), clampf(6.0 * delta, 0.0, 1.0))
-	body.rotation.z = _bank
+	if _fly_blend <= 0.0:
+		body.rotation.z = _bank
+
+
+## The flying pose, layered over the clip: arms down along the sides and swept
+## back (palms trailing), legs together and straight with a soft knee, the
+## head lifted to look ahead, and the body pitched forward with speed about
+## the hips. Rotations are in skeleton space relative to the T-pose rest.
+const FLY_PIVOT := Vector3(0.0, 1.0, 0.0)
+
+
+func _fly_pose(delta: float) -> void:
+	var w := _fly_blend
+	var sp := clampf(_fly_speed / 30.0, 0.0, 1.0)
+	var climb := clampf(_vel.y / 10.0, -1.0, 1.0)
+	_fly_pitch = lerpf(_fly_pitch, deg_to_rad(lerpf(10.0, 78.0, sp) - climb * 25.0), clampf(4.0 * delta, 0.0, 1.0))
+	var t := Time.get_ticks_msec() / 1000.0
+	var sweep := deg_to_rad(lerpf(8.0, 28.0, sp))
+	for side in [1.0, -1.0]:
+		var l := "_l" if side > 0.0 else "_r"
+		var down := Basis(Vector3.BACK, -side * deg_to_rad(78.0))  # T-pose arm → hanging at the side
+		var back := Basis(Vector3.RIGHT, sweep + 0.04 * sin(t * 2.0 + side))
+		var out := Basis(Vector3.BACK, side * deg_to_rad(lerpf(14.0, 6.0, sp)))
+		var arm := back * out * down
+		_set_global("upperarm" + l, arm, w)
+		_set_global("lowerarm" + l, Basis(Vector3.RIGHT, deg_to_rad(8.0)) * arm, w, "upperarm" + l, arm)
+		var leg := Basis(Vector3.BACK, side * deg_to_rad(3.0)) * Basis(Vector3.RIGHT, deg_to_rad(4.0 + 3.0 * sin(t * 2.2 + side)))
+		_set_global("thigh" + l, leg, w)
+		_set_global("calf" + l, Basis(Vector3.RIGHT, deg_to_rad(14.0)) * leg, w, "thigh" + l, leg)
+	# Look ahead: the neck counters most of the pitch.
+	_set_global("neck_01", Basis(Vector3.RIGHT, _fly_pitch * 0.75 * w), w)
+	# Pitch the whole body about the hips, banking into turns.
+	var rot := Basis(Vector3.RIGHT, _fly_pitch * w) * Basis(Vector3.BACK, _bank * 1.5 * w)
+	body.transform = Transform3D(rot, FLY_PIVOT - rot * FLY_PIVOT + Vector3(0.0, 0.15 * w, 0.0))
+
+
+## Poses `bone` so its skeleton-space orientation is `delta * rest` (blended
+## by w with the clip). `parent_delta` gives the parent's posed orientation
+## when we posed the parent too.
+func _set_global(bone: String, delta_basis: Basis, w: float, parent: String = "", parent_delta: Basis = Basis()) -> void:
+	var b := skeleton.find_bone(bone)
+	if b < 0:
+		return
+	var p := skeleton.get_bone_parent(b)
+	var want := delta_basis * skeleton.get_bone_global_rest(b).basis
+	var parent_global: Basis
+	if parent != "":
+		parent_global = parent_delta * skeleton.get_bone_global_rest(skeleton.find_bone(parent)).basis
+	else:
+		parent_global = skeleton.get_bone_global_pose(p).basis if p >= 0 else Basis()
+	var local := (parent_global.orthonormalized().inverse() * want.orthonormalized()).get_rotation_quaternion()
+	var cur := skeleton.get_bone_pose_rotation(b)
+	skeleton.set_bone_pose_rotation(b, cur.slerp(local, w))
 
 
 func apply_appearance(appearance: Dictionary) -> void:

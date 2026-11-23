@@ -18,6 +18,8 @@ var _state: Label
 var _reason: Label
 var _bodies := {}
 var _head_pick: OptionButton
+var _body_pick: OptionButton
+const BODY_KINDS := ["male", "female"]
 
 
 func _init() -> void:
@@ -74,6 +76,18 @@ func _init() -> void:
 	_head_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_head_pick.item_selected.connect(_on_head_picked)
 	hrow.add_child(_head_pick)
+	var brow := HBoxContainer.new()
+	col.add_child(brow)
+	var bl := Label.new()
+	bl.theme_type_variation = "MutedLabel"
+	bl.text = "Avatar body"
+	brow.add_child(bl)
+	_body_pick = OptionButton.new()
+	_body_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for k in BODY_KINDS:
+		_body_pick.add_item("%s (my choice, this machine)" % k)
+	_body_pick.item_selected.connect(_on_body_picked)
+	brow.add_child(_body_pick)
 
 
 func _ready() -> void:
@@ -91,12 +105,21 @@ func _fill_heads(w: String, ps: PlayerState) -> void:
 		_head_pick.add_item("%s (my choice, this machine)" % k)
 	var pick := AvatarHeads.local_choice(w)
 	_head_pick.select(0 if pick == "" else 1 + AvatarHeads.KINDS.find(pick))
+	_body_pick.visible = true
+	_body_pick.select(maxi(0, BODY_KINDS.find(AvatarHeads.local_body(w))))
 
 
 func _on_head_picked(i: int) -> void:
 	if Session.wallet == "":
 		return
 	AvatarHeads.set_local_choice(Session.wallet, "" if i == 0 else String(AvatarHeads.KINDS[i - 1]))
+	Session.changed.emit()
+
+
+func _on_body_picked(i: int) -> void:
+	if Session.wallet == "":
+		return
+	AvatarHeads.set_local_body(Session.wallet, String(BODY_KINDS[i]))
 	Session.changed.emit()
 
 
@@ -111,6 +134,7 @@ func refresh() -> void:
 		for k in _bodies:
 			_bodies[k]["detail"].text = "—"
 		_head_pick.visible = false
+		_body_pick.visible = false
 		return
 	emblem.visible = true
 	var p := DeepField.for_identity(w)

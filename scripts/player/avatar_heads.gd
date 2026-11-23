@@ -83,6 +83,20 @@ static func local_choice(wallet: String) -> String:
 	return String(c.get_value("heads", wallet.to_lower(), ""))
 
 
+## The local body choice for a wallet: "male" (default) or "female".
+static func local_body(wallet: String) -> String:
+	var c := ConfigFile.new()
+	c.load(LOCAL_PATH)
+	return String(c.get_value("bodies", wallet.to_lower(), "male"))
+
+
+static func set_local_body(wallet: String, kind: String) -> void:
+	var c := ConfigFile.new()
+	c.load(LOCAL_PATH)
+	c.set_value("bodies", wallet.to_lower(), kind)
+	c.save(LOCAL_PATH)
+
+
 static func set_local_choice(wallet: String, kind: String) -> void:
 	var c := ConfigFile.new()
 	c.load(LOCAL_PATH)

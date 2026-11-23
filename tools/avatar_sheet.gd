@@ -9,6 +9,7 @@ var _out := ""
 var _mode := "heads"
 var _head := "bear"
 var _acc: Array = []
+var _body := "male"
 
 
 func _initialize() -> void:
@@ -19,6 +20,8 @@ func _initialize() -> void:
 			_mode = a.substr(7)
 		elif a.begins_with("--head="):
 			_head = a.substr(7)
+		elif a.begins_with("--body="):
+			_body = a.substr(7)
 		elif a.begins_with("--acc="):
 			_acc = Array(a.substr(6).split(",", false))
 	_run.call_deferred()
@@ -64,6 +67,7 @@ func _model(kind: String, acc: Array, at: Vector3) -> Node3D:
 	m.set_script(load("res://scripts/player/human_avatar.gd"))
 	m.position = at
 	current_scene.add_child(m)
+	m.set_body(_body)
 	m.set_head(kind, acc)
 	return m
 
