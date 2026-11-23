@@ -56,6 +56,10 @@ var _plate_mat: StandardMaterial3D
 var _boot_mat: StandardMaterial3D
 var _trim_mat: StandardMaterial3D
 var _trim_color := Color(0.45, 0.85, 1.0)
+## The AFFECTION token's symbol (AFFECTION.symbol() reads "Ⓐ"), worn on every suit's chest.
+const AFFECTION_GLOW := Color(1.0, 0.56, 0.78)
+var _patch_tex: Texture2D  # the player's Aura fractal, worn as a patch on the left arm
+var _patch: Node3D
 
 
 func _ready() -> void:
@@ -156,7 +160,8 @@ func _dress() -> void:
 	var chest := 0.95 if female else 1.0
 	# Torso
 	_piece("spine_03", "sphere", Vector3(0.0, 0.06, 0.075), Vector3(0.19 * chest, 0.1, 0.055), _plate_mat)
-	_piece("spine_03", "box", Vector3(0.0, 0.0, 0.135), Vector3(0.012, 0.16, 0.01), _trim_mat)
+	_piece("spine_03", "box", Vector3(0.0, -0.06, 0.133), Vector3(0.012, 0.05, 0.01), _trim_mat)
+	_affection_badge()
 	for i in 3:
 		_piece("spine_01", "box", Vector3(0.0, 0.05 + i * 0.055, 0.105 - i * 0.004), Vector3(0.2 - i * 0.015, 0.042, 0.03), _plate_mat)
 	_piece("neck_01", "torus", Vector3(0.0, -0.035, 0.015), Vector3(0.085, 0.11, 0.0), _plate_mat)
@@ -176,6 +181,103 @@ func _dress() -> void:
 		_piece("calf" + l, "box", Vector3(0.0, -0.2, 0.06), Vector3(0.1, 0.22, 0.03), _plate_mat)
 		_piece("foot" + l, "sphere", Vector3(0.0, -0.02, 0.03), Vector3(0.062, 0.06, 0.15), _boot_mat)
 		_piece("foot" + l, "box", Vector3(0.0, -0.072, 0.03), Vector3(0.11, 0.022, 0.27), _plate_mat)
+	_build_patch()
+
+
+## Ⓐ in the middle of the chest plate: a dark disc, a glowing ring and an A.
+func _affection_badge() -> void:
+	var h := Node3D.new()
+	h.scale = Vector3.ONE * 1.35
+	_attach("spine_03", Vector3(0.0, 0.045, 0.132)).get_node("Holder").add_child(h)
+	var glow := StandardMaterial3D.new()
+	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glow.albedo_color = AFFECTION_GLOW
+	glow.emission_enabled = true
+	glow.emission = AFFECTION_GLOW
+	glow.emission_energy_multiplier = 2.2
+	var disc := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.05
+	cm.bottom_radius = 0.05
+	cm.height = 0.004
+	cm.radial_segments = 32
+	disc.mesh = cm
+	disc.material_override = _boot_mat
+	disc.rotation_degrees.x = 90.0
+	h.add_child(disc)
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new()
+	tm.inner_radius = 0.039
+	tm.outer_radius = 0.046
+	tm.rings = 32
+	ring.mesh = tm
+	ring.material_override = glow
+	ring.rotation_degrees.x = 90.0
+	ring.scale = Vector3(1.0, 0.3, 1.0)
+	ring.position.z = 0.003
+	h.add_child(ring)
+	var lean := rad_to_deg(atan2(0.021, 0.056))
+	for side in [-1.0, 1.0]:  # the two legs of the A
+		_badge_bar(h, Vector3(side * 0.0105, 0.0, 0.004), Vector3(0.008, 0.06, 0.004), side * lean, glow)
+	_badge_bar(h, Vector3(0.0, -0.007, 0.004), Vector3(0.024, 0.007, 0.004), 0.0, glow)
+
+
+func _badge_bar(parent: Node3D, at: Vector3, size: Vector3, roll_deg: float, mat: Material) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	mi.material_override = mat
+	mi.position = at
+	mi.rotation_degrees.z = roll_deg
+	parent.add_child(mi)
+
+
+## Re-colours the suit (the bartender wears cream and brown).
+func set_suit_colors(fabric: Color, armour: Color) -> void:
+	if _suit_mat:
+		_suit_mat.albedo_color = fabric
+	if _plate_mat:
+		_plate_mat.albedo_color = armour
+		_plate_mat.metallic = 0.2
+
+
+## The Aura patch on the outside of the left upper arm (Gear supplies the
+## fractal). Its top points at the shoulder when the arm hangs down.
+func set_arm_patch(tex: Texture2D) -> void:
+	_patch_tex = tex
+	if skeleton:
+		_build_patch()
+		_self_layer()
+
+
+func _build_patch() -> void:
+	if _patch and is_instance_valid(_patch):
+		_patch.get_parent().get_parent().queue_free()
+	_patch = null
+	if _patch_tex == null:
+		return
+	var h: Node3D = _attach("upperarm_l", Vector3(0.13, 0.052, 0.0)).get_node("Holder")
+	_patch = Node3D.new()
+	# Face +Y (outward with the arm down), image-up toward the shoulder (-X), image-right toward the back.
+	_patch.basis = Basis(Vector3(0, 0, -1), Vector3(-1, 0, 0), Vector3(0, 1, 0))
+	h.add_child(_patch)
+	var edge := MeshInstance3D.new()
+	var eq := QuadMesh.new()
+	eq.size = Vector2(0.088, 0.088)
+	edge.mesh = eq
+	edge.material_override = _trim_mat
+	_patch.add_child(edge)
+	var face := MeshInstance3D.new()
+	var fq := QuadMesh.new()
+	fq.size = Vector2(0.078, 0.078)
+	face.mesh = fq
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.albedo_texture = _patch_tex
+	face.material_override = fm
+	face.position.z = 0.0015
+	_patch.add_child(face)
 
 
 ## A mesh on `bone`, placed in body space (offset from the bone, at rest).

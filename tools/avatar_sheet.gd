@@ -104,7 +104,16 @@ func _run() -> void:
 	elif _mode == "closeup":
 		models.append(_model(_head, _acc, Vector3(-0.55, 0, 0)))
 		var side := _model(_head, _acc, Vector3(0.75, 0, 0))
-		side.rotation_degrees.y = 60
+		side.rotation_degrees.y = -65  # the left arm (and its Aura patch) toward the camera
+		# A stand-in for the Aura fractal patch (Gear draws the real one).
+		var g := GradientTexture2D.new()
+		g.gradient = Gradient.new()
+		g.gradient.set_color(0, Color(0.1, 0.2, 0.6))
+		g.gradient.set_color(1, Color(0.6, 1.0, 0.9))
+		g.fill = GradientTexture2D.FILL_RADIAL
+		g.fill_from = Vector2(0.5, 0.5)
+		for m in [models[0], side]:
+			m.set_arm_patch(g)
 		cam.fov = 35
 		cam.position = Vector3(0, 1.45, 4.2)
 		cam.look_at(Vector3(0.1, 1.15, 0))

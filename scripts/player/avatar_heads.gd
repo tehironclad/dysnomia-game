@@ -9,7 +9,7 @@ extends RefCounted
 ## "human" keeps the body's own human head (nothing is built).
 ## Heads are built around a neck pivot: +Y up, +Z the face, origin at the neck.
 
-const KINDS := ["bear", "human", "rat", "alien", "frog", "dog", "cat", "skull", "robot", "hamster", "fox", "pig", "ape", "bird"]
+const KINDS := ["bear", "human", "rat", "alien", "frog", "dog", "cat", "skull", "robot", "hamster", "fox", "pig", "ape", "bird", "sunny"]
 const ACCESSORIES := ["crown", "halo", "horns", "wizard"]
 const LOCAL_PATH := "user://identity.cfg"
 
@@ -27,6 +27,7 @@ const RULES := {
 	"pig": [["pig", "piggy", "hog", "swine", "pork", "oink"], ["🐷", "🐖", "🐽"]],
 	"ape": [["ape", "apes", "monkey", "gorilla", "chimp", "kong"], ["🐵", "🐒", "🦍", "🙈"]],
 	"bird": [["bird", "crow", "raven", "owl", "eagle", "hawk", "chick", "chicken", "duck", "parrot"], ["🐦", "🐣", "🐤", "🦉", "🦅", "🐔", "🦆", "🦜"]],
+	"sunny": [["sun", "sunny", "sunshine", "sunflower", "sunflowers", "sunflowr", "solar", "sol"], ["☀", "🌞", "🌻", "🌅"]],
 	"bear": [["bear", "teddy", "bears"], ["🐻", "🧸"]],
 }
 const ACCESSORY_RULES := {
@@ -199,7 +200,78 @@ static func build(kind: String, tint: Color = Color(0.5, 0.5, 0.5)) -> Node3D:
 		"pig": _pig(p)
 		"ape": _ape(p)
 		"bird": _bird(p, tint)
+		"sunny": _sunny(p)
 	return p
+
+
+## Sunny: a smiling sun with flame rays, ridged goat horns and goat ears
+## (Sunny's Pub's bartender; also anyone whose LAU says sun or sunflower).
+static func _sunny(p: Node3D) -> void:
+	var c := Vector3(0, 0.27, 0)
+	var face := _mat(Color(1.0, 0.78, 0.12), 0.55, 0.0, 0.25)
+	_sphere(p, 0.2, face, c, Vector3(1.0, 1.0, 0.88))
+	var ray_a := _mat(Color(1.0, 0.62, 0.08), 0.6, 0.0, 0.6)
+	var ray_b := _mat(Color(1.0, 0.85, 0.3), 0.6, 0.0, 0.6)
+	for i in 16:
+		var a := TAU * i / 16.0
+		var long := i % 2 == 0
+		var h := 0.13 if long else 0.08
+		var r := 0.2 + h * 0.5 - 0.02
+		_cyl(p, 0.0, 0.045 if long else 0.03, h, ray_a if long else ray_b, c + Vector3(cos(a) * r, sin(a) * r, -0.05), Vector3(0, 0, rad_to_deg(a) - 90.0), 8)
+	var ink := _mat(Color(0.03, 0.02, 0.02), 0.3)
+	var shine := _mat(Color.WHITE, 0.1, 0.0, 1.2)
+	for sx in [-1.0, 1.0]:
+		_sphere(p, 0.03, ink, c + Vector3(sx * 0.065, 0.045, 0.155), Vector3(0.8, 1.25, 0.5))
+		_sphere(p, 0.008, shine, c + Vector3(sx * 0.065 + 0.008, 0.062, 0.17))
+	for i in 11:  # the smile
+		var phi := deg_to_rad(lerpf(205.0, 335.0, i / 10.0))
+		var x := cos(phi) * 0.11
+		var y := sin(phi) * 0.09 - 0.005
+		var z := sqrt(maxf(0.0, 0.04 - x * x - y * y)) * 0.88 + 0.004
+		_sphere(p, 0.011, ink, c + Vector3(x, y, z))
+	_sphere(p, 0.025, _mat(Color(1.0, 0.95, 0.75), 0.3, 0.0, 0.5), c + Vector3(-0.1, 0.11, 0.12), Vector3(1.0, 0.6, 0.4))  # the gloss
+	# Goat ears, out to the sides.
+	var fur := _mat(Color(0.95, 0.93, 0.88), 0.9)
+	var pink := _mat(Color(0.93, 0.6, 0.55), 0.7)
+	for sx in [-1.0, 1.0]:
+		var ear := _sphere(p, 0.1, fur, c + Vector3(sx * 0.23, 0.02, -0.06), Vector3(1.0, 0.32, 0.5))
+		ear.rotation_degrees.z = sx * -18.0
+		var inner := _sphere(p, 0.07, pink, c + Vector3(sx * 0.235, 0.02, -0.035), Vector3(1.0, 0.2, 0.35))
+		inner.rotation_degrees.z = sx * -18.0
+	# Ridged horns: up from the crown, sweeping back and out.
+	var horn_a := _mat(Color(0.62, 0.42, 0.22), 0.55)
+	var horn_b := _mat(Color(0.42, 0.26, 0.12), 0.6)
+	for sx in [-1.0, 1.0]:
+		var base := c + Vector3(sx * 0.09, 0.16, -0.02)
+		var prev := base
+		var n := 14
+		for k in range(1, n + 1):
+			var t := float(k) / n
+			var pt := base + Vector3(sx * (0.1 * t + 0.03 * sin(t * PI)), 0.2 * sin(t * 1.7), -0.28 * (1.0 - cos(t * 1.7)))
+			_segment(p, prev, pt, lerpf(0.04, 0.01, t), horn_a if k % 2 == 0 else horn_b)
+			prev = pt
+
+
+## A tapered cylinder from a to b.
+static func _segment(p: Node3D, a: Vector3, b: Vector3, r: float, m: Material) -> void:
+	var y := (b - a)
+	var length := y.length()
+	if length < 0.0001:
+		return
+	y /= length
+	var side := Vector3.FORWARD if absf(y.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT
+	var x := y.cross(side).normalized()
+	var z := x.cross(y)
+	var cm := CylinderMesh.new()
+	cm.top_radius = r * 0.9
+	cm.bottom_radius = r
+	cm.height = length * 1.15
+	cm.radial_segments = 10
+	var mi := MeshInstance3D.new()
+	mi.mesh = cm
+	mi.material_override = m
+	mi.transform = Transform3D(Basis(x, y, z), (a + b) * 0.5)
+	p.add_child(mi)
 
 
 static func _bear(p: Node3D, tint: Color) -> void:

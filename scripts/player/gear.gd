@@ -5,14 +5,15 @@ extends Node3D
 ##   bars at 3+ territories → an orbiting spark;  at 10+ → an orbit ring
 ##   leading any territory → a halo (a floor: among known players)
 ##   ladder rank 1         → a crown (only if the site's ladder confirms it)
-## Plus the player's Aura fractal as a chest emblem, and the head their LAU's
+## Plus the player's Aura fractal as a patch on the left arm (the chest carries
+## every suit's Ⓐ), and the head their LAU's
 ## name/symbol asks for (AvatarHeads), or the one they picked locally.
 
 var _spark: MeshInstance3D
 var _ring: MeshInstance3D
 var _halo: MeshInstance3D
 var _crown: MeshInstance3D
-var _emblem: MeshInstance3D
+var _patch_tex: Texture2D  # the Aura fractal, worn as the left-arm patch
 var _view: DeepFieldView
 var _t := 0.0
 
@@ -29,9 +30,11 @@ static func _glow(c: Color, e: float = 2.5) -> StandardMaterial3D:
 
 func _ready() -> void:
 	_spark = MeshInstance3D.new()
-	var sp := SphereMesh.new()
-	sp.radius = 0.06
-	sp.height = 0.12
+	var sp := SphereMesh.new()  # a faceted diamond, so it never reads as a bird
+	sp.radius = 0.055
+	sp.height = 0.16
+	sp.radial_segments = 4
+	sp.rings = 2
 	_spark.mesh = sp
 	_spark.material_override = _glow(DeepFieldTheme.ICE)
 	add_child(_spark)
@@ -70,19 +73,7 @@ func _ready() -> void:
 	vp.add_child(_view)
 	add_child(vp)
 	DeepFieldView.throttle(vp, 4.0)
-	_emblem = MeshInstance3D.new()
-	var q := QuadMesh.new()
-	q.size = Vector2(0.22, 0.22)
-	_emblem.mesh = q
-	var em := StandardMaterial3D.new()
-	em.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	em.albedo_texture = vp.get_texture()
-	em.emission_enabled = true
-	em.emission_texture = vp.get_texture()
-	_emblem.material_override = em
-	_emblem.position = Vector3(0.0, 1.05, -0.27)  # the model faces -Z
-	_emblem.rotation_degrees.y = 180.0
-	add_child(_emblem)
+	_patch_tex = vp.get_texture()
 	_apply(false, 0, false, false)
 	Session.changed.connect(refresh)
 	refresh()
@@ -90,11 +81,12 @@ func _ready() -> void:
 
 func refresh() -> void:
 	var w := Session.wallet
-	_emblem.visible = w != ""
 	if w != "":
 		_view.apply_params(DeepField.for_identity(w))
 	_apply(Session.bars.size() > 0, Session.bars.size(), Session.leading.size() > 0, Session.ladder_rank == 1)
 	var model := get_parent().get_node_or_null("PlayerModel")
+	if model and model.has_method("set_arm_patch"):
+		model.set_arm_patch(_patch_tex if w != "" else null)
 	if model and Session.player != null:
 		if Session.player.soul != "":
 			model.apply_appearance(PlayerAppearance.from_identity(Session.player.soul, Session.player.aura))
@@ -121,5 +113,6 @@ func _process(delta: float) -> void:
 	_t += delta
 	if _spark.visible:
 		_spark.position = Vector3(cos(_t * 1.6) * 0.7, 1.3 + 0.1 * sin(_t * 2.3), sin(_t * 1.6) * 0.7)
+		_spark.rotation.y = _t * 3.0
 	if _ring.visible:
 		_ring.rotation = Vector3(0.4 * sin(_t * 0.3), _t * 0.5, 0.3)
