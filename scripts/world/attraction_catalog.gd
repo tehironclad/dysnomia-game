@@ -17,7 +17,7 @@ const KIND_OP := "op"
 
 const RIDES := {
 	"rocket": {
-		"id": "rocket", "kind": KIND_TICKET, "price": "3",
+		"id": "rocket", "kind": KIND_TICKET, "price": "1",
 		"name": "Upsilon Rocket",
 		"blurb": "Strapped into a glass capsule and fired 400 m straight up. Free-fall view of the whole QING, then a parachute ride home.",
 		"duration": 38.0,
@@ -29,7 +29,7 @@ const RIDES := {
 		"duration": 48.0,
 	},
 	"drop": {
-		"id": "drop", "kind": KIND_TICKET, "price": "2",
+		"id": "drop", "kind": KIND_TICKET, "price": "1",
 		"name": "Pi Drop Tower",
 		"blurb": "Hauled 55 m up the tower, held at the top for a heartbeat, then dropped in low gravity.",
 		"duration": 26.0,

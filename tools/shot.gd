@@ -93,7 +93,7 @@ func _process(_delta: float) -> bool:
 		if keep_ui and current_scene.get("_attraction_ui"):
 			var ui = current_scene._attraction_ui
 			var item: Dictionary = AttractionCatalog.ride("rocket")
-			ui.show_ticket(item, "Pays 3 AFFECTION to Sunny QING (the QING keeper).", "42.5", "Your bars here: HYPO 1.24M · EPI 806.1K")
+			ui.show_ticket(item, "Pays 1 AFFECTION to Sunny QING (the QING keeper).", "42.5", "Your bars here: HYPO 1.24M · EPI 806.1K")
 			ui.set_ticket_status("Ticket broadcast — boarding as soon as the block confirms (~10 s).", AttractionUI.PULSE)
 			ui.show_bar_report({"item": AttractionCatalog.drink("rho_rocks"), "hypo_before": 1240000, "hypo_after": 1311200,
 				"d_hypo": 71200, "epi_before": 806100, "epi_after": 806100, "d_epi": 0}, "Sunny QING")
