@@ -57,6 +57,7 @@ func _ready() -> void:
 		return
 	Config.register_scene($WorldEnvironment.environment, $Sun)
 	terrain.build(territory)
+	Config.register_terrain(terrain.material)
 	sky.setup(terrain.params, String(territory["address"]))
 	core.build(terrain.params, territory, terrain.heightfield.core_height)
 	state = TerritoryState.new()

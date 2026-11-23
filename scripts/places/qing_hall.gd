@@ -71,6 +71,7 @@ func _environment() -> void:
 	key.light_energy = 0.35
 	key.light_color = Color(0.75, 0.82, 1.0)
 	add_child(key)
+	Config.register_scene(e, key)
 	var tint := DeepField.to_color(DeepField.for_territory(territory)["color"]) if not territory.is_empty() else DeepFieldTheme.ICE
 	for p in [Vector3(-6, 4.2, -6), Vector3(6, 4.2, -6), Vector3(-6, 4.2, 6), Vector3(6, 4.2, 6), Vector3(0, 4.5, 0)]:
 		var l := OmniLight3D.new()

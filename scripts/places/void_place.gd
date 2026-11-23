@@ -71,6 +71,7 @@ func _environment() -> void:
 	key.light_energy = 0.4
 	key.light_color = Color(0.7, 0.65, 1.0)
 	add_child(key)
+	Config.register_scene(e, key)
 	var under := OmniLight3D.new()
 	under.position = Vector3(0, -2.0, 0)
 	under.omni_range = 18.0

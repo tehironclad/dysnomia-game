@@ -70,7 +70,7 @@ func _ready() -> void:
 	_note.theme_type_variation = "MutedLabel"
 	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_note.custom_minimum_size = Vector2(520, 0)
-	_note.text = "The chain is the source of truth; the site accelerator only speeds up a few reads. RPC and port changes apply to new requests and the next wallet connection."
+	_note.text = "Low renders at 60% resolution (FSR upscaled), with less fractal detail and no shadows: pick it on slower PCs. The chain is the source of truth; the site accelerator only speeds up a few reads. RPC and port changes apply to new requests and the next wallet connection."
 	col.add_child(_note)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)

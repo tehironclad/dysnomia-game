@@ -7,7 +7,7 @@ extends Node
 signal applied
 
 # Graphics
-var graphics_quality: int = 2  # 0 low · 1 medium · 2 high · 3 ultra
+var graphics_quality: int = 1  # 0 low · 1 medium · 2 high · 3 ultra (Medium until the player picks)
 var render_distance: float = 900.0  # camera far plane, metres
 
 # Controls
@@ -37,12 +37,14 @@ const SETTINGS_PATH := "user://settings.cfg"
 const QUALITY_NAMES := ["Low", "Medium", "High", "Ultra"]
 ## What each quality level enables.
 const QUALITY_PRESETS: Array[Dictionary] = [
-	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 120.0, "msaa": Viewport.MSAA_DISABLED},
-	{"ssao": true, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 180.0, "msaa": Viewport.MSAA_DISABLED},
-	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": false, "shadow_distance": 260.0, "msaa": Viewport.MSAA_2X},
-	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": true, "shadow_distance": 320.0, "msaa": Viewport.MSAA_4X},
+	# scale: 3D render resolution (FSR upscales below 1.0) · iter: fractal iterations on the ground
+	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 90.0, "msaa": Viewport.MSAA_DISABLED, "scale": 0.6, "iter": 40, "shadows": false},
+	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 160.0, "msaa": Viewport.MSAA_DISABLED, "scale": 0.8, "iter": 64, "shadows": true},
+	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": false, "shadow_distance": 260.0, "msaa": Viewport.MSAA_2X, "scale": 1.0, "iter": 96, "shadows": true},
+	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": true, "shadow_distance": 320.0, "msaa": Viewport.MSAA_4X, "scale": 1.0, "iter": 128, "shadows": true},
 ]
 
+var _terrain_material: ShaderMaterial
 var _environment: Environment
 var _sun: DirectionalLight3D
 
@@ -64,6 +66,12 @@ func register_scene(env: Environment, sun: DirectionalLight3D) -> void:
 	apply()
 
 
+## The territory's ground shader: its fractal iteration count follows quality.
+func register_terrain(m: ShaderMaterial) -> void:
+	_terrain_material = m
+	apply()
+
+
 ## Cameras read fov / render distance from here.
 func apply_camera(cam: Camera3D) -> void:
 	if cam:
@@ -80,9 +88,15 @@ func apply() -> void:
 		_environment.volumetric_fog_enabled = p["volumetric_fog"]
 	if is_instance_valid(_sun):
 		_sun.directional_shadow_max_distance = minf(p["shadow_distance"], render_distance)
+		_sun.shadow_enabled = p["shadows"]
+	if is_instance_valid(_terrain_material):
+		_terrain_material.set_shader_parameter("max_iter", int(p["iter"]))
 	var vp := get_viewport()
 	if vp and DisplayServer.get_name() != "headless":
 		vp.msaa_3d = p["msaa"]
+		var sc: float = p["scale"]
+		vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if sc < 1.0 else Viewport.SCALING_3D_MODE_BILINEAR
+		vp.scaling_3d_scale = sc
 		var cam := vp.get_camera_3d()
 		apply_camera(cam)
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
