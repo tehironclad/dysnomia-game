@@ -189,11 +189,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_apply_colors()
 				_tip.text = "" if h < 0 else "%s · %s" % [territories[h].get("name", ""), _tier(h)]
 				_tip.position = event.position + Vector2(14, 10)
-	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE and GameManager.is_chain_sourced:
-			Travel.go(get_tree(), GameManager.territory_address)
-		elif event.keycode == KEY_ENTER and selected >= 0 and not _search.has_focus():
-			_warp()
+	elif event.is_action_pressed("ui_cancel") and GameManager.is_chain_sourced:
+		Travel.go(get_tree(), GameManager.territory_address)
+	elif event.is_action_pressed("ui_accept") and selected >= 0 and not _search.has_focus():
+		_warp()
 
 
 var _drag_moved := 0.0

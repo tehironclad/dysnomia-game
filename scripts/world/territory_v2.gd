@@ -18,16 +18,20 @@ var monolith: VoidMonolith
 var phenomena: Phenomena
 var actions: CoreActions
 var lattice: WorldLattice
+var help: ControlsHelp
+var score: TerritoryScore
+var _settings: PanelContainer
+var _monitor: Control
 var _near := ""
 var view_mode := ""  # su | room | beat | void | ""
 
 const MONOLITH_AT := Vector2(-26.0, 18.0)
 const PROMPTS := {
-	"su": "E  Su: react with this territory (your bars grow, +1 YUE)",
-	"room": "E  the Room: its door, its lines",
-	"beat": "E  Beat at the Heart",
-	"void": "E  the Void: one board for everyone",
-	"world": "E  WORLD: your range here (latent until deployed)",
+	"su": "Su: react with this territory (your bars grow, +1 YUE)",
+	"room": "the Room: its door, its lines",
+	"beat": "Beat at the Heart",
+	"void": "the Void: one board for everyone",
+	"world": "WORLD: your range here (latent until deployed)",
 }
 
 
@@ -47,6 +51,7 @@ func _ready() -> void:
 	if territory.is_empty():
 		push_error("[TerritoryV2] unknown territory %s" % addr)
 		return
+	Config.register_scene($WorldEnvironment.environment, $Sun)
 	terrain.build(territory)
 	sky.setup(terrain.params, String(territory["address"]))
 	core.build(terrain.params, territory, terrain.heightfield.core_height)
@@ -81,6 +86,14 @@ func _ready() -> void:
 	actions.lattice = lattice
 	World.launched.connect(func(_a): hud.ticker("WORLD DEPLOYED · verified on-chain · block %d" % World.block, Color("#ffd27a"), 120.0))
 	World.start()
+	score = TerritoryScore.new()
+	score.name = "Score"
+	add_child(score)
+	if view == "" or OS.get_cmdline_user_args().has("--score"):
+		score.play_for(String(territory["address"]), terrain.params, String(territory.get("entropy", "1")))
+	help = ControlsHelp.new()
+	help.position = Vector2(20, 240)
+	hud.add_child(help)
 	actions.opened.connect(func(): player.process_mode = Node.PROCESS_MODE_DISABLED)
 	actions.closed.connect(func(): if view_mode == "": player.process_mode = Node.PROCESS_MODE_INHERIT)
 	Session.changed.connect(_on_state_changed)
@@ -143,6 +156,9 @@ func _on_state_changed() -> void:
 	terrain.set_activity(0.85 + 0.15 * minf(1.0, reactors / 8.0), state.lit_bands())
 	if state.total_hypobar.has_value():
 		columns.update_board(state.board, state.block, Session.wallet)
+	var model := player.get_node_or_null("PlayerModel")
+	if model and model.has_method("set_territory_power"):
+		model.set_territory_power(clampf(state.lit_bands() / 10.0, 0.0, 1.0))
 	Inspector.register(state, "Territory state (block %d)" % state.block,
 		"Ω, Hypobar per Su here: %s\nHypobar total %s · Epibar total %s\nReactors: %s\nLit bands on the ground: %d (one per power of ten of the Hypobar total).\nWells: Fornax %s · Eris %s · Tethys %s" % [
 			state.omega.display(), state.total_hypobar.display(_dec), state.total_epibar.display(_dec), state.reactors.display(),
@@ -182,7 +198,7 @@ func _process(_delta: float) -> void:
 		if z == "":
 			hud.hide_prompt()
 		else:
-			hud.show_prompt(PROMPTS[z])
+			hud.show_prompt("%s  %s" % [ControlsHelp.key_of("interact"), PROMPTS[z]])
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -199,6 +215,43 @@ func _unhandled_input(event: InputEvent) -> void:
 			"world": actions.open_world()
 		_near = ""
 		return
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
+	if event.is_action_pressed("open_field"):
 		get_viewport().set_input_as_handled()
 		Travel.field(get_tree())
+	elif event.is_action_pressed("controls_help"):
+		help.toggle()
+	elif event.is_action_pressed("settings"):
+		_toggle_settings()
+	elif event.is_action_pressed("toggle_debug"):
+		_toggle_monitor()
+
+
+func _toggle_settings() -> void:
+	if _settings == null:
+		_settings = PanelContainer.new()
+		_settings.set_script(load("res://scripts/ui/settings_menu.gd"))
+		_settings.visible = false
+		hud.add_child(_settings)
+		_settings.settings_closed.connect(func():
+			_settings.hide_menu()
+			player.process_mode = Node.PROCESS_MODE_INHERIT
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED))
+	if _settings.visible:
+		_settings.hide_menu()
+		player.process_mode = Node.PROCESS_MODE_INHERIT
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	else:
+		_settings.show_menu()
+		player.process_mode = Node.PROCESS_MODE_DISABLED
+
+
+## F3: the performance overlay (FPS, process time, draw calls, memory…).
+func _toggle_monitor() -> void:
+	if _monitor == null:
+		_monitor = VBoxContainer.new()
+		_monitor.set_script(load("res://scripts/debug/monitor_overlay.gd"))
+		_monitor.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+		_monitor.position = Vector2(-300, -420)
+		hud.add_child(_monitor)
+		return
+	_monitor.visible = not _monitor.visible

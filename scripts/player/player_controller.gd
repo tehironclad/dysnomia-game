@@ -39,8 +39,6 @@ const SAFETY_TELEPORT_THRESHOLD: float = 5.0
 const BOUNDARY_MARGIN: float = 5.0
 const TERRAIN_HALF_SIZE: float = JuliaHeightfield.SIZE_M * 0.5  # 512 m territories
 
-signal monument_interact
-signal pub_game_interact
 signal player_jumped
 
 var is_flying: bool = false
@@ -49,9 +47,6 @@ var _camera_rig: Node3D
 var _terrain_generator: Node3D  # TerritoryManager (also handles height queries)
 var _jumps_remaining: int = 3
 var _wall_slide_cooldown: float = 0.0
-var _near_border_direction: int = -1  # -1 = not near any border
-var _near_monument: bool = false
-var _near_game_table: bool = false
 var _safety_cooldown: float = 0.0
 var _coyote_timer: float = 0.0  # Grace period after leaving ground
 var _jump_buffer_timer: float = 0.0  # Pre-press jump buffering
@@ -104,12 +99,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_camera"):
 		GameManager.toggle_camera_mode()
 
-	# Interact (E key) — join neighboring territory
-	if event.is_action_pressed("interact"):
-		_try_interact()
-
-	# Flashlight toggle with F
-	if event is InputEventKey and event.pressed and event.keycode == KEY_F:
+	# Flashlight (the territory scene handles "interact": the live moves)
+	if event.is_action_pressed("flashlight"):
 		_toggle_flashlight()
 
 	# Jump buffer — record the press for buffered jumping
@@ -179,9 +170,6 @@ func _physics_process(delta: float) -> void:
 	var model: Node3D = get_node_or_null("PlayerModel")
 	if model and model.has_method("update_movement"):
 		model.update_movement(velocity, is_on_floor(), is_flying)
-
-	# Check proximity to territory borders for join prompt
-	_check_border_proximity()
 
 
 func _ground_movement(delta: float) -> void:
@@ -528,62 +516,6 @@ func _on_fly_mode_changed(flying: bool) -> void:
 		var terrain_h: float = _terrain_generator.get_height_at(position.x, position.z)
 		position.y = terrain_h + 1.0
 		velocity = Vector3.ZERO
-
-
-# ─── Territory Border Interaction ────────────────────────────────────────
-
-func _check_border_proximity() -> void:
-	## Check if the player is near a territory border and emit join prompt signals.
-	if not _terrain_generator or not _terrain_generator.has_method("get_nearest_border_direction"):
-		return
-
-	var direction: int = _terrain_generator.get_nearest_border_direction(position)
-
-	if direction != _near_border_direction:
-		# State changed
-		if direction >= 0:
-			var display_name: String = _terrain_generator.get_neighbor_name(direction)
-			_terrain_generator.neighbor_join_prompt.emit(direction, display_name)
-		elif _near_border_direction >= 0:
-			_terrain_generator.neighbor_join_prompt_hide.emit()
-		_near_border_direction = direction
-
-
-func set_near_monument(near: bool) -> void:
-	_near_monument = near
-
-
-func _try_interact() -> void:
-	## Player pressed E — check monument first, then game table, then border join.
-	if _near_monument:
-		monument_interact.emit()
-		return
-
-	if _near_game_table:
-		pub_game_interact.emit()
-		return
-
-	if _near_border_direction < 0:
-		return
-	if not _terrain_generator or not _terrain_generator.has_method("request_join"):
-		return
-	_terrain_generator.request_join(_near_border_direction)
-
-
-func set_near_game_table(near: bool) -> void:
-	_near_game_table = near
-
-
-func freeze() -> void:
-	## Freeze player for photo mode — disable physics and input processing.
-	set_physics_process(false)
-	set_process_unhandled_input(false)
-
-
-func unfreeze() -> void:
-	## Unfreeze player after photo mode — re-enable physics and input processing.
-	set_physics_process(true)
-	set_process_unhandled_input(true)
 
 
 # ─── Flashlight ──────────────────────────────────────────────────────────

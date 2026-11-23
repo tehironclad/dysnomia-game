@@ -26,6 +26,13 @@ func _ready() -> void:
 	add_child(site)
 
 
+## Re-reads the endpoints from Config (after Settings → Apply).
+func apply_config() -> void:
+	rpc.endpoint = Config.rpc_url if Config.rpc_url != "" else Contracts.DEFAULT_RPC
+	site.base_url = Config.site_api_base
+	site.enabled = Config.site_api_enabled
+
+
 func refresh_head() -> int:
 	var r := await rpc.block_number()
 	if r["ok"]:

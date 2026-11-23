@@ -75,7 +75,9 @@ func _ready() -> void:
 	hint.theme_type_variation = "MutedLabel"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.position = Vector2(20, -36)
-	hint.text = "E  use (pylon: Su · door: Room · centre: Beat · plinth: WORLD · monolith: Void)   ·   H  how is this drawn   ·   M  the field   ·   Esc  mouse"
+	hint.text = "%s  use   ·   %s  how is this drawn   ·   %s  the field   ·   %s  controls   ·   %s  settings" % [
+		ControlsHelp.key_of("interact"), ControlsHelp.key_of("inspect"), ControlsHelp.key_of("open_field"),
+		ControlsHelp.key_of("controls_help"), ControlsHelp.key_of("settings")]
 	_root.add_child(hint)
 
 

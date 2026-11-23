@@ -40,6 +40,7 @@ func _initialize() -> void:
 func _run() -> void:
 	if _quality >= 0:
 		root.get_node("Config").graphics_quality = _quality  # 0 = Low (software renderers)
+		root.get_node("Config").apply()
 	if _qing != "":
 		var gm = root.get_node("GameManager")
 		gm.territory_address = _qing

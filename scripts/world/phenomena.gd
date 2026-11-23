@@ -78,6 +78,7 @@ func _poll_logs() -> void:
 				hud.ticker("ROOM · %s · block %d" % [ChatLog.format_line(l).split("] ", true, 1)[1], l["block"]])
 			if not r["lines"].is_empty():
 				room_lines.emit(r["lines"])
+				Cues.play(self, "line")
 	if head > _void_after:
 		var v: Dictionary = await ChatLog.tail(Contracts.FOMALHAUTE, false, _void_after, head)
 		if v["ok"]:
@@ -93,6 +94,7 @@ func _poll_logs() -> void:
 func _on_bars_moved(delta: PackedInt64Array, block: int) -> void:
 	var lg := BigInt.log10(delta)
 	core.cascade(0.0 if is_inf(lg) else clampf(lg / 9.0, 0.0, 1.0))
+	Cues.play(self, "cascade")
 	hud.ticker("BARS · +%s Hypobar here (known players) · block %d" % [TokenFormat.group(BigInt.to_decimal(delta)), block], Color("#ffb070"))
 
 
@@ -104,6 +106,8 @@ func _on_founded(records: Array) -> void:
 			nm = String(r["address"]).left(10)
 		hud.ticker("NEW TERRITORY · %s · block %d" % [nm, int(r.get("block", -1))], Color("#ffd27a"), 40.0)
 		shooting_star("%s · block %d" % [nm, int(r.get("block", -1))], i * 2.5)
+	if not records.is_empty():
+		Cues.play(self, "founded")
 
 
 ## A streak across the sky carrying a name.

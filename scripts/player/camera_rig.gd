@@ -36,13 +36,17 @@ func _ready() -> void:
 	if player is CharacterBody3D:
 		spring_arm.add_excluded_object(player.get_rid())
 
-	# Apply config sensitivity if available
-	if Config:
-		mouse_sensitivity = Config.mouse_sensitivity
-		base_fov = Config.fov
-		camera.fov = base_fov
+	_apply_config()
+	Config.applied.connect(_apply_config)
 
 	GameManager.camera_mode_changed.connect(_on_camera_mode_changed)
+
+
+func _apply_config() -> void:
+	mouse_sensitivity = Config.mouse_sensitivity
+	base_fov = Config.fov
+	camera.fov = base_fov
+	camera.far = Config.render_distance
 
 
 func _unhandled_input(event: InputEvent) -> void:

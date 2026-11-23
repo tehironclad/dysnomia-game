@@ -790,24 +790,10 @@ func _apply_shader_materials() -> void:
 
 
 func set_territory_power(power: float) -> void:
-	## Update character shader with territory power (energy lines on suit).
+	## Suit energy lines follow the territory's lit bands (shared state, 0..1).
 	for mat in [_suit_shader_mat, _boot_shader_mat, _glove_shader_mat, _accent_shader_mat]:
 		if mat:
 			mat.set_shader_parameter("territory_power", power)
-
-
-func trigger_shield_flash() -> void:
-	## Shield shimmer effect when taking damage.
-	for mat in [_suit_shader_mat, _fur_shader_mat, _boot_shader_mat, _glove_shader_mat, _visor_shader_mat, _accent_shader_mat, _snout_shader_mat]:
-		if mat:
-			mat.set_shader_parameter("shield_flash", 1.0)
-	# Tween the flash down
-	var tween := create_tween()
-	tween.tween_method(func(v: float) -> void:
-		for mat in [_suit_shader_mat, _fur_shader_mat, _boot_shader_mat, _glove_shader_mat, _visor_shader_mat, _accent_shader_mat, _snout_shader_mat]:
-			if mat:
-				mat.set_shader_parameter("shield_flash", v)
-	, 1.0, 0.0, 0.6).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 
 
 ## The crow companion appears only for a wallet holding >= 25 CROWS, which makes

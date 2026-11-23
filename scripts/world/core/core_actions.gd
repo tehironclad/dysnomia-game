@@ -61,6 +61,9 @@ func setup(q: Dictionary, p_state: TerritoryState, p_core: TerritoryCore, p_hud:
 	chat.post_requested.connect(_post)
 	phenomena.room_lines.connect(func(ls): if chat.is_open() and _chat_mode == "room": chat.append_lines(ls))
 	phenomena.void_lines.connect(func(ls): if chat.is_open() and _chat_mode == "void": chat.append_lines(ls))
+	Wallet.tx_stage.connect(func(_l, stage, _i):
+		if stage == "failed": Cues.play(self, "fail")
+		elif stage == "confirmed": Cues.play(self, "confirm"))
 
 
 func is_open() -> bool:
@@ -155,6 +158,7 @@ func _do_su(p: Dictionary) -> void:
 	else:
 		action.set_status("Mined in block %d (status 1), but the bar re-read failed: —. It will show on the next refresh." % res["block"], Color("#ffd27a"))
 	core.cascade(0.7)
+	Cues.play(self, "cascade")
 	state.refresh()
 	Session.refresh()
 
@@ -214,6 +218,7 @@ func _do_beat(p: Dictionary) -> void:
 	if not res["ok"]:
 		return
 	core.pulse()
+	Cues.play(self, "beat")
 	hud.ticker("YOUR BEAT · %s · block %d" % [_tname(), res["block"]], Color("#64e3a8"))
 	action.set_status("The Heart beat: mined in block %d, status 1." % res["block"], Color("#64e3a8"))
 	state.refresh()
