@@ -42,6 +42,8 @@ func initialize(seed_value: int, terrain_gen: Node3D, biome: Dictionary) -> void
 			continue
 		if Vector2(x, z - 100.0).length() < 22.0:
 			continue
+		if Vector2(x - (-100.0), z - 80.0).length() < 55.0:  # Affection Fair
+			continue
 
 		# Sample height and slope from terrain
 		var h: float = terrain_gen.get_height_at(x, z)

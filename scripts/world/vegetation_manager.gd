@@ -20,6 +20,7 @@ const EXCLUSION_ZONES: Array[Dictionary] = [
 	{"x": 60.0, "z": 0.0, "radius": 22.0},     # Pub
 	{"x": -50.0, "z": 0.0, "radius": 15.0},    # Antenna array
 	{"x": 0.0, "z": 100.0, "radius": 18.0},    # Landing pad
+	{"x": -100.0, "z": 80.0, "radius": 52.0},  # Affection Fair
 ]
 
 var _camera: Camera3D

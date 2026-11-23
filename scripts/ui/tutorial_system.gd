@@ -78,7 +78,7 @@ const STEP_DATA: Array[Dictionary] = [
 		"min_time": 2.0,
 	},
 	{  # PUB
-		"text": "Visit the [b]Lunar Cantina[/b] (pub) to the east!\nYou can play minigames at the game tables inside.\nPress [b]E[/b] near a table to play.\n\nOther useful keys: [b]C[/b] Chat, [b]M[/b] Map, [b]I[/b] Inventory",
+		"text": "Visit the [b]Lunar Cantina[/b] (pub) to the east!\nYou can play minigames at the game tables inside, and order on-chain drinks at the bar.\nPress [b]E[/b] near a table to play.\n\nThe [b]Affection Fair[/b] is north-west — rides are paid in AFFECTION to this QING's keeper.\n\nOther useful keys: [b]C[/b] Chat, [b]M[/b] Map, [b]I[/b] Inventory",
 		"action": "timeout_or_key",
 		"min_time": 3.0,
 	},

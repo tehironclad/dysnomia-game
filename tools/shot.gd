@@ -84,10 +84,22 @@ func _process(_delta: float) -> bool:
 		_cam.fov = 70.0
 		_cam.far = 2000.0
 		current_scene.add_child(_cam)
-		# Hide HUD/UI layers so the still shows the world only
+		# Hide HUD/UI layers so the still shows the world only (SHOT_UI=1 keeps the
+		# attraction UI and fills it with demo content for reviewing the panels)
+		var keep_ui := OS.get_environment("SHOT_UI") == "1"
 		for c in current_scene.get_children():
-			if c is CanvasLayer:
+			if c is CanvasLayer and not (keep_ui and c.name == "AttractionUI"):
 				c.visible = false
+		if keep_ui and current_scene.get("_attraction_ui"):
+			var ui = current_scene._attraction_ui
+			var item: Dictionary = AttractionCatalog.ride("rocket")
+			ui.show_ticket(item, "Pays 3 AFFECTION to Sunny QING (the QING keeper).", "42.5", "Your bars here: HYPO 1.24M · EPI 806.1K")
+			ui.set_ticket_status("Ticket broadcast — boarding as soon as the block confirms (~10 s).", AttractionUI.PULSE)
+			ui.show_bar_report({"item": AttractionCatalog.drink("rho_rocks"), "hypo_before": 1240000, "hypo_after": 1311200,
+				"d_hypo": 71200, "epi_before": 806100, "epi_after": 806100, "d_epi": 0}, "Sunny QING")
+			ui._report_timer = 9999.0
+			ui.set_caption("T-3")
+			ui.show_bar_menu("Sunny QING — Bar", AttractionCatalog.DRINKS, "Press a number to order.  Balance 42.5 AFFECTION · Your bars here: HYPO 1.24M · EPI 806.1K")
 	if _cam and _cam.is_inside_tree():
 		# A y value written "+N" means N metres above the terrain at that x/z
 		var p := Vector3(float(_args[1]), _y(_args[2], float(_args[1]), float(_args[3])), float(_args[3]))

@@ -68,6 +68,8 @@ func _place_crystals() -> void:
 			x = rng.randf_range(50.0, 150.0) * sign(rng.randf() - 0.5)
 		if Vector2(x, z - 60.0).length() < 20.0:
 			z = rng.randf_range(-120.0, -60.0)
+		if Vector2(x + 100.0, z - 80.0).length() < 55.0:  # Affection Fair
+			x = rng.randf_range(60.0, 150.0)
 
 		var y := 0.0
 		if _terrain and _terrain.has_method("get_height_at"):

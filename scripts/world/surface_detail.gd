@@ -14,6 +14,8 @@ const EXCLUSION_RADIUS: float = 20.0
 const MONUMENT_POS := Vector2(0.0, -40.0)
 const BEAT_STATION_POS := Vector2(0.0, 60.0)
 const PUB_POS := Vector2(60.0, 0.0)
+const FAIR_POS := Vector2(-100.0, 80.0)  # Affection Fair (flattened 80x80 m)
+const FAIR_RADIUS := 55.0
 
 var _tire_multimesh: MultiMeshInstance3D
 var _boot_multimesh: MultiMeshInstance3D
@@ -39,6 +41,8 @@ func _is_in_exclusion_zone(x: float, z: float) -> bool:
 	if Vector2(x, z).distance_to(BEAT_STATION_POS) < EXCLUSION_RADIUS:
 		return true
 	if Vector2(x, z).distance_to(PUB_POS) < EXCLUSION_RADIUS:
+		return true
+	if Vector2(x, z).distance_to(FAIR_POS) < FAIR_RADIUS:
 		return true
 	return false
 

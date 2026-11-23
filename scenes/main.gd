@@ -36,6 +36,9 @@ const SurfaceDetailScript = preload("res://scripts/world/surface_detail.gd")
 const WeatherSystemScript = preload("res://scripts/world/weather_system.gd")
 const TutorialSystemScript = preload("res://scripts/ui/tutorial_system.gd")
 const FlagManagerScript = preload("res://scripts/world/flag_manager.gd")
+const AttractionUIScript = preload("res://scripts/ui/attraction_ui.gd")
+const AttractionDirectorScript = preload("res://scripts/world/attraction_director.gd")
+const FUNFAIR_SCRIPT_PATH := "res://scripts/world/funfair/funfair.gd"
 
 var _sun_light: DirectionalLight3D
 var _sky_material: ShaderMaterial
@@ -72,6 +75,12 @@ var _tutorial_system: CanvasLayer
 var _flag_manager: Node3D
 const PUB_X: float = 60.0
 const PUB_Z: float = 0.0
+# Affection Fair — rides visitors pay for in AFFECTION (NW of spawn, rocket visible from spawn)
+const FAIR_X: float = -100.0
+const FAIR_Z: float = 80.0
+var _funfair: Node3D
+var _attraction_ui: CanvasLayer
+var _attraction_director: Node
 var _veg_material: ShaderMaterial
 var _beat_particles: GPUParticles3D
 var _beat_camera_shake: float = 0.0
@@ -127,6 +136,9 @@ func _ready() -> void:
 	# Flatten terrain for the pub east of spawn
 	_flatten_pub_site()
 
+	# Flatten the fairground
+	_flatten_fair_site()
+
 	# Spawn monument at center-north of territory
 	_spawn_monument()
 
@@ -135,6 +147,10 @@ func _ready() -> void:
 
 	# Spawn pub building east of player spawn
 	_spawn_pub()
+
+	# Spawn the Affection Fair and wire every AFFECTION-spending spot (rides, bar)
+	_spawn_funfair()
+	_init_attractions()
 
 	# Position player at center, above terrain (after flattening)
 	var spawn_height: float = territory.get_height_at(0.0, 0.0) + 2.0
@@ -846,6 +862,53 @@ func _spawn_pub() -> void:
 	# Apply territory state if already loaded
 	if GameManager.has_territory_state:
 		_pub_building.update_territory_state()
+
+
+# ─── Affection Fair & attractions ──────────────────────────────────────────
+
+func _flatten_fair_site() -> void:
+	territory.flatten_area(FAIR_X, FAIR_Z, 40.0, 40.0, 20.0)
+
+
+func _spawn_funfair() -> void:
+	if not ResourceLoader.exists(FUNFAIR_SCRIPT_PATH):
+		return
+	_funfair = Node3D.new()
+	_funfair.set_script(load(FUNFAIR_SCRIPT_PATH))
+	_funfair.name = "AffectionFair"
+	var y: float = territory.get_height_at(FAIR_X, FAIR_Z)
+	_funfair.position = Vector3(FAIR_X, y, FAIR_Z)
+	add_child(_funfair)
+	_funfair.initialize(GameManager.terrain_seed)
+
+
+func _init_attractions() -> void:
+	## One director for every place a visitor can spend AFFECTION in this QING.
+	_attraction_ui = CanvasLayer.new()
+	_attraction_ui.set_script(AttractionUIScript)
+	_attraction_ui.name = "AttractionUI"
+	add_child(_attraction_ui)
+
+	_attraction_director = Node.new()
+	_attraction_director.set_script(AttractionDirectorScript)
+	_attraction_director.name = "AttractionDirector"
+	add_child(_attraction_director)
+	_attraction_director.setup(player, _attraction_ui)
+	_attraction_director.ride_state_changed.connect(_on_ride_state_changed)
+
+	if _pub_building:
+		_attraction_director.register_pub(_pub_building)
+	if _funfair and _funfair.has_method("get_rides"):
+		for ride in _funfair.get_rides():
+			_attraction_director.register_ride(ride)
+
+
+func _on_ride_state_changed(riding: bool) -> void:
+	# No shooting from a ferris wheel gondola
+	if _weapon_system:
+		_weapon_system.set_process_unhandled_input(not riding)
+	if riding:
+		hud.hide_interact_prompt()
 
 
 func _on_pub_enter() -> void:
@@ -1628,6 +1691,11 @@ func _setup_minimap() -> void:
 	if _pub_building:
 		hud.register_minimap_poi("Lunar Cantina", _pub_building.position,
 			Color(1.0, 0.7, 0.3), 2)  # POIType.PUB
+
+	# Register the fair
+	if _funfair:
+		hud.register_minimap_poi("Affection Fair", _funfair.position,
+			Color(1.0, 0.45, 0.75), 2)
 
 	# Register vehicle spawn
 	if _vehicle:
