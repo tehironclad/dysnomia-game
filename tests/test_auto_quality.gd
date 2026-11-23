@@ -20,6 +20,9 @@ func test_recommend_by_hardware() -> void:
 	r = _rec(0, "Microsoft Basic Render Driver")
 	eq(r["renderer"], "gl_compatibility", "Windows' fallback driver is software")
 	eq(_rec(2, "NVIDIA GeForce RTX 4070", 8, 4.0)["quality"], 1, "little RAM caps the level")
+	eq(_rec(1, "Apple M1")["quality"], 2, "Apple silicon: Medium")
+	eq(_rec(1, "Apple M2 Pro")["quality"], 3, "Apple Pro/Max: High")
+	eq(_rec(1, "Intel(R) Iris(TM) Plus Graphics 655")["quality"], 1, "an Intel Mac: Low")
 	check(String(_rec(2, "NVIDIA GeForce RTX 2070 SUPER")["why"]).contains("dedicated GPU"), "the reason names the card")
 
 

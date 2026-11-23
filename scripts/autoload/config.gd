@@ -141,6 +141,10 @@ static func recommend(adapter_type: int, adapter: String, cores: int, ram_gb: fl
 		kind = "software rendering"
 		q = 0
 		renderer = "gl_compatibility"
+	elif name.contains("apple m"):
+		# Apple silicon reports as integrated, but its GPUs are strong: Medium, High for the Pro/Max/Ultra parts.
+		kind = "Apple silicon"
+		q = 3 if (name.contains("pro") or name.contains("max") or name.contains("ultra")) else 2
 	elif adapter_type == 1 or (method == "gl_compatibility" and adapter_type == 0 and name.contains("intel")):
 		# Older Intel HD/UHD chips: the lightweight renderer at Potato. Newer iGPUs (Iris Xe, Arc, Radeon) cope with Low.
 		if name.contains("intel") and (name.contains("hd graphics") or name.contains("uhd graphics")):
