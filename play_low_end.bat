@@ -8,9 +8,8 @@ if not exist "%GODOT%" (
   pause
   exit /b 1
 )
-rem A fresh copy needs one import first (builds .godot\: the script class list and imported assets).
-if not exist "%~dp0.godot\global_script_class_cache.cfg" (
-  echo First run: importing the project, this takes a few minutes...
-  "%GODOT%" --headless --path "%~dp0." --import
-)
+rem Import first, every time: a pull can add scripts and assets, and the game only
+rem sees new classes once they are imported. Quick when nothing changed; the first run takes minutes.
+echo Importing new or changed files...
+"%GODOT%" --headless --path "%~dp0." --import
 "%GODOT%" --path "%~dp0." --rendering-method gl_compatibility -- --quality=0
