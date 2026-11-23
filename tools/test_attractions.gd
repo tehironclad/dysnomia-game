@@ -74,6 +74,7 @@ func _process(_d: float) -> bool:
 			_test_standing()
 			_test_travel_guards()
 			_test_pub_bar()
+			_test_boards()
 			_phase = 4
 			_frames = 0
 	elif _phase == 4:
@@ -189,3 +190,41 @@ func _test_pub_bar() -> void:
 	pub.play_house_cheer()
 	_check("pub sign text", not pub.get_sign_text().is_empty())
 	pub.bar_focus.emit(false)
+
+
+func _test_boards() -> void:
+	var feed = current_scene._board_feed
+	var gm = root.get_node("GameManager")
+	_check("5 media boards spawned", current_scene._media_boards.size() == 5)
+	var BF = load("res://scripts/world/board_feed.gd")
+	_check("1 AFFECTION in hex", BF._dec_to_hex("1000000000000000000") == "de0b6b3a7640000")
+	var keeper := "0x" + "ab".repeat(20)
+	var payer := "0x" + "cd".repeat(20)
+	gm.territory_owner = keeper
+	var token: String = root.get_node("ChainManager").AFFECTION_TOKEN_ADDRESS
+	var rcpt := {"status": "0x1", "logs": [{"address": token.to_lower(), "data": "0x" + "de0b6b3a7640000".lpad(64, "0"),
+		"topics": [BF.TRANSFER_TOPIC, "0x" + payer.substr(2).lpad(64, "0"), "0x" + keeper.substr(2).lpad(64, "0")]}]}
+	_check("payment to keeper recognised", feed._paid_keeper(rcpt, keeper) == payer)
+	var cheap := rcpt.duplicate(true)
+	cheap["logs"][0]["data"] = "0x" + "1".lpad(64, "0")
+	_check("underpayment rejected", feed._paid_keeper(cheap, keeper) == "")
+	_check("payment to someone else rejected", feed._paid_keeper(rcpt, "0x" + "ee".repeat(20)) == "")
+	var line: String = BF.format_post("fair", "0x" + "11".repeat(32), "gm fair", "https://example.org/a.png")
+	_check("post line format", line.begins_with("[[BOARD v1 wing=fair pay=0x") and line.ends_with("|| https://example.org/a.png"))
+	_check("http image rejected", not BF.valid_image_url("http://x/y.png"))
+	var now := int(Time.get_unix_time_from_system())
+	feed._accept({"wing": "fair", "pay": "0x" + "11".repeat(32), "caption": "gm fair", "url": "", "poster": "a", "chat_tx": "0x" + "21".repeat(32)}, payer, now - 60)
+	feed._accept({"wing": "fair", "pay": "0x" + "11".repeat(32), "caption": "dupe", "url": "", "poster": "b", "chat_tx": "0x" + "22".repeat(32)}, payer, now - 30)
+	feed._accept({"wing": "fair", "pay": "0x" + "12".repeat(32), "caption": "old", "url": "", "poster": "c", "chat_tx": "0x" + "23".repeat(32)}, payer, now - 90000)
+	var posts: Array = feed.active_posts("fair")
+	_check("fresh post shown once, stale and reused payments ignored", posts.size() == 1 and posts[0]["caption"] == "gm fair")
+	feed._hidden["0x" + "11".repeat(32)] = true
+	_check("keeper take-down hides post", feed.active_posts("fair").is_empty())
+	# Walk up to the cantina board and open the form
+	var board = current_scene._media_boards[0]
+	board.board_focus.emit(board, true)
+	_check("board card shown", current_scene._attraction_ui.is_ticket_visible())
+	current_scene.player._try_interact()
+	_check("E opens the post form", current_scene._board_post_ui.is_open())
+	current_scene._board_post_ui.close()
+	board.board_focus.emit(board, false)

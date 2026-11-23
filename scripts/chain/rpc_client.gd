@@ -144,6 +144,20 @@ func eth_get_transaction_receipt(tx_hash: String, on_completed: Callable = Calla
 	return rid
 
 
+func eth_get_block_by_number(block_hex: String, on_completed: Callable = Callable(), on_failed: Callable = Callable()) -> int:
+	## Block header (no transactions). Result is the raw JSON object string.
+	_request_id += 1
+	var rid := _request_id
+	_enqueue({
+		"id": rid,
+		"method": "eth_getBlockByNumber",
+		"params": [block_hex, false],
+		"on_completed": on_completed,
+		"on_failed": on_failed,
+	})
+	return rid
+
+
 func eth_chain_id(on_completed: Callable = Callable(), on_failed: Callable = Callable()) -> int:
 	_request_id += 1
 	var rid := _request_id

@@ -21,6 +21,9 @@ var vsync: bool = true
 # Features
 var screen_effects_enabled: bool = true
 var helmet_hud_enabled: bool = true
+var show_board_images: bool = true  # Community media boards: show posted pictures
+## Link in Telegram invites (K). Point it at the download/landing page you share with the community.
+var invite_url: String = "https://github.com/tehironclad/dysnomia-game"
 var minimap_enabled: bool = true
 
 # Chain
@@ -112,6 +115,8 @@ func save_settings() -> void:
 	config.set_value("display", "fullscreen", fullscreen)
 	config.set_value("display", "vsync", vsync)
 	config.set_value("features", "screen_effects", screen_effects_enabled)
+	config.set_value("features", "show_board_images", show_board_images)
+	config.set_value("community", "invite_url", invite_url)
 	config.set_value("features", "helmet_hud", helmet_hud_enabled)
 	config.set_value("features", "minimap", minimap_enabled)
 	config.set_value("chain", "rpc_url", rpc_url)
@@ -138,6 +143,8 @@ func load_settings() -> void:
 	fullscreen = config.get_value("display", "fullscreen", fullscreen)
 	vsync = config.get_value("display", "vsync", vsync)
 	screen_effects_enabled = config.get_value("features", "screen_effects", screen_effects_enabled)
+	show_board_images = config.get_value("features", "show_board_images", show_board_images)
+	invite_url = config.get_value("community", "invite_url", invite_url)
 	helmet_hud_enabled = config.get_value("features", "helmet_hud", helmet_hud_enabled)
 	minimap_enabled = config.get_value("features", "minimap", minimap_enabled)
 	rpc_url = config.get_value("chain", "rpc_url", rpc_url)

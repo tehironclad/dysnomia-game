@@ -1190,6 +1190,14 @@ func send_affection_transfer(to: String, amount_base_units: String) -> int:
 	return _wallet_bridge.send_transaction(AFFECTION_TOKEN_ADDRESS, "transfer", [to, amount_base_units])
 
 
+func get_receipt(tx_hash: String, on_done: Callable) -> void:
+	_reader.read_receipt(tx_hash, on_done)
+
+
+func get_block_time(block_hex: String, on_done: Callable) -> void:
+	_reader.read_block_time(block_hex, on_done)
+
+
 func read_affection_balance(wallet_address: String) -> void:
 	_reader.read_token_balance(AFFECTION_TOKEN_ADDRESS, wallet_address)
 

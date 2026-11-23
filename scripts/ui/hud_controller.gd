@@ -2072,6 +2072,7 @@ func _create_controls_panel() -> void:
 
 	_controls_list.append_text("[color=#60a5fa][b]World[/b][/color]\n")
 	_controls_list.append_text("[color=#cccccc]  E               Interact (Monument / Join / Minigame)\n")
+	_controls_list.append_text("[color=#cccccc]  K               Invite friends to this QING (Telegram)\n")
 	_controls_list.append_text("  F               Toggle Flashlight\n")
 	_controls_list.append_text("  Esc            Release / Capture Mouse[/color]\n\n")
 

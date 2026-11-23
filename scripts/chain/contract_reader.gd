@@ -1056,6 +1056,7 @@ func _parse_chat_logs(result_json: String, qing_address: String) -> void:
 			"message": logline,
 			"block": block_num,
 			"qing": qing_address,
+			"tx_hash": str(log_entry.get("transactionHash", "")),
 		})
 
 	# Sort by block number (ascending — oldest first)
@@ -1065,6 +1066,24 @@ func _parse_chat_logs(result_json: String, qing_address: String) -> void:
 
 	print("[ContractReader] Parsed %d chat messages from %s" % [messages.size(), qing_address])
 	chat_logs_received.emit(messages)
+
+
+func read_receipt(tx_hash: String, on_done: Callable) -> void:
+	## on_done(receipt: Dictionary) — empty Dictionary if missing/pending/failed.
+	_rpc.eth_get_transaction_receipt(tx_hash,
+		func(result_json: String) -> void:
+			var r = JSON.parse_string(result_json)
+			on_done.call(r if r is Dictionary else {}),
+		func(_e: String) -> void: on_done.call({}))
+
+
+func read_block_time(block_hex: String, on_done: Callable) -> void:
+	## on_done(unix_seconds: int) — 0 on failure.
+	_rpc.eth_get_block_by_number(block_hex,
+		func(result_json: String) -> void:
+			var b = JSON.parse_string(result_json)
+			on_done.call(HexUtils.hex_to_int(str(b.get("timestamp", "0x0"))) if b is Dictionary else 0),
+		func(_e: String) -> void: on_done.call(0))
 
 
 func _read_abi_string_at(hex_data: String, char_offset: int) -> String:

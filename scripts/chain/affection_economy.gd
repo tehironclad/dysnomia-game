@@ -24,6 +24,7 @@ var decimals: int = 18
 var _next_purchase_id: int = 1
 var _pending: Dictionary = {}       # tx_id -> {purchase_id, item, hypo, epi}
 var _awaiting_bars: Array = []      # [{item, hypo, epi, deadline}] waiting for a state refresh
+var _tx_hashes: Dictionary = {}     # purchase_id -> confirmed tx hash (media boards cite it)
 
 
 func _ready() -> void:
@@ -152,11 +153,12 @@ func _track(tx_id: int, pid: int, item: Dictionary) -> void:
 	purchase_pending.emit(pid, item, tx_id)
 
 
-func _on_tx_confirmed(tx_id: int, _hash: String) -> void:
+func _on_tx_confirmed(tx_id: int, tx_hash: String) -> void:
 	if not _pending.has(tx_id):
 		return
 	var p: Dictionary = _pending[tx_id]
 	_pending.erase(tx_id)
+	_tx_hashes[p["purchase_id"]] = tx_hash
 	var item: Dictionary = p["item"]
 	var mode := "op" if item.get("kind", "") == AttractionCatalog.KIND_OP else "paid"
 	purchase_granted.emit(p["purchase_id"], item, mode)
@@ -168,6 +170,10 @@ func _on_tx_confirmed(tx_id: int, _hash: String) -> void:
 	if mode == "paid":
 		ChainManager.refresh_territory_state()
 	refresh_balance()
+
+
+func tx_hash_for(purchase_id: int) -> String:
+	return _tx_hashes.get(purchase_id, "")
 
 
 func _on_tx_failed(tx_id: int, error: String) -> void:
