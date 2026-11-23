@@ -146,8 +146,14 @@ func _test_standing() -> void:
 	var s: Dictionary = st.current()
 	print("[test] busy QING standing = ", s["score"], " tier ", s["tier"], " parts ", s["parts"])
 	_check("busy QING reaches tier 3", s["tier"] == 3)
+	_check("fair rebuilt at tier 3", current_scene._funfair != null and current_scene._fair_tier == 3)
+	if current_scene._funfair:
+		_check("tier 3 fair has 4 rides", current_scene._funfair.get_rides().size() == 4)
 	_check("promotion signal fired", promoted.get("tier", -1) == 3)
 	_check("console override works", current_scene.cmd_standing(1).contains("tier 1"))
+	_check("tier 1 fair = carousel only", current_scene._funfair.get_rides().size() == 1)
+	current_scene.cmd_standing(0)
+	_check("tier 0 fair = surveyed lot, no rides", current_scene._funfair.get_rides().size() == 0)
 	current_scene.cmd_standing(-1)
 	_check("override cleared", st.current()["tier"] == 3)
 
