@@ -47,6 +47,6 @@ void fragment() {
 	float d = length(UV - vec2(0.5)) * 2.0;
 	float a = clamp(1.0 - d, 0.0, 1.0);
 	a = a * a;
-	vec3 c = mix(COLOR.rgb, vec3(1.0, 0.95, 0.85), v_core * 0.7);
+	vec3 c = mix(COLOR.rgb, vec3(1.0, 0.95, 0.85), v_core * 0.35);
 	ALBEDO = c * a * v_fade * energy;
 }
