@@ -76,6 +76,9 @@ func update_board(board: Array, block: int, me: String = "") -> void:
 		var body: MeshInstance3D = c["body"]
 		body.scale = Vector3(width, h, width)
 		body.position.y = h * 0.5
+		var solid: StaticBody3D = c["solid"]
+		((solid.get_child(0) as CollisionShape3D).shape as BoxShape3D).size = Vector3(width, h, width)
+		solid.position.y = h * 0.5
 		var grew: bool = not (c["last"] as PackedInt64Array).is_empty() and BigInt.cmp(hb, c["last"]) > 0
 		c["last"] = hb
 		if grew:
@@ -111,6 +114,7 @@ func _make(wallet: String) -> Dictionary:
 	mat.set_shader_parameter("seed", float(BigInt.mod_int(BigInt.from_hex(wallet), 997)))
 	body.material_override = mat
 	root.add_child(body)
+	var solid := Solid.box(root, Vector3.ONE, Vector3.ZERO)  # resized with the tower
 	var lab := Label3D.new()
 	lab.font = DeepFieldTheme.mono_font()
 	lab.font_size = 44
@@ -140,7 +144,7 @@ func _make(wallet: String) -> Dictionary:
 	beacon.omni_range = 14.0
 	beacon.visible = false
 	root.add_child(beacon)
-	return {"root": root, "body": body, "mat": mat, "label": lab, "crown": crown, "beacon": beacon, "last": PackedInt64Array(), "flash": 0.0}
+	return {"root": root, "body": body, "solid": solid, "mat": mat, "label": lab, "crown": crown, "beacon": beacon, "last": PackedInt64Array(), "flash": 0.0}
 
 
 func _process(delta: float) -> void:

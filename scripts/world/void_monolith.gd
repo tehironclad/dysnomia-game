@@ -20,6 +20,7 @@ func build() -> void:
 	m.rim = 0.6
 	slab.material_override = m
 	slab.position.y = 3.0
+	Solid.box(self, Vector3(2.4, 6.0, 0.5), Vector3(0.0, 3.0, 0.0))
 	add_child(slab)
 	var edge := MeshInstance3D.new()
 	var e := BoxMesh.new()

@@ -111,6 +111,7 @@ func _build_pylon(pname: String, at: Vector3, mirror: bool, tint: Color) -> void
 	body.material_override = _glass(tint)
 	body.position.y = height * 0.5
 	root.add_child(body)
+	Solid.cylinder(root, 0.95, height, Vector3.ZERO)
 	# Edge light running up the pylon.
 	var seam := MeshInstance3D.new()
 	var bx := BoxMesh.new()
@@ -175,6 +176,8 @@ func _build_room(tint: Color) -> void:
 			n.rotation_degrees.y = -a_deg
 			n.scale = Vector3(1.0, 0.9, 1.0)
 			room.add_child(n)
+			if piece == "WallAstra_Straight":
+				Solid.wrap(n, 1.0)  # the walls are solid; the doorway (+Z) stays open
 	var frame := PlaceBase.load_piece("Door_Frame_Square")
 	frame.position = Vector3(0.0, 0.0, ROOM_RADIUS + 0.1)
 	frame.scale = Vector3(0.8, 0.8, 0.8)
