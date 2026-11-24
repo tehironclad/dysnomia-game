@@ -10,7 +10,7 @@ const ACTIONS := [
 	["toggle_fly", "Fly"], ["toggle_camera", "First / third person"], ["interact", "Use: pylon Su · door: enter the hall · centre Beat · plinth WORLD · monolith: the Void"],
 	["inspect", "How is this drawn?"], ["open_field", "The Field (all territories)"], ["flashlight", "Flashlight (headlights when driving)"],
 	["vehicle_enter", "Vehicle pad: get in / out (W/S drive, A/D steer, Space hop or lift, Shift boost, Ctrl brake)"], ["vehicle_reset", "Vehicle: back on its wheels"],
-	["chat", "Speak (in a hall or the Void)"], ["arcade_start", "Arcade, inside a cabinet: play a credit"], ["arcade_view", "Arcade, inside a cabinet: 3D world / classic screen"], ["opportunities", "Opportunities: hot spots, leads in reach, crowns, streak"], ["guide", "Guide: the acts"], ["settings", "Settings"], ["toggle_debug", "Performance overlay"], ["controls_help", "This list"],
+	["chat", "Speak (in a hall or the Void)"], ["arcade_start", "Arcade, inside a cabinet: play a credit"], ["arcade_view", "Arcade, inside a cabinet: 3D world / classic screen"], ["bar_menu", "Bar menu (at the counter in Sunny's Pub)"], ["opportunities", "Opportunities: hot spots, leads in reach, crowns, streak"], ["guide", "Guide: the acts"], ["settings", "Settings"], ["toggle_debug", "Performance overlay"], ["controls_help", "This list"],
 ]
 
 var _text: Label

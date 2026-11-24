@@ -2,7 +2,7 @@ extends SceneTree
 ## Performance sample (WP 7.5) of the territory scene: draw calls, objects,
 ## primitives, process time, and whether the object count grows per frame
 ## (per-frame allocations of Nodes/Resources). Needs a renderer (xvfb + lavapipe):
-##   xvfb-run … godot --path . -s res://tools/perf.gd -- [--qing=0x…] [--frames=300]
+##   xvfb-run … godot --path . -s res://tools/perf.gd -- [--qing=0x…] [--frames=300] [--scene=res://…tscn] [--view=…]
 ## Absolute FPS under a CPU rasteriser means little; the counts are what to budget.
 ## Budgets for a mid-range GPU at High. Frame time under lavapipe is not one of
 ## them (a CPU rasteriser); headless wall time minus the empty-scene floor
@@ -11,6 +11,7 @@ const BUDGET := {"draw_calls": 900, "objects": 1500, "primitives": 1500000, "obj
 
 var _frames := 300
 var _disable: Array = []
+var _scene := "res://scenes/territory/territory_v2.tscn"
 
 
 func _initialize() -> void:
@@ -21,9 +22,11 @@ func _run() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--frames="):
 			_frames = int(a.substr(9))
+		elif a.begins_with("--scene="):
+			_scene = a.substr(8)  # e.g. res://scenes/places/sunny_pub.tscn (the scene reads --qing/--view itself)
 		elif a.begins_with("--disable="):
 			_disable.append(a.substr(10))  # profiling: a node path under the scene
-	change_scene_to_file("res://scenes/territory/territory_v2.tscn")
+	change_scene_to_file(_scene)
 	for i in 180:
 		await process_frame
 	for path in _disable:

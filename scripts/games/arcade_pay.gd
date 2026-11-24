@@ -55,18 +55,29 @@ static func verify_receipt(receipt: Dictionary, from: String, to: String, fee_we
 ## Pays one credit at `qing`. Returns {ok, hash, block, qing_balance} or the
 ## failure from Wallet.send / verification ({ok:false, stage, message}).
 static func pay(qing: String, place_name: String) -> Dictionary:
+	var r := await transfer_to_qing(qing, "Arcade credit at %s (%s)" % [place_name, fee_text()])
+	if r["ok"]:
+		add_credit(r["from"], qing.to_lower(), r["hash"], r["block"])
+	return r
+
+
+## FEE Ⓐ from the connected wallet to `qing`, through the write rule: Wallet.send
+## (simulate → sign → receipt from the chain), then AFFECTION's own Transfer log
+## found in that receipt, then the QING's balance re-read at the receipt's block.
+## {ok, from, hash, block, qing_balance (null if the re-read failed)} or
+## {ok:false, stage, message}. Sunny's "round for the house" uses it without a credit.
+static func transfer_to_qing(qing: String, label: String) -> Dictionary:
 	qing = qing.to_lower()
 	var wallet := Wallet.address
 	var data := Abi.encode_call("transfer(address,uint256)", [qing, FEE_WEI])
-	var res: Dictionary = await Wallet.send("Arcade credit at %s (%s)" % [place_name, fee_text()], Contracts.AFFECTION, data)
+	var res: Dictionary = await Wallet.send(label, Contracts.AFFECTION, data)
 	if not res["ok"]:
 		return res
 	var v := verify_receipt(res["receipt"], wallet, qing)
 	if not v["ok"]:
 		return {"ok": false, "stage": "verify", "message": "Mined in block %d, but: %s" % [res["block"], v["message"]]}
 	var after := await read_balance(qing, res["block"])
-	add_credit(wallet, qing, res["hash"], res["block"])
-	return {"ok": true, "hash": res["hash"], "block": res["block"], "qing_balance": after.get("balance", null)}
+	return {"ok": true, "from": wallet, "hash": res["hash"], "block": res["block"], "qing_balance": after.get("balance", null)}
 
 
 # --- The local credit ledger (one entry per verified payment) ---------------

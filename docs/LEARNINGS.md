@@ -590,3 +590,11 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   ArcadePay records is spent at once, so a rental is never also an arcade play.
 - **Physics:** a yaw-only `CharacterBody3D` (capsule keel + box) on the terrain collider and every `Solid`;
   the feel (drift, hover cushion and glide, hops, fuel, springs) is pure functions in `VehicleSpecs`.
+- **Sunny's bar menu** (`BarTab`, `BarMenu`; 2026-11-24): the drinks are the visitor's own calls. All six
+  AFFECTION ops (`Pi() Rho() Generate() Alpha(uint64) Beta(uint64) Upsilon(uint64,bool)`) simulate fine from a
+  player wallet [live, block ≈28,135,800; gas ≈ 50k–160k]; `Generate()` returns a uint256. Their reserve
+  mints show in a receipt as AFFECTION `Transfer(0x0 → AFFECTION)` logs (other contracts mint 1 Ⓐ ones by the
+  thousand: count only the logs in *your* receipt). After a pour the bar re-reads `YUE.Bar(QING)` at the
+  receipt block − 1 and the receipt block and shows the measured change; for an AFFECTION op it is +0 (§1),
+  and the menu says so. "The House Su" is `CHEON.Su(QING)`, the drink that does move bars. "Round for the
+  house" is `ArcadePay.transfer_to_qing` (1 Ⓐ, receipt-verified, no arcade credit); the room cheers only after it.

@@ -75,6 +75,9 @@
 - Vehicles (`scripts/vehicles/`, LEARNINGS §15): a pad per territory (`scripts/world/garage/garage_site.gd`), five
   vehicles (`MoonVehicle`, specs and pure physics in `VehicleSpecs`), unlocks from real state (`VehicleUnlocks`).
   V in/out, R upright. Shots: `--view=garage`, or `--drive=<kind> [--drive-s=N --steer=left] [--session=0x…]`.
+  The pub's room, regulars and bar menu are `scripts/places/pub/` (`PubRoom`, `PubLife`, `PubKit`,
+  `BarMenu`; drinks = `scripts/games/bar_tab.gd`). Render it with
+  `--scene=res://scenes/places/sunny_pub.tscn --view=street|bar|lounge|room|games|stools|menu`.
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
   total; skyline towers per player (`bar_columns.gd`, `tower.gdshader`), structures (`development_site.gd`),
   city lights/roads (terrain shader), aurora (sky shader). `tools/live_development.gd` measures every territory.

@@ -82,6 +82,12 @@ The budgets are for a mid-range GPU at High:
 
 Script cost is measured headless: wall time minus the empty-scene floor (`--disable=.`).
 
+`--scene=res://scenes/places/sunny_pub.tscn --qing=0x2b78…96de --view=room` samples Sunny's Pub (its widest
+fixed view, the whole room with 8 regulars, echoes, arcade and pool): 546 draw calls, 773 objects, 0.37 M
+primitives (2026-11-24). What keeps it there: the regulars and echoes are `HumanAvatar.civilian` (no armour or
+jetpack: ~16 meshes, not 55), the bottles are lathed MultiMeshes (not Poly Haven bottles at 1.6 M triangles),
+stools, sunflowers and trim are batched per material (`PubKit.Batch`).
+
 Other performance measures in the build:
 - Deep Field SubViewports (the pylon plates, the chest emblem) render at 4–6 Hz, not every frame.
 - Heightfields and scores are cached under `user://cache`.
