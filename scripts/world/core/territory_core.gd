@@ -43,6 +43,10 @@ func build(p: Dictionary, q: Dictionary, ground_y: float) -> void:
 	_build_pylon("Rod", Vector3(-PYLON_GAP, 0, 0), false, col)
 	_build_pylon("Cone", Vector3(PYLON_GAP, 0, 0), true, col2)
 	_build_room(col)
+	var dressing := CoreDressing.new()
+	dressing.name = "Dressing"
+	add_child(dressing)
+	dressing.build(col, ROOM_RADIUS)
 	_build_heart(col)
 	for w in WELLS:
 		_build_well(w)
@@ -89,7 +93,8 @@ func _label(text: String, size: int = 64) -> Label3D:
 	l.font_size = size
 	l.pixel_size = 0.01
 	l.modulate = DeepFieldTheme.INK
-	l.outline_size = 0
+	l.outline_size = maxi(6, size / 6)  # readable over bright towers and the sky
+	l.outline_modulate = Color(0.01, 0.015, 0.03, 0.85)
 	l.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 	return l
 
@@ -120,6 +125,32 @@ func _build_pylon(pname: String, at: Vector3, mirror: bool, tint: Color) -> void
 	seam.material_override = _glow(tint, 3.0)
 	seam.position = Vector3(0.0, height * 0.5, 0.95 if not mirror else -0.95)
 	root.add_child(seam)
+	# The monument's base: two stepped plinths of the same polygon, a lit trim
+	# between them, and two collars up the shaft (detail only; the numbers are
+	# the height, the sides and the plate).
+	var metal := CoreDressing.dark_metal()
+	var step1 := MeshInstance3D.new()
+	step1.mesh = CoreDressing._cyl(1.95, 2.1, 0.32, _sides())
+	step1.material_override = metal
+	step1.position.y = 0.16
+	root.add_child(step1)
+	var step2 := MeshInstance3D.new()
+	step2.mesh = CoreDressing._cyl(1.45, 1.6, 0.36, _sides())
+	step2.material_override = metal
+	step2.position.y = 0.5
+	root.add_child(step2)
+	var trim := MeshInstance3D.new()
+	trim.mesh = CoreDressing._cyl(1.62, 1.62, 0.05, _sides())
+	trim.material_override = _glow(tint, 1.8)
+	trim.position.y = 0.345
+	root.add_child(trim)
+	for f in [0.38, 0.72]:
+		var r := lerpf(1.1, 0.55, f) + 0.06
+		var collar := MeshInstance3D.new()
+		collar.mesh = CoreDressing._cyl(r, r + 0.05, 0.22, _sides())
+		collar.material_override = metal
+		collar.position.y = height * f
+		root.add_child(collar)
 	# The plate: the territory's Julia set (c on the Rod, c̄ on the Cone).
 	var vp := SubViewport.new()
 	vp.size = Vector2i(256, 256)
@@ -287,13 +318,27 @@ func _build_well(w: Dictionary) -> void:
 	root.name = "Well_" + w["key"]
 	root.position = at
 	add_child(root)
+	# A metal rim with a lit lip; the column inside is the well's level.
+	var rim := MeshInstance3D.new()
+	rim.mesh = CoreDressing._cyl(1.35, 1.5, 0.5, 24)
+	rim.material_override = CoreDressing.dark_metal()
+	rim.position.y = 0.25
+	root.add_child(rim)
 	var basin := MeshInstance3D.new()
 	var t := TorusMesh.new()
-	t.inner_radius = 0.9
-	t.outer_radius = 1.2
+	t.inner_radius = 1.05
+	t.outer_radius = 1.3
+	t.rings = 48
 	basin.mesh = t
 	basin.material_override = _glow(w["color"], 1.0)
+	basin.position.y = 0.5
+	basin.scale = Vector3(1.0, 0.4, 1.0)
 	root.add_child(basin)
+	var pool := MeshInstance3D.new()
+	pool.mesh = CoreDressing._cyl(1.05, 1.05, 0.02, 24)
+	pool.material_override = _glow(Color(w["color"]).darkened(0.7), 0.6)
+	pool.position.y = 0.49
+	root.add_child(pool)
 	var column := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
 	cyl.top_radius = 0.35

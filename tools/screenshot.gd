@@ -117,7 +117,9 @@ func _run() -> void:
 		for i in 30:
 			await process_frame
 		var acts = current_scene.get("actions") if current_scene else null
-		if acts:
+		if _open == "steward" and current_scene and current_scene.get("act_loop"):
+			current_scene.act_loop.open_steward()  # the Steward's words (ActLoop)
+		elif acts:
 			acts.call("open_" + _open)
 		elif _open == "chat" and current_scene and current_scene.get("chat_ctl"):
 			current_scene.chat_ctl.open()  # a hall or the Void

@@ -177,7 +177,7 @@ static func acts(snap: Dictionary) -> Array:
 			su["detail"] = "+%s Hypobar a Su, the same for everyone" % omega_txt
 	if not streak.is_empty() and not bool(streak.get("today_done", true)):
 		su["priority"] = int(su["priority"]) + 15
-		su["detail"] = String(su.get("detail", "")) + " · keeps your %d-day streak" % int(streak.get("current", 0))
+		su["detail"] = String(su.get("detail", "")) + (" · keeps your %d-day streak" % int(streak.get("current", 0)) if int(streak.get("current", 0)) > 0 else " · starts a streak today")
 	su["lore"] = "React with the Rod and the Cone. The pylons carry this land's set, c and its mirror; touch them and your bars here grow."
 	out.append(su)
 

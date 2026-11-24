@@ -35,6 +35,7 @@ var score: TerritoryScore
 var border: BorderRing
 var roads: TerritoryRoads  # the Core's ring road and roads to every place (scripts/world/roads/)
 var chat_life: ChatLife  # room chat in the world: bubbles, echoes, glow, tower markers
+var act_loop: ActLoop  # the diegetic loop: act markers, the Steward, the HUD tracker (scripts/world/play/)
 var _settings: PanelContainer
 var _monitor: Control
 var _near := ""
@@ -96,6 +97,7 @@ func _ready() -> void:
 	monolith.build()
 	monolith.position = Vector3(MONOLITH_AT.x, terrain.get_height_at(MONOLITH_AT.x, MONOLITH_AT.y) - 0.2, MONOLITH_AT.y)
 	monolith.look_at(Vector3(0.0, monolith.position.y, 0.0), Vector3.UP, true)
+	CoreDressing.base_under(monolith, 2.4, 0.5, DeepFieldTheme.ICE)
 	phenomena = Phenomena.new()
 	phenomena.name = "Phenomena"
 	add_child(phenomena)
@@ -110,6 +112,7 @@ func _ready() -> void:
 	arcade.build(String(territory["address"]), DeepField.to_color(terrain.params["color"]))
 	arcade.position = Vector3(ArcadeFront.AT.x, terrain.get_height_at(core.global_position.x + ArcadeFront.AT.x, core.global_position.z + ArcadeFront.AT.y) - core_y - 0.3, ArcadeFront.AT.y)
 	arcade.look_at(core.global_position + Vector3(0.0, arcade.global_position.y - core.global_position.y, 0.0), Vector3.UP, true)
+	CoreDressing.dress_arcade(arcade, DeepField.to_color(terrain.params["color"]))
 	# The Affection Fair: rides paid in Ⓐ to this QING, sized by Development
 	fair = FairSite.new()
 	fair.name = "AffectionFair"
@@ -203,6 +206,13 @@ func _ready() -> void:
 		add_child(presence)
 		presence.setup(String(territory["address"]), player, hud)
 	# --- end Online
+	# --- Acts (scripts/world/play/): markers at the buildings, the Steward, the tracker.
+	act_loop = ActLoop.new()
+	act_loop.name = "ActLoop"
+	core.add_child(act_loop)
+	act_loop.setup(territory, state, core, hud, actions, border, columns, player,
+		func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y, view != "")
+	# --- end Acts
 	view_mode = view
 	if view == "":
 		# Play: the player's camera. (With no current camera, Godot would pick
@@ -244,6 +254,10 @@ func _frame(view: String) -> void:
 		camera.fov = 62.0
 	elif view.begins_with("border") and border:  # --view=border_n|e|s|w: across a force field
 		border.frame_camera(camera, view.substr(7) if view.length() > 7 else "n")
+	elif view == "steward" and act_loop:  # the Steward and the act markers at the Core
+		camera.position = Vector3(14.0, core_h + 3.2, 24.0)
+		camera.look_at(Vector3(-2.0, core_h + 3.0, 4.0))
+		camera.fov = 62.0
 	elif view == "chat" and chat_life:  # the Room's front: echoes, bubbles, glow
 		chat_life.frame(camera)
 	elif view == "relief":  # from the highest ground, back over the terraces

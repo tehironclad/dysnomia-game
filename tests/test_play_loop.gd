@@ -130,3 +130,10 @@ func test_heart_rings_follow_tier() -> void:
 	check(HeartOrrery.ring_tilt([0.25, -0.5], 1) != HeartOrrery.ring_tilt([-0.7, 0.2], 1))
 	eq(DevelopmentSite.shaft_height(1), 24.0)
 	eq(DevelopmentSite.shaft_height(5), 280.0)
+
+
+func test_prompts_share_one_shape() -> void:
+	eq(HudV2.split_prompt("E  go into the arcade"), ["E", "Go into the arcade"])
+	eq(HudV2.split_prompt("E / Mouse 1  RIDE X"), ["E / Mouse 1", "RIDE X"])
+	eq(HudV2.split_prompt("LIFT · 40 m · 3 m/s"), ["", "LIFT · 40 m · 3 m/s"])
+	eq(HudV2.split_prompt("YOUR TOWER · 12 m  x"), ["", "YOUR TOWER · 12 m  x"])
