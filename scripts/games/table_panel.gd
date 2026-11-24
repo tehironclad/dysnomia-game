@@ -13,6 +13,8 @@ var book: TableBook
 var qing := ""
 var place_name := ""
 var blocker_fn: Callable  # → "" or why you can't sign here
+var join_fn: Callable  # the room's Join (GamesPlace → ChatController)
+var access: AccessSteps  # the steps to play here when blocked
 
 var _title: Label
 var _sub: Label
@@ -125,6 +127,7 @@ func _init() -> void:
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_status.custom_minimum_size = Vector2(920, 0)
 	col.add_child(_status)
+	access = AccessSteps.embed(col)
 	Wallet.tx_stage.connect(_on_stage)
 
 
@@ -262,6 +265,7 @@ func _refresh_detail() -> void:
 		_events.text = head + "\n" + "\n".join(lines)
 	if blocker != "":
 		_status.text = blocker
+	access.update_for(blocker, "table", {"qing": qing, "room_name": place_name}, {"join": join_fn} if join_fn.is_valid() else {})
 	if kind == "pool":
 		(_view as PoolView).show_match(m, my_turn)
 		_maybe_animate(m)

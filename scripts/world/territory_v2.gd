@@ -343,6 +343,7 @@ func _set_development(tier: int, hypo: PackedInt64Array, energy: float, board: A
 	development.set_tier(dev_tier, energy)
 	core.set_development(dev_tier, energy)  # the Heart's rings (HeartOrrery)
 	if fair:
+		fair.dev_facts = {"tier": tier, "total": TokenFormat.group(BigInt.to_decimal(hypo)), "block": block}
 		fair.set_dev_tier(dev_tier)
 	if landmark:
 		landmark.set_development(dev_tier, hypo, energy, board, block)

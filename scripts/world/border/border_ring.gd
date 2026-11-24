@@ -27,6 +27,8 @@ var player: Node3D
 var hud: Node
 var main_terrain: DeepFieldTerrain
 var action: ActionPanel
+## The steps to cross when the border is closed to you (AccessSteps: wallet → LAU → Join).
+var access: AccessSteps
 var _layer: CanvasLayer
 var _ground := {}  ## side → DeepFieldTerrain, once built
 var _pending: Array = []  ## records still to compute (worker thread)
@@ -301,9 +303,14 @@ func _build_panel() -> void:
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_layer.add_child(center)
+	var stack := VBoxContainer.new()
+	center.add_child(stack)
 	action = ActionPanel.new()
-	center.add_child(action)
+	stack.add_child(action)
+	access = AccessSteps.embed(stack)
+	access.custom_minimum_size = Vector2(560, 0)
 	action.closed.connect(func():
+		access.visible = false
 		_open_side = ""
 		player.process_mode = Node.PROCESS_MODE_INHERIT
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
@@ -352,14 +359,18 @@ func _refresh_door() -> void:
 	if _open_side != side or not action.is_open():
 		return
 	action.set_body(_facts(side) + "\n\n" + _room.describe())
+	var actx := {"border_qing": String(q["address"]), "border_name": qname(q), "border": _room, "title": "Cross into %s" % qname(q)}
 	if not _room.ok:
 		action.set_status("Its door could not be read: —. Crossing stays closed.")
 		action.set_primary("Cross", false, Callable())
+		access.update_for("—", "border", actx, {"join_border": _join})
 		return
 	if ps == null or not ps.has_lau():
 		action.set_status("Crossing needs a LAU that this QING admits. Connect a wallet at the front door (looking is free: the Field warps anywhere).")
 		action.set_primary("Join to cross", false, Callable())
+		access.update_for("no LAU", "border", actx, {"join_border": _join})
 		return
+	access.update_for("" if _room.admitted else "closed", "border", actx, {"join_border": _join})
 	if _room.admitted:
 		_admitted[side] = _room.block
 		var how := "no cover: every LAU is admitted" if not _room.has_cover() else "your Join holds"

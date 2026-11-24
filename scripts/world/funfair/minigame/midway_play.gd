@@ -530,6 +530,8 @@ func post() -> void:
 		blocker = ChatController._identity_blocker()
 	if blocker != "":
 		_p_status.text = blocker
+		var q0 := String(site.get("_qing"))
+		AccessSteps.popup(self, "fair_post", {"qing": q0, "room_name": String(Registry.get_territory(q0).get("name", ""))})
 		return
 	var qing := String(site.get("_qing"))
 	var text := FairBoard.line_text(game, sim.score, String(ticket["hash"]), sim.events)
@@ -544,6 +546,9 @@ func post() -> void:
 	if not res.get("ok", false):
 		_p_status.text = "Not posted (%s): %s" % [res.get("stage", "?"), res.get("message", "cancelled")]
 		_hint_text()
+		var g := AccessSteps.goal_for_failure(res, "fair_post")
+		if g != "" or String(res.get("message", "")).contains("Admitted") or String(res.get("message", "")).contains("cover"):
+			AccessSteps.popup(self, "fair_post", {"qing": qing, "room_name": String(Registry.get_territory(qing).get("name", ""))})
 		return
 	posted = res
 	_p_status.text = "Posted in block %s and read back from the chain. Checking the board…" % ArcadeScores.grouped(int(res["block"]))

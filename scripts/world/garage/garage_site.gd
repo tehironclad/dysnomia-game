@@ -394,6 +394,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			mount(_focus)
 		else:
 			_hud.ticker("%s is %s: %s" % [VehicleSpecs.display_name(_focus), VehicleUnlocks.status_word(st.get("state", 2)).to_lower(), st.get("why", "…")], Color("#ff8fa0"), 8.0)
+			_show_unlock_steps(_focus)
 	elif event.is_action_pressed("interact") and not _focus.begins_with("bay:"):
 		var st2: Dictionary = status.get(_focus, {})
 		if st2.get("state", VehicleUnlocks.State.UNKNOWN) != VehicleUnlocks.State.OPEN:
@@ -497,12 +498,26 @@ func dismount() -> void:
 	driving_changed.emit(false)
 
 
+## What opens this vehicle, as steps (AccessSteps): its rule, read from your chain
+## state (… while unread, — if the read failed), with the rental as the other way in.
+func _show_unlock_steps(kind: String) -> void:
+	var st: Dictionary = status.get(kind, {"state": VehicleUnlocks.State.UNKNOWN, "why": "…"})
+	var why := String(st.get("why", "…"))
+	var stv := "done" if st["state"] == VehicleUnlocks.State.OPEN else ("todo" if st["state"] == VehicleUnlocks.State.LOCKED else ("checking" if why.begins_with("…") else "unknown"))
+	var steps := AccessSteps.popup(self, "vehicle", {"title": "Drive the %s" % VehicleSpecs.display_name(kind), "qing": _qing,
+		"subtitle": "Or rent it for this session: %s to this QING, receipt-verified." % ArcadePay.fee_text(),
+		"extra": [{"id": kind, "title": String(VehicleUnlocks.RULES[kind]).capitalize(), "status": stv, "detail": why,
+			"explain": "Vehicles open from your own chain state; nothing is guessed. Su here or anywhere grows your bars."}]})
+	steps.add_footer_button("Rent it (%s)" % ArcadePay.fee_text(), func(): _rent(kind))
+
+
 func _rent(kind: String) -> void:
 	if _paying:
 		return
 	var nm := VehicleSpecs.display_name(kind)
 	if Wallet.address == "":
 		_hud.ticker("Renting the %s needs a connected wallet (%s to this QING)." % [nm, ArcadePay.fee_text()], Color("#ff8fa0"), 8.0)
+		AccessSteps.popup(self, "arcade", {"title": "Rent the %s (%s)" % [nm, ArcadePay.fee_text()], "qing": _qing, "fee_wei": ArcadePay.FEE_WEI})
 		return
 	_paying = true
 	_hud.ticker("Rental: approve %s to this QING in your wallet…" % ArcadePay.fee_text(), DeepFieldTheme.ICE, 20.0)
@@ -511,6 +526,8 @@ func _rent(kind: String) -> void:
 	if not res.get("ok", false):
 		Cues.play(self, "fail")
 		_hud.ticker("Not rented: %s" % res.get("message", "cancelled"), Color("#ff8fa0"), 10.0)
+		if AccessSteps.goal_for_failure(res, "arcade") != "":
+			AccessSteps.popup(self, "arcade", {"title": "Rent the %s (%s)" % [nm, ArcadePay.fee_text()], "qing": _qing, "fee_wei": ArcadePay.FEE_WEI})
 		return
 	# The payment was this rental, not an arcade play: spend the credit it recorded.
 	ArcadePay.use_credit(Wallet.address, _qing)

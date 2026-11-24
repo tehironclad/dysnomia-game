@@ -38,6 +38,8 @@ var _progress := {"codes": [], "state": "nowallet", "block": -1, "wallet": ""}
 var _boards_busy := false
 var _progress_busy := false
 var _preview := false
+## This territory's development as last read (territory_v2): {tier, total, block}; {} = not read.
+var dev_facts := {}
 var _height_fn: Callable   ## ground height at (x, z) relative to the Core (parent), minus the Core's y
 var _voyage: Node = null
 var _ground_mat: Material = null  ## the terrain's own material (colours by world XZ) so the terrace continues the land
@@ -188,7 +190,9 @@ func _process(_delta: float) -> void:
 			best = dg
 			f = {"game": g["id"]}
 	var key := ""
-	if f.has("ride"):
+	if f.is_empty() and _tier == 0 and Vector2(p.x - global_position.x, p.z - global_position.z).length() < RADIUS:
+		key = "lot"
+	elif f.has("ride"):
 		key = "ride:" + String(f["ride"].ride_id)
 	elif f.has("game"):
 		key = "game:" + String(f["game"])
@@ -205,11 +209,17 @@ func _process(_delta: float) -> void:
 		_hud.show_prompt("%s  RIDE %s · %s" % [ControlsHelp.key_of("interact"), String(_focus.item.get("name", "Ride")).to_upper(), price])
 	elif _focus_game != "":
 		_hud.show_prompt("%s  PLAY %s · %s" % [ControlsHelp.key_of("interact"), MidwayGame.title(_focus_game), price])
+	elif key == "lot":
+		_hud.show_prompt("%s  AFFECTION FAIR · site reserved: what opens it?" % ControlsHelp.key_of("interact"))
 	else:
 		_hud.hide_prompt()
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _focus_key == "lot" and event.is_action_pressed("interact"):
+		get_viewport().set_input_as_handled()
+		show_tier_steps()
+		return
 	if (_focus == null and _focus_game == "") or _riding != null or _paying or _game != null or not event.is_action_pressed("interact"):
 		return
 	get_viewport().set_input_as_handled()
@@ -220,10 +230,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	_focus_key = ""
 	if ride and _rocket_locked(ride):
 		# The rocket opens once the chain shows a ticket for every game here (checked again now)
-		# Locked: a free practice flight, labelled; the paid launch still needs every game's ticket
+		# Locked: the steps to unlock it (AccessSteps), and a free practice flight, labelled
 		_hud.ticker("%s · each game's 1 Ⓐ ticket at this QING lights a lamp by the rocket" % _progress_line(), Color("#ffd27a"), 8.0)
 		refresh_progress()
-		_start(ride, "PRACTICE FLIGHT · nothing paid · " + _progress_line())
+		var steps := AccessSteps.popup(self, "rocket", {"qing": _qing, "fee_wei": ArcadePay.FEE_WEI, "fair": _progress.duplicate()})
+		steps.add_footer_button("Fly a free practice flight", func(): _start(ride, "PRACTICE FLIGHT · nothing paid · " + _progress_line()))
 		return
 	if Wallet.address == "":
 		if ride:
@@ -242,6 +253,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	_hud.hide_prompt()
 	if not res.get("ok", false):
 		var msg := "Ticket not bought (%s): %s" % [res.get("stage", "?"), res.get("message", "cancelled")]
+		if AccessSteps.goal_for_failure(res, "fair_ticket") != "":
+			AccessSteps.popup(self, "fair_ticket", {"qing": _qing, "fee_wei": fee})
 		print("[Fair] ", msg)
 		_hud.ticker(msg, Color("#ff8fa0"), 14.0)
 		_hud.show_prompt(msg)
@@ -259,6 +272,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		refresh_progress()
 		_play(game, MidwayGame.seed_from_tx(String(res["hash"])), true,
 			"TICKET %s · block %s · this round is seeded by its hash" % [ArcadeScores.short(String(res["hash"])), ArcadeScores.grouped(int(res["block"]))], res)
+
+
+## The fair is built by development: the steps to the night market (Settlement), from
+## the territory's development as read (tier + Hypobar total + block; unread = checking…).
+func show_tier_steps() -> AccessSteps:
+	var t := {"state": "reading"}
+	if not dev_facts.is_empty():
+		t = {"state": "ok", "have": int(dev_facts["tier"]), "need": 2, "have_name": Development.tier_name(int(dev_facts["tier"])),
+			"need_name": Development.tier_name(2), "total": String(dev_facts["total"]), "block": int(dev_facts["block"]),
+			"what": "the fair's night market, carousel and midway games"}
+	return AccessSteps.popup(self, "building", {"title": "Open the Affection Fair here", "tier": t,
+		"subtitle": "Settlement needs a Hypobar total of %s here (known players). Town adds the wheel and drop tower; City the grand fair." % TokenFormat.group(Development.next_threshold(1))})
 
 
 ## A midway game in first person at its stall (MidwayPlay); the player stands still while it runs.

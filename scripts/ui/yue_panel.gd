@@ -31,6 +31,9 @@ var _plan: Dictionary = {}
 var _ask := 0
 
 
+## The steps to sign here when the wallet is not ready (AccessSteps).
+var _access: AccessSteps
+
 func setup(p_qing: String, p_place: String, p_asset: String, where: String) -> void:
 	qing = p_qing.to_lower()
 	place = p_place
@@ -252,6 +255,9 @@ func _check_allowance(ask: int) -> void:
 	_approve_b.disabled = Wallet.address == "" or busy
 	_go_b.disabled = Wallet.address == "" or need or busy
 	_go_b.text = "Exchange" if Wallet.address != "" else "Exchange (connect a wallet to sign)"
+	if _access == null:
+		_access = AccessSteps.embed(result.get_parent(), result.get_index() + 1)
+	_access.update_for(ChatController._signer_blocker(), "yue_trade", {"title": "Trade at this YUE desk"})
 
 
 func _call() -> String:
