@@ -108,7 +108,7 @@ func is_open() -> bool:
 
 static func _signer_blocker() -> String:
 	if Wallet.address == "":
-		return "View only: connect this wallet at the front door to sign."
+		return "View only: connect this wallet to sign (the steps below)."
 	if Wallet.address != Session.wallet:
 		return "The connected wallet differs from the session's."
 	if not Wallet.is_connected_to_chain():
@@ -118,7 +118,7 @@ static func _signer_blocker() -> String:
 
 static func _identity_blocker() -> String:
 	if Session.wallet == "":
-		return "Connect a wallet at the front door to speak."
+		return "Connect a wallet to speak (the steps below)."
 	var ps: PlayerState = Session.player
 	if ps == null:
 		return "Reading your identity… try again in a moment."
@@ -139,7 +139,7 @@ func _refresh_door() -> void:
 		chat.set_blocker("The door could not be read: —")
 		access.update_for("—", "room_post", {"qing": qing, "room": room, "room_name": String(territory.get("name", ""))}, {"join": _join})
 		return
-	var blocker := room.chat_blocker() if ps != null else "Connect a wallet at the front door to speak here."
+	var blocker := room.chat_blocker() if ps != null else "Connect a wallet to speak here (the steps below)."
 	if blocker == "":
 		blocker = _signer_blocker()
 	if blocker == "" and Session.player == null and Session.wallet != "":

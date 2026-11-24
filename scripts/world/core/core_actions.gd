@@ -83,7 +83,7 @@ func _tname() -> String:
 ## Can this session sign? (A --session view or a different wallet cannot.)
 func _signer_blocker() -> String:
 	if Wallet.address == "":
-		return "View only: connect this wallet at the front door to sign."
+		return "View only: connect this wallet to sign (the steps below)."
 	if Wallet.address != Session.wallet:
 		return "The connected wallet differs from the session's."
 	if not Wallet.is_connected_to_chain():
@@ -93,7 +93,7 @@ func _signer_blocker() -> String:
 
 func _identity_blocker(need_yue: bool) -> String:
 	if Session.wallet == "":
-		return "Connect a wallet at the front door: previews are simulated from your own wallet."
+		return "Connect a wallet first (the steps below): previews are simulated from your own wallet."
 	var ps: PlayerState = Session.player
 	if ps == null:
 		return "Reading your identity… try again in a moment."

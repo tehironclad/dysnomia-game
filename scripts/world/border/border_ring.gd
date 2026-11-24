@@ -341,7 +341,7 @@ func _facts(side: String) -> String:
 
 func _signer_blocker() -> String:
 	if Wallet.address == "":
-		return "View only: connect this wallet at the front door to sign."
+		return "View only: connect this wallet to sign (the steps below)."
 	if Wallet.address != Session.wallet:
 		return "The connected wallet differs from the session's."
 	if not Wallet.is_connected_to_chain():
@@ -366,7 +366,7 @@ func _refresh_door() -> void:
 		access.update_for("—", "border", actx, {"join_border": _join})
 		return
 	if ps == null or not ps.has_lau():
-		action.set_status("Crossing needs a LAU that this QING admits. Connect a wallet at the front door (looking is free: the Field warps anywhere).")
+		action.set_status("Crossing needs a LAU that this QING admits: the steps are below (looking is free: the Field warps anywhere).")
 		action.set_primary("Join to cross", false, Callable())
 		access.update_for("no LAU", "border", actx, {"join_border": _join})
 		return

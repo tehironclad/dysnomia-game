@@ -578,7 +578,7 @@ func _update_chips() -> void:
 	for k in ["mine", "joined"]:
 		var b: Button = _chips[k]
 		b.disabled = not has_w
-		b.tooltip_text = "Connect a wallet at the front door first." if not has_w else \
+		b.tooltip_text = "Connect a wallet first (the WALLET chip at the top)." if not has_w else \
 			("QINGs your wallet founded, or where your YUE has bars (YUE.Bar, block %d)." % Session.bars_block if k == "mine"
 			else "Rooms with a cover that admitted your LAU (QING.Admitted, read live). Rooms with no cover admit everyone.")
 		if not has_w and b.button_pressed:

@@ -20,6 +20,7 @@ var _bodies := {}
 var _head_pick: OptionButton
 var _body_pick: OptionButton
 var _outfit_pick: OptionButton
+var _connect: Button
 const BODY_KINDS := ["male", "female"]
 
 
@@ -100,6 +101,13 @@ func _init() -> void:
 	_outfit_pick.tooltip_text = "Everyone else sees the outfit your wallet draws; a pick here is your own and shows on this machine only."
 	_outfit_pick.item_selected.connect(_on_outfit_picked)
 	orow.add_child(_outfit_pick)
+	_connect = Button.new()
+	_connect.text = "Connect wallet"
+	_connect.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_connect.custom_minimum_size = Vector2(180, 38)
+	_connect.visible = false
+	_connect.pressed.connect(func(): Wallet.connect_wallet())
+	col.add_child(_connect)
 
 
 func _ready() -> void:
@@ -110,16 +118,16 @@ func _ready() -> void:
 ## The first entry follows the LAU's on-chain name/symbol; the rest are a local
 ## choice for this wallet on this machine.
 func _fill_heads(w: String, ps: PlayerState) -> void:
-	_head_pick.visible = true
+	_head_pick.get_parent().visible = true
 	_head_pick.clear()
 	_head_pick.add_item("from my LAU: %s (%s %s)" % [ps.head_kind(), ps.lau_name, ps.lau_symbol])
 	for k in AvatarHeads.KINDS:
 		_head_pick.add_item("%s (my choice, this machine)" % k)
 	var pick := AvatarHeads.local_choice(w)
 	_head_pick.select(0 if pick == "" else 1 + AvatarHeads.KINDS.find(pick))
-	_body_pick.visible = true
+	_body_pick.get_parent().visible = true
 	_body_pick.select(maxi(0, BODY_KINDS.find(AvatarHeads.local_body(w))))
-	_outfit_pick.visible = true
+	_outfit_pick.get_parent().visible = true
 	_outfit_pick.clear()
 	var drawn: String = Outfits.for_identity(w)["kind"]
 	_outfit_pick.add_item("from my wallet: %s (everyone sees this)" % Outfits.LABELS[drawn])
@@ -160,11 +168,14 @@ func refresh() -> void:
 		emblem.visible = false
 		for k in _bodies:
 			_bodies[k]["detail"].text = "—"
-		_head_pick.visible = false
-		_body_pick.visible = false
-		_outfit_pick.visible = false
+		# Hide the whole rows (their labels too) and offer the one thing to do here.
+		_head_pick.get_parent().visible = false
+		_body_pick.get_parent().visible = false
+		_outfit_pick.get_parent().visible = false
+		_connect.visible = true
 		return
 	emblem.visible = true
+	_connect.visible = false
 	var p := DeepField.for_identity(w)
 	emblem.apply_params(p, "Your Aura, %s = uint160(%s) %% 953,467,954,114,363 (the contract's formula), drawn as a Julia set." % [DeepField.aura(w), w])
 	var ps: PlayerState = Session.player

@@ -24,7 +24,7 @@ var lines: Array = []
 func _init() -> void:
 	theme = DeepFieldTheme.get_theme()
 	var sb := DeepFieldTheme.panel_style()
-	sb.bg_color.a = 0.95  # a modal over the 3D scene: readable first
+	sb.bg_color.a = 1.0  # a modal over the 3D scene: readable first (the glowing board showed through 0.95)
 	add_theme_stylebox_override("panel", sb)
 	custom_minimum_size = Vector2(640, 460)
 	visible = false
