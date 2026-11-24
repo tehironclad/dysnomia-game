@@ -30,7 +30,8 @@ func setup(p_qing: String, p_player: Node3D, p_hud: CanvasLayer) -> void:
 	c.peer_joined.connect(_on_peer)
 	c.peer_left.connect(_on_left)
 	Net.voice_pcm.connect(_on_voice)
-	Session.changed.connect(Net.refresh_profile)
+	if not Session.changed.is_connected(Net.refresh_profile):  # autoload to autoload: outlives this scene
+		Session.changed.connect(Net.refresh_profile)
 	for id in c.peers:
 		_on_peer(id, c.peers[id])
 	Net.enter_room(qing)

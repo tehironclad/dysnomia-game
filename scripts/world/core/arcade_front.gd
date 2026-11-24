@@ -11,6 +11,7 @@ const DOOR_REACH := 3.2
 
 var is_pub := false
 var door_local := Vector3(0.0, 0.0, 4.2)  # in this node's space, in front of the door
+var door: PassDoor  ## sliding doors in the doorway (open as you come near; DoorSequence)
 
 
 static func pub_for(address: String) -> bool:
@@ -45,6 +46,9 @@ func build(address: String, accent: Color) -> void:
 	_box(Vector3(2.3, 0.12, 0.2), Vector3(0.0, 3.06, 0.06), glow)
 	for sx in [-1.0, 1.0]:
 		_box(Vector3(0.12, 3.0, 0.2), Vector3(sx * 1.08, 1.5, 0.06), glow)
+	door = PassDoor.make("slide", 2.0, 2.94, sign_col)
+	door.position = Vector3(0.0, 0.0, 0.12)
+	add_child(door)
 	# The sign
 	var sign := Label3D.new()
 	sign.text = "SUNNY'S PUB" if is_pub else "ARCADE"

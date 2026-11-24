@@ -74,6 +74,11 @@ var _flashlight_pivot: Node3D
 var _flashlight_on: bool = false
 var _flashlight_auto: bool = false  # Manual only — press F to toggle
 
+# Auto-walk (DoorSequence): walked to a point at a walking pace, input ignored.
+var auto_walking: bool = false
+var _auto_target: Vector3 = Vector3.ZERO
+var _auto_speed: float = 2.0
+
 const COYOTE_TIME: float = 0.2   # Seconds of grace after leaving ledge
 const JUMP_BUFFER: float = 0.15  # Seconds to buffer a jump press
 const MAX_WALL_CLIMB: float = 1.5  # Seconds of wall climbing before sliding
@@ -85,7 +90,13 @@ func _ready() -> void:
 	_camera_rig = $CameraRig
 	_collision_shape = $CollisionShape3D
 	_current_height = stand_height
+	# A new scene starts on foot (GameManager outlives scenes; a stale flag
+	# would make the next fly toggle do nothing).
+	GameManager.is_flying = false
 	GameManager.fly_mode_changed.connect(_on_fly_mode_changed)
+	# Stay on the ground running downhill and over small steps (no airborne
+	# flicker of the jump pose on slopes); jumping up is never snapped.
+	floor_snap_length = 0.4
 	_create_flashlight()
 	_create_ceiling_ray()
 
@@ -94,7 +105,24 @@ func set_terrain_generator(gen: Node3D) -> void:
 	_terrain_generator = gen
 
 
+## Walks the body to `target` (horizontal) at `speed`, ignoring input, until
+## auto_walk_stop(). Gravity, collisions and the walk animation stay real.
+func auto_walk_to(target: Vector3, speed: float) -> void:
+	auto_walking = true
+	_auto_target = target
+	_auto_speed = speed
+	_jump_buffer_timer = 0.0
+	if is_crouching:
+		_set_crouch(false)
+
+
+func auto_walk_stop() -> void:
+	auto_walking = false
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if auto_walking:
+		return
 	if event.is_action_pressed("toggle_fly"):
 		GameManager.toggle_fly_mode()
 
@@ -187,9 +215,7 @@ func _ground_movement(delta: float) -> void:
 
 	# ── Gravity — low-g with terminal velocity ──
 	if not on_floor:
-		velocity.y -= gravity * delta
-		# Terminal velocity — prevents infinite acceleration in deep craters
-		velocity.y = maxf(velocity.y, -25.0)
+		velocity = MotionMath.fall_step(velocity, gravity, delta)  # low g, terminal speed
 
 	# Track floor transition for landing effects
 	if on_floor and not _was_on_floor:
@@ -199,6 +225,8 @@ func _ground_movement(delta: float) -> void:
 		var fall_speed: float = absf(_was_on_floor_velocity_y) if _was_on_floor_velocity_y < -3.0 else 0.0
 		_land_punch = -clampf(fall_speed * 0.004, 0.0, 0.06)
 		_land_punch_velocity = 0.0
+		# A puff of regolith under the feet (soft landings make none)
+		LandDust.spawn(get_parent(), global_position, MotionMath.land_strength(_was_on_floor_velocity_y))
 	_was_on_floor = on_floor
 	if not on_floor:
 		_was_on_floor_velocity_y = velocity.y
@@ -267,6 +295,9 @@ func _ground_movement(delta: float) -> void:
 	# ── Horizontal movement ──
 	var input_dir := Input.get_vector("move_left", "move_right", "move_back", "move_forward")
 	var is_sprinting := Input.is_action_pressed("sprint") and not is_crouching
+	if auto_walking:
+		_auto_walk_step(delta, on_floor)
+		return
 	var target_speed: float
 	if is_crouching:
 		target_speed = crouch_speed
@@ -335,6 +366,16 @@ func _ground_movement(delta: float) -> void:
 			var speed_penalty := 1.0 - struggle * 0.3
 			velocity.x *= lerpf(1.0, speed_penalty, delta * 4.0)
 			velocity.z *= lerpf(1.0, speed_penalty, delta * 4.0)
+
+
+func _auto_walk_step(delta: float, on_floor: bool) -> void:
+	var dir := MotionMath.walk_dir(global_position, _auto_target)
+	var rate := acceleration * delta * _auto_speed * (1.0 if on_floor else 0.4)
+	velocity.x = move_toward(velocity.x, dir.x * _auto_speed, rate)
+	velocity.z = move_toward(velocity.z, dir.z * _auto_speed, rate)
+	if dir != Vector3.ZERO:
+		var diff := wrapf(atan2(-dir.x, -dir.z) - rotation.y, -PI, PI)
+		rotation.y += diff * minf(10.0 * delta, 1.0)
 
 
 func _fly_movement(delta: float) -> void:
@@ -415,7 +456,12 @@ func _update_crouch(delta: float) -> void:
 		var spring_arm: SpringArm3D = _camera_rig.get_node_or_null("SpringArm3D")
 		if spring_arm:
 			var base_y: float = stand_height * 0.83  # Default camera height (1.5 for 1.8 tall)
-			spring_arm.position.y = base_y + _crouch_camera_offset + _headbob_offset + _land_punch
+			var want_y := base_y + _crouch_camera_offset + _headbob_offset + _land_punch
+			# Ease big jumps (back from a vehicle's chase height) instead of popping.
+			if absf(spring_arm.position.y - want_y) > 0.25:
+				spring_arm.position.y = lerpf(spring_arm.position.y, want_y, minf(8.0 * delta, 1.0))
+			else:
+				spring_arm.position.y = want_y
 
 	# Update ceiling detection ray length
 	if _ceiling_ray:
@@ -517,11 +563,18 @@ func _on_fly_mode_changed(flying: bool) -> void:
 	# Exit crouch when entering fly mode
 	if is_flying and is_crouching:
 		_set_crouch(false)
-	# When returning to ground, snap to terrain
-	if not is_flying and _terrain_generator and _terrain_generator.has_method("get_height_at"):
-		var terrain_h: float = _terrain_generator.get_height_at(position.x, position.z)
-		position.y = terrain_h + 1.0
-		velocity = Vector3.ZERO
+	# Flight off: keep the way you were going and fall under the low gravity
+	# (the avatar plays the fall loop, then the landing). Only if the body is
+	# somehow below the ground is it lifted onto it.
+	if not is_flying:
+		velocity = MotionMath.fly_exit_velocity(velocity)
+		_was_on_floor = false
+		_was_on_floor_velocity_y = minf(velocity.y, 0.0)
+		_jumps_remaining = 0
+		if _terrain_generator and _terrain_generator.has_method("get_height_at"):
+			var terrain_h: float = _terrain_generator.get_height_at(position.x, position.z)
+			if position.y < terrain_h:
+				position.y = terrain_h + 0.2
 
 
 # ─── Flashlight ──────────────────────────────────────────────────────────

@@ -40,6 +40,9 @@ var _prompt := ""
 var _paying := false
 var _speedo: Label
 var _arm_len := 3.5
+var _alighting := false  ## stepping out (a short animation; input waits)
+const ALIGHT_S := 0.5
+const CAM_EASE_S := 0.5  ## the chase camera eases out to the vehicle's distance and back
 var _site: Dictionary = {}
 
 
@@ -361,7 +364,7 @@ func _prompt_text() -> String:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _player == null:
+	if _player == null or _alighting:
 		return
 	if driving:
 		if event.is_action_pressed("vehicle_enter"):
@@ -416,13 +419,18 @@ func mount(kind: String) -> void:
 	var arm := _player.get_node_or_null("CameraRig/SpringArm3D") as SpringArm3D
 	if arm:
 		_arm_len = arm.spring_length
-		arm.spring_length = float(v.spec["chase"])
 		arm.add_excluded_object(v.get_rid())
-		arm.position.y = float(v.spec["chase_h"])
+		var tw := arm.create_tween().set_parallel().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw.tween_property(arm, "spring_length", float(v.spec["chase"]), CAM_EASE_S)
+		tw.tween_property(arm, "position:y", float(v.spec["chase_h"]), CAM_EASE_S)
 	var rig := _player.get_node_or_null("CameraRig")
 	if rig and "_pitch" in rig:
-		rig.set("_pitch", -0.3)  # look down the road a little
-		rig.set("_yaw", v.rotation.y)
+		# Swing in behind the vehicle, looking down the road a little (no snap).
+		var tr := rig.create_tween().set_parallel().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tr.tween_property(rig, "_pitch", -0.3, CAM_EASE_S)
+		var y0: float = rig.get("_yaw")
+		var y1 := y0 + wrapf(v.rotation.y - y0, -PI, PI)
+		tr.tween_property(rig, "_yaw", y1, CAM_EASE_S)
 	v.mount(_player)
 	_hud.hide_prompt()
 	_prompt = ""
@@ -453,20 +461,34 @@ func dismount() -> void:
 	var v := driving
 	driving = null
 	var exit := v.exit_point()
+	var from := _player.global_position
 	v.unmount()
-	_player.global_position = exit
 	_player.global_rotation = Vector3(0, v.rotation.y, 0)
 	_player.velocity = Vector3.ZERO
-	_player.set_physics_process(true)
-	_player.set_process_unhandled_input(true)
 	var model := _player.get_node_or_null("PlayerModel") as Node3D
 	if model:
 		if model.has_method("set_seated"):
 			model.set_seated("")
 		model.transform = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
+		if "hold_clip" in model:  # getting up and out of the seat
+			model.set("hold_clip", "Sitting_Exit")
+			model.set("hold_speed", 2.0)
+	# Step down beside the seat (a short swing, not a teleport), then walk on.
+	_alighting = true
+	var tw := _player.create_tween()
+	tw.tween_method(func(e: float) -> void:
+		var k := e * e * (3.0 - 2.0 * e)
+		_player.global_position = from.lerp(exit, k) + Vector3.UP * sin(k * PI) * 0.25, 0.0, 1.0, ALIGHT_S)
+	tw.tween_callback(func() -> void:
+		_alighting = false
+		if model and "hold_clip" in model:
+			model.set("hold_clip", "")
+		if driving == null:
+			_player.set_physics_process(true)
+			_player.set_process_unhandled_input(true))
 	var arm := _player.get_node_or_null("CameraRig/SpringArm3D") as SpringArm3D
 	if arm:
-		arm.spring_length = _arm_len
+		arm.create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT).tween_property(arm, "spring_length", _arm_len, CAM_EASE_S)
 		arm.remove_excluded_object(v.get_rid())
 	if _speedo:
 		_speedo.visible = false

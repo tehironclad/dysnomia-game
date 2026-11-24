@@ -16,6 +16,9 @@ var exit_at := Vector3.ZERO
 var exit_radius := 2.5
 var floor_y := 0.0
 var _near_exit := false
+## The entrance (add_door): a door on the +Z side, the way in and out.
+var door: PassDoor
+var _spawn := Vector3.ZERO
 
 
 ## Flat floor for the player controller's height queries.
@@ -27,6 +30,10 @@ func setup_player(spawn: Vector3, yaw: float) -> void:
 	player = $Player
 	player.position = spawn
 	player.rotation.y = yaw
+	_spawn = spawn
+	# Came in through a door: walk in from the entrance (once the door is built).
+	if Travel.take_door(true) != "":
+		_arrive.call_deferred()
 	if player.has_method("set_terrain_generator"):
 		player.set_terrain_generator(self)
 	var pc: Camera3D = player.get_node_or_null("CameraRig/SpringArm3D/Camera3D")
@@ -90,32 +97,67 @@ func setup_chat(mode: String, q: Dictionary, history: int = 80) -> void:
 		on_lines(ls, fresh))
 
 
+## The entrance: `style` "slide" or "curtain" (round = a disc), its threshold
+## middle at `at` on the floor, facing ±Z. The player arrives through it and
+## leaves through it (DoorSequence).
+func add_door(style: String, width: float, height: float, at: Vector3, color := DeepFieldTheme.ICE, round := false) -> PassDoor:
+	door = PassDoor.make(style, width, height, color, round)
+	add_child(door)
+	door.position = at
+	return door
+
+
+func _door_at() -> Vector3:
+	return door.position if door else Vector3(exit_at.x, floor_y, exit_at.z + 0.7)
+
+
+func _arrive() -> void:
+	if player == null or not is_instance_valid(player):
+		return
+	var d := _door_at()
+	if door:
+		door.open = 1.0
+	_near_exit = true  # no exit prompt flash on the way in
+	DoorSequence.arrive(self, player, Vector3(d.x, _spawn.y, d.z - 0.35), _spawn, door)
+
+
+## Use at the exit: walk out through the door, then back to the territory.
+func _leave() -> void:
+	if DoorSequence.active_in(self):
+		return
+	prompt_label.text = ""
+	var d := _door_at()
+	var kind := Travel.door_of_scene(scene_file_path)
+	DoorSequence.enter(self, player, Vector3(d.x, floor_y, d.z + 0.25), door,
+		func(): Travel.out_door(get_tree(), kind))
+
+
 ## Places draw their board here.
 func on_lines(_lines: Array, _fresh: Array) -> void:
 	pass
 
 
 func _process(_delta: float) -> void:
-	if player == null or chat_ctl == null or chat_ctl.is_open():
+	if player == null or chat_ctl == null or chat_ctl.is_open() or DoorSequence.active_in(self):
 		return
 	var near := Vector2(player.global_position.x - exit_at.x, player.global_position.z - exit_at.z).length() < exit_radius
 	if near != _near_exit:
 		_near_exit = near
-		prompt_label.text = ("%s  leave, back to %s" % [ControlsHelp.key_of("interact"), GameManager.territory_name]) if near else ""
+		PromptFade.set_text(prompt_label, ("%s  leave, back to %s" % [ControlsHelp.key_of("interact"), GameManager.territory_name]) if near else "")
 	if player.global_position.y < floor_y - 25.0:  # fell off the edge of the Void
 		player.global_position = exit_at + Vector3(0, 1.5, -2.0)
 		player.velocity = Vector3.ZERO
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if chat_ctl == null or chat_ctl.is_open():
+	if chat_ctl == null or chat_ctl.is_open() or DoorSequence.active_in(self):
 		return
 	if event.is_action_pressed("chat"):
 		get_viewport().set_input_as_handled()
 		chat_ctl.open()
 	elif event.is_action_pressed("interact") and _near_exit:
 		get_viewport().set_input_as_handled()
-		Travel.go(get_tree(), GameManager.territory_address)
+		_leave()
 	elif event.is_action_pressed("controls_help"):
 		pass
 

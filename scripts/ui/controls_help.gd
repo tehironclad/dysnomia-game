@@ -7,7 +7,7 @@ const ACTIONS := [
 	["move_forward", "Move forward"], ["move_back", "Move back"], ["move_left", "Move left"], ["move_right", "Move right"],
 	["jump", "Jump (triple jump in low gravity)"], ["sprint", "Sprint"], ["crouch_descend", "Crouch / descend (flying) · glass lift at the YUE Exchange: down to the lobby"],
 	["look_left", "Look left (arrow keys / right stick: look while running)"], ["look_up", "Look up"],
-	["toggle_fly", "Fly"], ["toggle_camera", "First / third person"], ["interact", "Use: pylon Su · door: enter the hall · centre Beat · plinth WORLD · monolith: the Void · cabinet: dive in · pool or card table: sit down · fair stall: play (then the one button) · Swap Hall counter: swap on PulseX · YUE Exchange desk: Hong / Hung"],
+	["toggle_fly", "Fly on / off (off in the air: you keep going, fall and land)"], ["toggle_camera", "First / third person"], ["interact", "Use: pylon Su · door: enter the hall · centre Beat · plinth WORLD · monolith: the Void · cabinet: dive in · pool or card table: sit down · fair stall: play (then the one button) · Swap Hall counter: swap on PulseX · YUE Exchange desk: Hong / Hung"],
 	["inspect", "How is this drawn?"], ["open_field", "The Field (all territories)"], ["flashlight", "Flashlight (headlights when driving)"],
 	["wingsuit", "Base jump: wingsuit on / off (in freefall)"], ["parachute", "Base jump: open the canopy"],
 	["vehicle_enter", "Vehicle pad: get in / out (W/S drive, A/D steer, Space hop or lift, Shift boost, Ctrl brake)"], ["vehicle_reset", "Vehicle: back on its wheels"],

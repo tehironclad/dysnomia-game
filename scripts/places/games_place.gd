@@ -225,7 +225,7 @@ func _table_blocker() -> String:
 # --- Interaction ----------------------------------------------------------------
 
 func _any_open() -> bool:
-	return (chat_ctl and chat_ctl.is_open()) or (_pool_panel and _pool_panel.is_open()) or (_cards_panel and _cards_panel.is_open()) or (dive and dive.is_active()) or (seat and seat.is_active())
+	return (chat_ctl and chat_ctl.is_open()) or (_pool_panel and _pool_panel.is_open()) or (_cards_panel and _cards_panel.is_open()) or (dive and dive.is_active()) or (seat and seat.is_active()) or DoorSequence.active_in(self)
 
 
 func _process(delta: float) -> void:
@@ -259,7 +259,7 @@ func _process(delta: float) -> void:
 			best = i
 			best_d = d
 	_near_spot = best
-	prompt_label.text = ("%s  %s" % [ControlsHelp.key_of("interact"), String(_spots[best]["prompt"].call())]) if best >= 0 else ""
+	PromptFade.set_text(prompt_label, ("%s  %s" % [ControlsHelp.key_of("interact"), String(_spots[best]["prompt"].call())]) if best >= 0 else "")
 
 
 func _unhandled_input(event: InputEvent) -> void:

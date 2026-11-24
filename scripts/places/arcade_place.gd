@@ -25,6 +25,7 @@ func _ready() -> void:
 	exit_at = Vector3(0, 0, HZ - 0.6)
 	exit_radius = 1.8
 	setup_player(Vector3(0, 0.1, HZ - 2.6), 0.0)
+	add_door("slide", 2.4, 3.2, Vector3(0, 0, HZ))
 	setup_hud("THE ARCADE · %s" % String(territory.get("name", "")).to_upper())
 	info_label.text = "Cabinets: %s a play, paid to this QING and checked on chain before the run. Pool and Twenty-One are played in this room's lines (T opens the chat)." % ArcadePay.fee_text()
 	var spots: Array = []
