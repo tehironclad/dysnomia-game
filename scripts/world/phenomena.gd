@@ -55,10 +55,14 @@ func _prime() -> void:
 		return
 	_room_after = head
 	_void_after = head
-	var q := Registry.get_territory(qing)
-	var rh: Dictionary = await ChatLog.room_history(qing, int(q.get("block", Contracts.MAP_FIRST_BLOCK)), head, 6)
-	for l in rh["lines"]:
-		core.etch_line("%s: %s" % [l["name"], l["text"]], l["block"])
+	# Room lines come from the shared live feed (ChatFeed: also the HUD feed and
+	# the hall); new ones are etched on the wall as they arrive.
+	var feed: RoomFeed = ChatFeed.feed_for(qing)
+	feed.arrived.connect(_on_room_lines)
+	if feed.is_loaded():
+		_etch_recent(feed.lines)
+	else:
+		feed.lines_changed.connect(_etch_recent, CONNECT_ONE_SHOT)
 	var vh: Dictionary = await ChatLog.void_history(head, 1)
 	if not vh["lines"].is_empty():
 		monolith.show_line(vh["lines"][-1])
@@ -69,16 +73,6 @@ func _poll_logs() -> void:
 		return
 	_polling = true
 	var head := await Chain.refresh_head()
-	if head > _room_after:
-		var r: Dictionary = await ChatLog.tail(qing, true, _room_after, head)
-		if r["ok"]:
-			_room_after = head
-			for l in r["lines"]:
-				core.etch_line("%s: %s" % [l["name"], l["text"]], l["block"])
-				hud.ticker("ROOM · %s · block %d" % [ChatLog.format_line(l).split("] ", true, 1)[1], l["block"]])
-			if not r["lines"].is_empty():
-				room_lines.emit(r["lines"])
-				Cues.play(self, "line")
 	if head > _void_after:
 		var v: Dictionary = await ChatLog.tail(Contracts.FOMALHAUTE, false, _void_after, head)
 		if v["ok"]:
@@ -89,6 +83,21 @@ func _poll_logs() -> void:
 			if not v["lines"].is_empty():
 				void_lines.emit(v["lines"])
 	_polling = false
+
+
+func _etch_recent(ls: Array) -> void:
+	for l in ls.slice(maxi(0, ls.size() - 6)):
+		if ChatLines.is_chain_shaped(l):
+			core.etch_line("%s: %s" % [l["name"], ChatLines.clean_text(String(l["text"]), 60)], l["block"])
+
+
+## New room lines (the HUD feed shows them too, so no ticker line).
+func _on_room_lines(fresh: Array) -> void:
+	var chain: Array = fresh.filter(func(l): return ChatLines.is_chain_shaped(l))
+	for l in chain:
+		core.etch_line("%s: %s" % [l["name"], ChatLines.clean_text(String(l["text"]), 60)], l["block"])
+	if not chain.is_empty():
+		room_lines.emit(chain)
 
 
 func _on_bars_moved(delta: PackedInt64Array, block: int) -> void:
