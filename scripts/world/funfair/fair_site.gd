@@ -4,7 +4,9 @@ extends Node3D
 ## never flattened), sized by the territory's Development tier, and sells ride tickets
 ## through ArcadePay: 1 Ⓐ AFFECTION.transfer to this territory's QING, simulated,
 ## signed, receipt-verified, then the ride starts. No wallet → a free preview ride
-## that is labelled as such and records nothing.
+## that is labelled as such and records nothing. Use works at a ride's booth or
+## anywhere near the ride; the midway stalls and the high striker are games
+## (MidwayGame / MidwayOverlay) sold the same way, seeded by the ticket's tx hash.
 ##
 ## Development tier (0..5) → fair tier: Wild/Outpost = surveyed lot, Settlement =
 ## night market + carousel, Town = + wheel and drop tower, City/Capital = grand fair.
@@ -23,6 +25,9 @@ var _tier := -1
 var _focus: RideBase = null
 var _riding: RideBase = null
 var _paying := false
+var _focus_key := ""   ## "ride:<id>" / "game:<id>" / "" (the prompt shown)
+var _focus_game := ""
+var _game: MidwayOverlay = null
 var _ground_mat: Material = null  ## the terrain's own material (colours by world XZ) so the terrace continues the land
 
 
@@ -98,6 +103,7 @@ func set_dev_tier(dev_tier: int) -> void:
 	if _fair:
 		_fair.queue_free()
 	_focus = null
+	_focus_game = ""
 	_fair = Funfair.new()
 	_fair.name = "Funfair"
 	add_child(_fair)
@@ -110,8 +116,8 @@ func set_dev_tier(dev_tier: int) -> void:
 		_hud.ticker("AFFECTION FAIR · %s open · %d m %s of the Core · rides %s each" % [
 			names[t], int(Vector2(position.x, position.z).length()), dir, ArcadePay.fee_text()], DeepFieldTheme.ICE, 30.0)
 	print("[Fair] development %d → fair tier %d · %d rides · at %s" % [dev_tier, t, _fair.get_rides().size(), str(Vector2(position.x, position.z))])
+	_focus_key = ""
 	for r in _fair.get_rides():
-		r.booth_focus.connect(_on_focus)
 		r.ride_caption.connect(func(text: String) -> void:
 			if text != "":
 				_hud.ticker(text, DeepFieldTheme.ICE, 3.0))
@@ -124,39 +130,118 @@ static func _compass(v: Vector2) -> String:
 	return ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][int(round(a / 45.0)) % 8]
 
 
-func _on_focus(ride: RideBase, inside: bool) -> void:
-	if inside and _riding == null:
-		_focus = ride
-		var paid := Wallet.address != ""
-		_hud.show_prompt("%s  %s · %s" % [ControlsHelp.key_of("interact"), ride.item.get("name", "Ride"),
-			("%s to this QING" % ArcadePay.fee_text()) if paid else "free preview (no wallet)"])
-	elif _focus == ride:
-		_focus = null
+## What Use would do here: the nearest ride (its booth, or anywhere near the ride
+## itself) or midway game in reach. Checked by distance every frame, so it works
+## however the player arrived (walking, landing, set down by a ride).
+func _process(_delta: float) -> void:
+	if _fair == null or _player == null or _riding != null or _paying or _game != null:
+		return
+	var p := _player.global_position
+	var best := INF
+	var f := {}
+	for r in _fair.get_rides():
+		var b: Vector3 = r.to_global(r.booth_local_position)
+		var db := Vector2(p.x - b.x, p.z - b.z).length()
+		var c: Vector3 = r.global_position
+		var dc := Vector2(p.x - c.x, p.z - c.z).length()
+		if absf(p.y - b.y) > 6.0:
+			continue
+		if db < r.booth_radius + 1.2 and db < best:
+			best = db
+			f = {"ride": r}
+		elif dc < r.reach_radius and dc + 2.0 < best:
+			best = dc + 2.0
+			f = {"ride": r}
+	for g in _fair.game_spots:
+		var gp: Vector3 = _fair.to_global(g["pos"])
+		var dg := Vector2(p.x - gp.x, p.z - gp.z).length()
+		if dg < 2.4 and absf(p.y - gp.y) < 3.0 and dg < best:
+			best = dg
+			f = {"game": g["id"]}
+	var key := ""
+	if f.has("ride"):
+		key = "ride:" + String(f["ride"].ride_id)
+	elif f.has("game"):
+		key = "game:" + String(f["game"])
+	if key == _focus_key:
+		return
+	_focus_key = key
+	_focus = f.get("ride", null)
+	_focus_game = String(f.get("game", ""))
+	var paid := Wallet.address != ""
+	var price := ("%s to this QING" % ArcadePay.fee_text()) if paid else "free practice (no wallet)"
+	if _focus != null:
+		_hud.show_prompt("%s  RIDE %s · %s" % [ControlsHelp.key_of("interact"), String(_focus.item.get("name", "Ride")).to_upper(), price])
+	elif _focus_game != "":
+		_hud.show_prompt("%s  PLAY %s · %s" % [ControlsHelp.key_of("interact"), MidwayGame.title(_focus_game), price])
+	else:
 		_hud.hide_prompt()
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _focus == null or _riding != null or _paying or not event.is_action_pressed("interact"):
+	if (_focus == null and _focus_game == "") or _riding != null or _paying or _game != null or not event.is_action_pressed("interact"):
 		return
 	get_viewport().set_input_as_handled()
 	_hud.hide_prompt()
 	var ride := _focus
+	var game := _focus_game
+	var what := String(ride.item.get("name", "ride")) if ride else MidwayGame.title(game)
+	_focus_key = ""
 	if Wallet.address == "":
-		_start(ride, "PREVIEW RIDE · nothing paid")
+		if ride:
+			_start(ride, "PREVIEW RIDE · nothing paid")
+		else:
+			_play(game, randi() & 0x7fffffff, false, "practice · nothing paid · not on the board", {})
 		return
 	_paying = true
-	_hud.ticker("Ticket: approve %s to this QING in your wallet…" % ArcadePay.fee_text(), DeepFieldTheme.ICE, 20.0)
-	var res: Dictionary = await ArcadePay.pay(_qing, "Affection Fair · %s" % ride.item.get("name", "ride"))
+	_hud.show_prompt("TICKET · approve %s to this QING in your wallet window…" % ArcadePay.fee_text())
+	_hud.ticker("Ticket for %s: approve %s to this QING in your wallet…" % [what, ArcadePay.fee_text()], DeepFieldTheme.ICE, 20.0)
+	# A ticket is a plain transfer to the QING (no arcade credit is left behind)
+	var res: Dictionary = await ArcadePay.transfer_to_qing(_qing, "Affection Fair · %s (%s)" % [what, ArcadePay.fee_text()])
 	_paying = false
+	_hud.hide_prompt()
 	if not res.get("ok", false):
-		_hud.ticker("Ticket not bought: %s" % res.get("message", "cancelled"), Color("#ff8fa0"), 10.0)
+		var msg := "Ticket not bought (%s): %s" % [res.get("stage", "?"), res.get("message", "cancelled")]
+		print("[Fair] ", msg)
+		_hud.ticker(msg, Color("#ff8fa0"), 14.0)
+		_hud.show_prompt(msg)
+		get_tree().create_timer(6.0).timeout.connect(func(): if _focus_key == "": _hud.hide_prompt())
 		return
-	_start(ride, "TICKET VERIFIED · block %d" % int(res.get("block", 0)))
+	print("[Fair] ticket %s verified · block %d" % [res["hash"], int(res["block"])])
+	if ride:
+		_start(ride, "TICKET VERIFIED · block %d" % int(res.get("block", 0)))
+	else:
+		_play(game, MidwayGame.seed_from_tx(String(res["hash"])), true,
+			"ticket %s · block %d · this round is seeded by its hash" % [ArcadeScores.short(String(res["hash"])), int(res["block"])], res)
+
+
+## A midway game in the overlay; the player stands still while it runs.
+func _play(id: String, seed_v: int, paid: bool, note: String, ticket: Dictionary) -> void:
+	_hud.hide_prompt()
+	var layer := CanvasLayer.new()
+	layer.layer = 20
+	add_child(layer)
+	_game = MidwayOverlay.new()
+	layer.add_child(_game)
+	_game.start(id, seed_v, paid, note, ArcadeScores.board(_qing, "fair:" + id))
+	_player.set_physics_process(false)
+	_player.velocity = Vector3.ZERO
+	_game.finished.connect(func(sc: int) -> void:
+		if paid and sc >= 0 and MidwayGame.max_score(id) > 0:
+			var rank := ArcadeScores.record(_qing, "fair:" + id, {"score": sc, "wallet": Wallet.address, "tx": ticket.get("hash", ""),
+				"block": int(ticket.get("block", 0)), "at": int(Time.get_unix_time_from_system())})
+			if rank > 0:
+				_hud.ticker("%s · %d · #%d on this stall's board (this computer)" % [MidwayGame.title(id), sc, rank], Color("#ffd27a"), 10.0)
+		layer.queue_free()
+		_game = null
+		_focus_key = ""
+		_player.set_physics_process(true))
 
 
 func _start(ride: RideBase, note: String) -> void:
 	_riding = ride
 	_focus = null
+	_focus_key = ""
 	_hud.ticker(note, DeepFieldTheme.ICE, 6.0)
 	ride.start_ride(_player)
 

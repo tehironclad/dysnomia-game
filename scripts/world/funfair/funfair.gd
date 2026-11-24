@@ -77,6 +77,10 @@ func initialize(seed_value: int, tier: int = 3) -> void:
 	_apply_time(true)
 
 
+## Playable midway games: [{id (MidwayGame id), pos (local to this node), face}]
+var game_spots: Array = []
+
+
 func get_rides() -> Array:
 	## Only the rides this tier has built.
 	return _rides
@@ -441,6 +445,9 @@ func _stall(pos: Vector3, facing: Vector3, kind: String, pair: Array) -> void:
 	_batch.pool(root.transform * Vector3(0, 0.14, 0.0), 1.8, inner * 0.35)
 	_stall_goods(root, b, kind, w, d)
 	b.flush(root)
+	if MidwayGame.has_game(kind):
+		# Where a player stands to play: in front of the counter
+		game_spots.append({"id": kind, "pos": root.transform * Vector3(0, 0, d * 0.5 + 1.3), "face": root.transform.basis * Vector3.BACK})
 	FairKit.solid_box(root, Vector3(w, h, d - 0.2), Vector3(0, h * 0.5, -0.1))
 	# Vendor behind the counter (spawned with the crowd)
 	_vendor_spots.append([root.transform * Vector3(-0.7, 0.12, d * 0.5 - 0.95), root.transform.basis * Vector3.BACK])
@@ -898,6 +905,7 @@ func _high_striker(pos: Vector3, facing: Vector3) -> void:
 	b.flush(root)
 	FairKit.solid_box(root, Vector3(1.6, 2.0, 1.2), Vector3(0, 1.0, 0))
 	_batch.pool(pos + Vector3(0, 0.08, 0), 3.0, Color(1.0, 0.6, 0.4) * 0.5)
+	game_spots.append({"id": "striker", "pos": root.transform * Vector3(0, 0, 1.9), "face": root.transform.basis * Vector3.BACK})
 
 
 # ─── Launch bleachers ──────────────────────────────────────────────────

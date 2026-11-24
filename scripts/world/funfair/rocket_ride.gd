@@ -69,6 +69,7 @@ func _init() -> void:
 	booth_local_position = Vector3(6.2, 0, 11.0)
 	exit_local_position = Vector3(3.6, 0.0, 10.5)
 	booth_radius = 2.6
+	reach_radius = 13.0   # walk up to the pad itself, not only the booth
 
 
 # ─── Flight profile ─────────────────────────────────────────────────────

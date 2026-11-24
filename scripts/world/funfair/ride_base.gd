@@ -23,6 +23,7 @@ var seed_value: int = 0
 var booth_local_position: Vector3 = Vector3(0, 0, 8)   # Where the ticket booth trigger sits
 var exit_local_position: Vector3 = Vector3(2.5, 0.5, 8) # Where the rider is set down
 var booth_radius: float = 3.5
+var reach_radius: float = 9.0    # Use works anywhere this close to the ride's centre too (FairSite)
 
 var _rider: CharacterBody3D
 var _t: float = 0.0
