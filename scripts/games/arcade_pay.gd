@@ -66,21 +66,23 @@ static func pay(qing: String, place_name: String) -> Dictionary:
 ## found in that receipt, then the QING's balance re-read at the receipt's block.
 ## {ok, from, hash, block, qing_balance (null if the re-read failed)} or
 ## {ok:false, stage, message}. Sunny's "round for the house" uses it without a credit.
-static func transfer_to_qing(qing: String, label: String) -> Dictionary:
+## `fee_wei` defaults to FEE_WEI; the fair's tickets add their game's code in the last wei
+## (FairProgress.fee_wei), so the transfer itself says which stall it paid for.
+static func transfer_to_qing(qing: String, label: String, fee_wei: String = FEE_WEI) -> Dictionary:
 	qing = qing.to_lower()
 	var wallet := Wallet.address
-	var funds := await ensure_funds()
+	var funds := await ensure_funds(fee_wei)
 	if not funds["ok"]:
 		return funds
-	var data := Abi.encode_call("transfer(address,uint256)", [qing, FEE_WEI])
+	var data := Abi.encode_call("transfer(address,uint256)", [qing, fee_wei])
 	var res: Dictionary = await Wallet.send(label, Contracts.AFFECTION, data)
 	if not res["ok"]:
 		return res
-	var v := verify_receipt(res["receipt"], wallet, qing)
+	var v := verify_receipt(res["receipt"], wallet, qing, fee_wei)
 	if not v["ok"]:
 		return {"ok": false, "stage": "verify", "message": "Mined in block %d, but: %s" % [res["block"], v["message"]]}
 	var after := await read_balance(qing, res["block"])
-	return {"ok": true, "from": wallet, "hash": res["hash"], "block": res["block"], "qing_balance": after.get("balance", null)}
+	return {"ok": true, "from": wallet, "hash": res["hash"], "block": res["block"], "qing_balance": after.get("balance", null), "value": v["value"]}
 
 
 const TOPUP_WEI := "10000000000000000000"  # moved from the LAU when the wallet is short: 10 plays

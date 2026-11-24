@@ -33,6 +33,7 @@ that fails to parse makes `-s` tools hang, so run `check.sh` first.
 | `tools/live_smoke.gd` | chain reachability, sample territory facts, the deployer nonce |
 | `tools/live_readiness.gd [-- --n=12 --wallet=0x…]` | identity and WORLD readiness for real players |
 | `tools/live_moves.gd [-- --wallet=0x… --qing=0x…]` | Su and Beat previews, the door, room and Void lines, World watch |
+| `tools/live_chat.gd [-- --qing=0x… --player=0x…]` | the HUD feed for a room; the chat bar with no wallet, a fake wallet and a real player read-only (each stops at its precondition); one-line and 3-line batch simulations and gas |
 | `tools/boot_territory.gd` | loads a territory headlessly and prints the HUD card; should show no errors |
 | `tools/update_snapshot.gd` | refreshes `assets/data/territories.json` from the chain |
 

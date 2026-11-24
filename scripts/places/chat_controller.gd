@@ -14,8 +14,6 @@ signal opened
 signal closed
 signal posted(line: Dictionary)
 
-const TAIL_S := 8.0
-
 var mode := "room"  # "room" | "void"
 var qing := ""
 var territory: Dictionary = {}
@@ -24,9 +22,8 @@ var history_limit := 80  # room lines read at arrival (the game rooms read more:
 var chat: ChatPanel
 var room: RoomState
 var _door_btn: Button
+var feed: RoomFeed
 var _busy := false
-var _after := -1
-var _polling := false
 
 
 func setup(p_mode: String, q: Dictionary = {}) -> void:
@@ -52,12 +49,20 @@ func setup(p_mode: String, q: Dictionary = {}) -> void:
 	Wallet.tx_stage.connect(func(_l, stage, _i):
 		if stage == "failed": Cues.play(self, "fail")
 		elif stage == "confirmed": Cues.play(self, "confirm"))
-	var t := Timer.new()
-	t.wait_time = TAIL_S
-	t.timeout.connect(_tail)
-	add_child(t)
-	t.start()
-	_load_history()
+	# The board: a room's feed is shared (ChatFeed: the HUD, the world and the
+	# tables read the same RoomFeed); the Void has its own.
+	if mode == "room":
+		feed = ChatFeed.feed_for(qing, territory, history_limit)
+	else:
+		feed = RoomFeed.new()
+		feed.setup("void", {})
+		add_child(feed)
+		feed.ensure_history(100)
+	lines = feed.lines
+	feed.lines_changed.connect(_on_feed_lines)
+	feed.arrived.connect(_on_feed_arrived)
+	if feed.is_loaded() or not lines.is_empty():
+		_on_feed_lines.call_deferred(lines)
 	if mode == "room":
 		_refresh_door()
 
@@ -66,50 +71,19 @@ func title() -> String:
 	return "THE VOID" if mode == "void" else "THE ROOM · %s" % String(territory.get("name", qing))
 
 
-func _load_history() -> void:
-	var head := await Chain.refresh_head()
-	if head < 0:
-		return
-	var h: Dictionary
-	if mode == "room":
-		h = await ChatLog.room_history(qing, int(territory.get("block", Contracts.MAP_FIRST_BLOCK)), head, history_limit)
-	else:
-		h = await ChatLog.void_history(head, 100)
-	lines = h["lines"]
-	_after = head
-	chat.set_lines(lines, ("Lines from block %d to %d." % [h["scanned_from"], head]) if h["ok"] else "History incomplete: the log scan stopped (—).")
+func _on_feed_lines(ls: Array) -> void:
+	lines = ls
+	var note := ""
+	if feed.is_loaded():
+		note = ("Lines from block %d to %d." % [feed.scanned_from, feed.after]) if feed.history_ok else "History incomplete: the log scan stopped (—)."
+	chat.set_lines(lines, note)
 	lines_changed.emit(lines, [])
 
 
-func _tail() -> void:
-	if _polling or _after < 0:
-		return
-	_polling = true
-	var head := await Chain.refresh_head()
-	if head > _after:
-		var r: Dictionary = await ChatLog.tail(qing if mode == "room" else Contracts.FOMALHAUTE, mode == "room", _after, head)
-		if r["ok"]:
-			_after = head
-			var fresh := _merge(r["lines"])
-			if not fresh.is_empty():
-				chat.append_lines(fresh)
-				Cues.play(self, "line")
-				lines_changed.emit(lines, fresh)
-	_polling = false
-
-
-func _merge(more: Array) -> Array:
-	var seen := {}
-	for l in lines:
-		seen["%s:%d" % [l["tx"], l["log_index"]]] = true
-	var fresh: Array = []
-	for l in more:
-		var k := "%s:%d" % [l["tx"], l["log_index"]]
-		if not seen.has(k):
-			seen[k] = true
-			lines.append(l)
-			fresh.append(l)
-	return fresh
+func _on_feed_arrived(fresh: Array) -> void:
+	chat.append_lines(fresh)
+	Cues.play(self, "line")
+	lines_changed.emit(lines, fresh)
 
 
 func open() -> void:
@@ -200,17 +174,14 @@ func _post(text: String) -> void:
 	_busy = true
 	var to := ""
 	var data := ""
-	var emitter := ""
 	var label := ""
 	if mode == "room":
 		to = Contracts.CHOA
 		data = Abi.encode_call("Chat(address,string)", [qing, text])
-		emitter = qing
 		label = "Room line at %s" % String(territory.get("name", qing))
 	else:
 		to = Session.player.lau
 		data = Abi.encode_call("Chat(string)", [text])
-		emitter = Contracts.FOMALHAUTE
 		label = "Void line"
 	chat.track(label)
 	var res: Dictionary = await Wallet.send(label, to, data)
@@ -218,15 +189,11 @@ func _post(text: String) -> void:
 	if not res["ok"]:
 		return
 	chat.clear_input()
-	var r: Dictionary = await ChatLog.tail(emitter, mode == "room", res["block"] - 1, res["block"])
-	var mine: Array = r["lines"].filter(func(l): return l["tx"] == res["hash"])
+	var mine: Array = await feed.read_back(res["hash"], res["block"])  # arrived → the board updates
 	if mine.is_empty():
 		chat.set_status("Mined in block %d, but the line was not found in that block's logs: —." % res["block"])
 		return
-	var fresh := _merge(mine)
-	chat.append_lines(fresh)
 	chat.set_status("Posted: read back from the chain in block %d." % res["block"])
-	lines_changed.emit(lines, fresh)
 	posted.emit(mine[0])
 	if mode == "room":
 		Acts.set_flag(Session.wallet, "door")

@@ -85,15 +85,18 @@
   The pub's room, regulars and bar menu are `scripts/places/pub/` (`PubRoom`, `PubLife`, `PubKit`,
   `BarMenu`; drinks = `scripts/games/bar_tab.gd`). Render it with
   `--scene=res://scenes/places/sunny_pub.tscn --view=street|bar|lounge|room|games|stools|menu`.
-- Affection Fair (`scripts/world/funfair/`): `FairSite` picks what Use does by distance (a ride's booth or anywhere
-  within its `reach_radius`; a midway game spot). Midway games: `MidwayGame` (pure rules, seeded by the ticket tx
-  hash) + `MidwayOverlay`. `tools/probe_fair.gd` walks into every booth and plays every game headlessly.
+- Affection Fair (`scripts/world/funfair/`, LEARNINGS §14): `FairSite` picks what Use does by distance (a ride's
+  booth or anywhere within its `reach_radius`; a midway game spot). Midway games are first-person 3D mini games:
+  `MidwaySim` (pure integer rules, replayable from the ticket + input log), `minigame/MidwayPlay` (seat glide,
+  input, result screen) and one `MidwayStage` per stall. Tickets are 1 Ⓐ + the game's code in wei; scores post
+  as `🎪` room lines checked by `FairBoard` (receipt + replay); `FairProgress` (Transfer logs) unlocks the rocket
+  (`RocketLights`). `tools/probe_fair.gd` plays all seven through. Shots: `--fair=<game>|rocket --fair-phase=aim|play|result`.
   The Upsilon Rocket is piloted after liftoff (`RocketVoyage`: W/S, mouse or A/D, Shift; slow climb to this world's
   light speed `C_MS`; past 0.97 c a wormhole opens on the flight line and leads to the Field; Esc returns to the pad).
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
   total; skyline towers per player (`bar_columns.gd`, `tower.gdshader`), structures (`development_site.gd`),
   city lights/roads (terrain shader), aurora (sky shader). `tools/live_development.gd` measures every territory.
-- Exchanges (`scripts/world/exchange/`, LEARNINGS §17): `SwapHall` (PLS ⇄ tokens on PulseX: `PulseX`,
+- Exchanges (`scripts/world/exchange/`, LEARNINGS §18): `SwapHall` (PLS ⇄ tokens on PulseX: `PulseX`,
   `SwapPanel`; a surveyed lot at Wild) and the YUE Exchange (`YueFloor`, a sky lobby stop of the tower's glass
   lift, else the hall's counter: `YueExchange`, `YuePanel`). Read-only checks: `tools/live_swaps.gd`,
   `tools/live_yue_exchange.gd`. Shots: `--view=swap|swap_in|swap_panel|yue|yue_panel [--session=0x…]`.
@@ -109,6 +112,13 @@
   `--rendering-method gl_compatibility` (an explicit `--rendering-method`/`--quality=` on the command line is
   respected). In play, 10 s frame-rate windows step the level down (<24 fps) or up (headroom; never past
   High). F2 has the "Adjust graphics automatically" box. Tools run with `-s` and headless runs skip all of this.
+- QING chat anywhere (LEARNINGS §17): autoload `ChatFeed` keeps one live `RoomFeed` per room (shared by the HUD,
+  the hall, the tables and Phenomena; it survives scene changes) and owns the overlay `ChatHud`: the bar
+  (`ChatBar`, T; Enter posts, Esc keeps the text, Up recalls, 1–4 quick lines, Tab say/post when an autoload
+  `Net` exists) and the feed (`ChatFeedPanel`, Y history). Posts queue in `ChatOutbox` (several → one Multicall3
+  tx). `ChatInputGuard` lifts gameplay actions while typing. World: `scripts/world/chat_life.gd` (bubbles via
+  `ChatFeed.bubble_for(wallet)`/`register_speaker`, rising echoes, crown glow, top-speaker tower markers).
+  Check: `tools/live_chat.gd` (read-only). Shots: `--chat=bar|history [--chat-text=…] --chat-replay=N`, `--view=chat`.
 - Textures: `assets/textures/polyhaven` (CC0 moon regolith in the terrain shader; metal plates).
 - `tools/avatar_sheet.gd -- --out=<png> --mode=heads|poses|closeup [--head=rat --acc=crown]` renders the
   avatar in a studio (needs Xvfb). Heads come from the LAU's Username/name/symbol (`AvatarHeads`).

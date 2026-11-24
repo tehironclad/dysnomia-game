@@ -33,6 +33,7 @@ var guide: GuidePanel
 var opportunities: OpportunitiesPanel
 var score: TerritoryScore
 var border: BorderRing
+var chat_life: ChatLife  # room chat in the world: bubbles, echoes, glow, tower markers
 var _settings: PanelContainer
 var _monitor: Control
 var _near := ""
@@ -133,6 +134,10 @@ func _ready() -> void:
 		DeepField.to_color(terrain.params["color"]), terrain.material,
 		[[Vector2(fair.position.x, fair.position.z), FairSite.RADIUS], [Vector2(garage.position.x, garage.position.z), GarageSite.RADIUS]], landmark)
 	# --- end Exchanges
+	chat_life = ChatLife.new()
+	chat_life.name = "ChatLife"
+	core.add_child(chat_life)
+	chat_life.setup(core, columns, state, player, DeepField.to_color(terrain.params["color"]))
 	_apply_development_snapshot()
 	lattice = WorldLattice.new()
 	lattice.name = "WorldLattice"
@@ -227,6 +232,8 @@ func _frame(view: String) -> void:
 		camera.fov = 62.0
 	elif view.begins_with("border") and border:  # --view=border_n|e|s|w: across a force field
 		border.frame_camera(camera, view.substr(7) if view.length() > 7 else "n")
+	elif view == "chat" and chat_life:  # the Room's front: echoes, bubbles, glow
+		chat_life.frame(camera)
 	elif view == "relief":  # from the highest ground, back over the terraces
 		terrain.frame_relief(camera)
 	elif (view.begins_with("swap") or view.begins_with("yue")) and exchanges:

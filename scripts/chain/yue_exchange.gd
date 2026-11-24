@@ -1,6 +1,6 @@
 class_name YueExchange
 extends RefCounted
-## The YUE exchange desk (LEARNINGS §17): every YUE is a public desk for QING
+## The YUE exchange desk (LEARNINGS §18): every YUE is a public desk for QING
 ## tokens at the territory's fixed market rate.
 ##   Hong(SpendAsset, QingAsset, Amount): you pay Amount·Rate/10^18 of the asset
 ##     (transferFrom you → the YUE) and get Amount QING tokens out of that YUE's stock.
