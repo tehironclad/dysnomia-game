@@ -103,6 +103,11 @@ MultiMesh pair (+2 draw calls). Measured on RatKing, 30 frames (2026-11-24):
 The aerial view (whole territory, grand fair, Burj) was already over the draw-call and object budgets
 before the resize; the resize adds only primitives.
 
+The diegetic loop and Core detail (2026-11-24, RatKing, lavapipe, 120 frames; master → this branch): `--view=core`
+370 → 366 draw calls, 466 → 473 objects, 0.53 M → 0.51 M primitives; `--view=aerial` 1,425 → 1,416, 2,759 → 2,767,
+1.17 M → 1.14 M (still over, as before). Repeated detail is MultiMesh (bollards, caps, light lines, joints, the
+Capital halo); act beacons are at most six small meshes each.
+
 Script cost is measured headless: wall time minus the empty-scene floor (`--disable=.`).
 
 `--scene=res://scenes/places/sunny_pub.tscn --qing=0x2b78…96de --view=room` samples Sunny's Pub (its widest
