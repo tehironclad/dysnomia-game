@@ -57,7 +57,11 @@
 - `godot --headless --path . -s res://tools/live_moves.gd [-- --wallet=0x… --qing=0x…]` runs the Phase 5
   previews against the chain (Su, Beat, door, room and Void lines, World watch). It is read-only.
 - `tools/perf.gd` samples draw calls, objects, primitives and object growth (under Xvfb), or script cost
-  (headless; `--disable=<node>` to profile).
+  (headless; `--disable=<node>` to profile). Pass `--quality=3` (the budgets are for High; shadows
+  count). `tools/perf_breakdown.gd [--by-shadow]` says which subtrees the objects and sun casters come
+  from. Under the Core, `DetailCull` gives every prop a screen-size visibility range and a shadow LOD,
+  `LegibleLabels` keeps billboard labels readable or ends them; creature heads are one baked mesh
+  (`AvatarHeads.bake`). Label3D: a left-aligned label *starts* at its position.
 - The avatar is `scripts/player/human_avatar.gd`: regular-proportioned bodies dressed in outfits, on the
   Quaternius CC0 Universal rig, animated by the UAL clips in `assets/characters/quaternius/` (same 65 bones).
   Outfits (`outfits.gd`: 8 designs, palettes, `for_identity(wallet)` = what everyone sees, `local_choice` = the

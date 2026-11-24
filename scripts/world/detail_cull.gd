@@ -13,7 +13,7 @@ extends Node
 
 ## K per quality level (Potato … Ultra): with a 60° FOV a prop of size s metres is
 ## ≈ 620·s/d pixels tall at 720p, so K = 250 ends it at ≈ 2.5 px.
-const K_BY_QUALITY := [120.0, 170.0, 220.0, 260.0, 400.0]
+const K_BY_QUALITY := [110.0, 140.0, 190.0, 240.0, 400.0]
 ## Shadow LOD: a prop casts into the sun's shadow maps only while the camera is within
 ## SHADOW_K × its size (a 2 m prop: 40 m at High, a 5 m stall wall 100 m). Past that its shadow is a few pixels, but it
 ## would still be drawn once per cascade; the fair behind you at the Core was ~900 casters.
