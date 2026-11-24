@@ -71,6 +71,9 @@
   only reads the 2D game's state, `DriftTrack` from QING.Entropy() + a block hash, `ArcadeScores` local
   board). Render a dive: `screenshot.gd -- --scene=res://scenes/places/arcade_place.tscn
   --dive=void_lanes|entropy_drift|bar_raiser|cart_… [--dive-phase=push|warp|inside|menu] [--classic]`.
+  The pub's room, regulars and bar menu are `scripts/places/pub/` (`PubRoom`, `PubLife`, `PubKit`,
+  `BarMenu`; drinks = `scripts/games/bar_tab.gd`). Render it with
+  `--scene=res://scenes/places/sunny_pub.tscn --view=street|bar|lounge|room|games|stools|menu`.
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
   total; skyline towers per player (`bar_columns.gd`, `tower.gdshader`), structures (`development_site.gd`),
   city lights/roads (terrain shader), aurora (sky shader). `tools/live_development.gd` measures every territory.

@@ -16,7 +16,8 @@ extends Node3D
 const DIR := "res://assets/characters/quaternius/"
 const BODIES := {"male": DIR + "Superhero_Male_FullBody.gltf", "female": DIR + "Superhero_Female_FullBody.gltf"}
 const ANIMS := DIR + "UAL1_Standard.glb"
-const LOOPS := ["Idle", "Walk", "Jog_Fwd", "Sprint", "Crouch_Idle", "Crouch_Fwd", "Jump", "Swim_Fwd", "Swim_Idle"]
+const LOOPS := ["Idle", "Walk", "Jog_Fwd", "Sprint", "Crouch_Idle", "Crouch_Fwd", "Jump", "Swim_Fwd", "Swim_Idle",
+	"Sitting_Idle", "Sitting_Talking", "Idle_Talking", "Dance"]
 ## Ground speed (m/s) at which each clip plays at 1×.
 const CLIP_SPEED := {"Walk": 1.7, "Jog_Fwd": 3.9, "Sprint": 6.2, "Crouch_Fwd": 1.3}
 const HEAD_SCALE := 0.58
@@ -38,6 +39,12 @@ var _back: BoneAttachment3D
 var _head_bone := -1
 var _hide_human_head := true
 var _clip := ""
+## A clip held regardless of movement (NPCs: "Sitting_Idle", "Idle_Talking"…); "" = follow movement.
+var hold_clip := ""
+var hold_speed := 1.0
+## Set before adding to the tree: an off-duty NPC (no armour, badge, patch or
+## jetpack): about 16 meshes instead of 55, for rooms full of regulars.
+var civilian := false
 var _vel := Vector3.ZERO
 var _on_floor := true
 var _flying := false
@@ -110,7 +117,8 @@ func _build(kind: String) -> void:
 	anim.advance(0.0)
 	_collect_materials()
 	_dress()
-	_build_back()
+	if not civilian:
+		_build_back()
 	_self_layer()
 	if head_kind != "":
 		set_head(head_kind)
@@ -156,6 +164,8 @@ func _dress() -> void:
 	_trim_mat.emission_enabled = true
 	_trim_mat.emission = _trim_color
 	_trim_mat.emission_energy_multiplier = 1.8
+	if civilian:
+		return  # out of uniform: the bodysuit and the head only
 	var female := body_kind == "female"
 	var chest := 0.95 if female else 1.0
 	# Torso
@@ -460,7 +470,9 @@ func _process(delta: float) -> void:
 	else:
 		extras.set_flames(false, Vector3.ZERO, Vector3.ZERO)
 		_fly_blend = maxf(0.0, _fly_blend - delta * 4.0)
-		if not _on_floor:
+		if hold_clip != "":
+			_play(hold_clip, hold_speed)
+		elif not _on_floor:
 			if _was_on_floor and _vel.y > 1.0:
 				_play("Jump_Start")
 			elif _clip != "Jump_Start" or not anim.is_playing() or anim.current_animation_position > 0.25:

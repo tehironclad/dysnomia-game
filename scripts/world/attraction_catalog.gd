@@ -5,9 +5,8 @@ class_name AttractionCatalog
 ##   "ticket" — an AFFECTION (ERC-20) transfer from the visitor to the QING's keeper
 ##              (the territory owner). This is "paying affection to the QING".
 ##   "op"     — the visitor's own AFFECTION contract call (Pi/Rho/Generate/Alpha/Beta/Upsilon),
-##              the same calls the Monument terraform panel sends. These are what move
-##              the visitor's per-QING YUE bars (Hypobar/Epibar); the game re-reads the
-##              bars after confirmation and reports the measured change, never a guess.
+##              They mint into AFFECTION's own reserve and do NOT move bars (LEARNINGS §1).
+##              Sunny's bar menu is BarTab (scripts/games/bar_tab.gd); DRINKS here is legacy.
 ##
 ## Prices are AFFECTION in whole or decimal units (strings, converted with the token's
 ## on-chain decimals). Tune them here — nothing else hardcodes a price.

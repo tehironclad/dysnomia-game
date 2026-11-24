@@ -61,6 +61,7 @@ func _make(l: Dictionary) -> Dictionary:
 	var root := Node3D.new()
 	add_child(root)
 	var av := HumanAvatar.new()
+	av.civilian = true  # a hologram needs no armour: 16 meshes, not 55
 	av.name = "Avatar"
 	root.add_child(av)
 	var nm := String(l.get("name", ""))
