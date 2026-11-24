@@ -158,6 +158,19 @@ func _room(room_r: float) -> void:
 	# Plinth band round the base of the Room's wall and a cornice on top.
 	_mesh(self, _torus(room_r + 1.0, room_r + 2.7, 96, 8), Vector3(0.0, 0.05, 0.0), metal, Vector3(1.0, 0.18, 1.0)).name = "RoomPlinth"
 	_mesh(self, _torus(room_r + 2.05, room_r + 2.4, 96, 6), Vector3(0.0, 4.25, 0.0), metal, Vector3(1.0, 0.5, 1.0)).name = "RoomCornice"
+	# A lit clerestory band round the wall, and low wall-washers so the Room
+	# reads as a building at night, not a dark mass.
+	var band := _mesh(self, _torus(room_r + 2.28, room_r + 2.36, 96, 4), Vector3(0.0, 2.7, 0.0), glow(tint.lerp(Color.WHITE, 0.3), 1.1), Vector3(1.0, 0.6, 1.0))
+	band.name = "RoomBand"
+	band.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for a_deg in [150.0, 270.0, 30.0]:
+		var a := deg_to_rad(a_deg)
+		var wash := OmniLight3D.new()
+		wash.light_color = tint.lerp(Color.WHITE, 0.4)
+		wash.light_energy = 0.9
+		wash.omni_range = 7.5
+		wash.position = Vector3(cos(a), 0.0, sin(a)) * (room_r + 5.5) + Vector3(0.0, 0.6, 0.0)
+		add_child(wash)
 	# The door portal: columns either side, a canopy with a lit edge, a threshold.
 	var z := room_r + 0.9
 	for sx in [-1.0, 1.0]:

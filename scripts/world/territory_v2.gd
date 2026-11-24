@@ -255,8 +255,8 @@ func _frame(view: String) -> void:
 	elif view.begins_with("border") and border:  # --view=border_n|e|s|w: across a force field
 		border.frame_camera(camera, view.substr(7) if view.length() > 7 else "n")
 	elif view == "steward" and act_loop:  # the Steward and the act markers at the Core
-		camera.position = Vector3(14.0, core_h + 3.2, 24.0)
-		camera.look_at(Vector3(-2.0, core_h + 3.0, 4.0))
+		camera.position = Vector3(10.5, core_h + 2.2, 19.5)
+		camera.look_at(Vector3(1.0, core_h + 2.6, 6.0))
 		camera.fov = 62.0
 	elif view == "chat" and chat_life:  # the Room's front: echoes, bubbles, glow
 		chat_life.frame(camera)

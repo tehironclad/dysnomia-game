@@ -229,6 +229,12 @@ func _build_steward() -> void:
 	halo.material_override = TerritoryCore._glow(DeepFieldTheme.ICE, 2.0)
 	halo.position = Vector3(0.0, 2.15, 0.0)
 	_steward.add_child(halo)
+	var key := OmniLight3D.new()  # a warm key light so the figure reads against the plaza
+	key.light_color = Color("#ffe2b8")
+	key.light_energy = 1.6
+	key.omni_range = 4.5
+	key.position = Vector3(0.8, 2.4, 1.2)
+	_steward.add_child(key)
 	var sign := Label3D.new()
 	sign.text = "STEWARD"
 	sign.font = DeepFieldTheme.mono_font()

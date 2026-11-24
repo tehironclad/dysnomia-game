@@ -68,8 +68,8 @@ func _build_beacon() -> void:
 	_beacon = MeshInstance3D.new()
 	_beacon.name = "Shaft"
 	var c := CylinderMesh.new()
-	c.top_radius = 1.2 + h * 0.004
-	c.bottom_radius = 0.55
+	c.top_radius = 1.8 + h * 0.004
+	c.bottom_radius = 0.9
 	c.height = h
 	c.radial_segments = 24
 	c.rings = 1
@@ -164,7 +164,7 @@ func _build_halo() -> void:
 
 func _set_energy(e: float) -> void:
 	if _beacon_mat:
-		_beacon_mat.set_shader_parameter("intensity", 0.28 + 0.5 * e)
+		_beacon_mat.set_shader_parameter("intensity", 0.14 + 0.3 * e)
 		_beacon_mat.set_shader_parameter("band_rate", 0.15 + 0.6 * e)
 
 
