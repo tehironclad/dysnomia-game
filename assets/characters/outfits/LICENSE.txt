@@ -1,0 +1,12 @@
+Modular Character Outfits – Fantasy (Standard, free) by Quaternius — https://quaternius.com
+CC0 1.0 Universal (public domain): https://creativecommons.org/publicdomain/zero/1.0/
+Downloaded from https://quaternius.itch.io/modular-character-outfits-fantasy on 2026-11-24
+(the original licence text is LICENSE_Standard.txt).
+
+Used: the glTF "Modular Parts" (Peasant and Ranger, male and female; regular body proportions,
+on the Universal rig shared with the Universal Animation Library). Textures were downscaled
+(BaseColor 2048², Normal/ORM/Roughness 1024², skin BaseColor 1024²).
+
+Made here (also CC0): T_Peasant_Mask.png and T_Ranger_Mask.png (tools/outfit_masks.gd, from the
+BaseColor and ORM maps) and the stub_*.tres materials the parts import with (so loading a part
+loads no textures).

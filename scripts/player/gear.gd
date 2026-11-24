@@ -6,8 +6,8 @@ extends Node3D
 ##   leading any territory → a halo (a floor: among known players)
 ##   ladder rank 1         → a crown (only if the site's ladder confirms it)
 ## Plus the player's Aura fractal as a patch on the left arm (the chest carries
-## every suit's Ⓐ), and the head their LAU's
-## name/symbol asks for (AvatarHeads), or the one they picked locally.
+## every suit's Ⓐ), the head their LAU's name/symbol asks for (AvatarHeads) and
+## the outfit their wallet draws (Outfits), or the ones they picked locally.
 
 var _spark: MeshInstance3D
 var _ring: MeshInstance3D
@@ -96,6 +96,14 @@ func refresh() -> void:
 		var ps: PlayerState = Session.player
 		if model.has_method("set_body"):
 			model.set_body(AvatarHeads.local_body(w))
+		# The outfit: from the wallet alone (what every viewer sees), unless the
+		# player picked one for themselves on this machine (their own screen only).
+		if model.has_method("wear_identity"):
+			var own := Outfits.local_choice(w)
+			if own != "":
+				model.set_outfit(own, int(Outfits.for_identity(w)["seed"]))
+			else:
+				model.wear_identity(w)
 		var pick := AvatarHeads.local_choice(w)
 		model.set_head(pick if pick != "" else ps.head_kind(), AvatarHeads.accessories_for(ps.username, ps.lau_name, ps.lau_symbol))
 		# No bars anywhere: the bear is drawn grey (no colour until it has acted).

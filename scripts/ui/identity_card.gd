@@ -19,6 +19,7 @@ var _reason: Label
 var _bodies := {}
 var _head_pick: OptionButton
 var _body_pick: OptionButton
+var _outfit_pick: OptionButton
 const BODY_KINDS := ["male", "female"]
 
 
@@ -88,6 +89,17 @@ func _init() -> void:
 		_body_pick.add_item("%s (my choice, this machine)" % k)
 	_body_pick.item_selected.connect(_on_body_picked)
 	brow.add_child(_body_pick)
+	var orow := HBoxContainer.new()
+	col.add_child(orow)
+	var ol := Label.new()
+	ol.theme_type_variation = "MutedLabel"
+	ol.text = "Avatar outfit"
+	orow.add_child(ol)
+	_outfit_pick = OptionButton.new()
+	_outfit_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_outfit_pick.tooltip_text = "Everyone else sees the outfit your wallet draws; a pick here is your own and shows on this machine only."
+	_outfit_pick.item_selected.connect(_on_outfit_picked)
+	orow.add_child(_outfit_pick)
 
 
 func _ready() -> void:
@@ -107,12 +119,27 @@ func _fill_heads(w: String, ps: PlayerState) -> void:
 	_head_pick.select(0 if pick == "" else 1 + AvatarHeads.KINDS.find(pick))
 	_body_pick.visible = true
 	_body_pick.select(maxi(0, BODY_KINDS.find(AvatarHeads.local_body(w))))
+	_outfit_pick.visible = true
+	_outfit_pick.clear()
+	var drawn: String = Outfits.for_identity(w)["kind"]
+	_outfit_pick.add_item("from my wallet: %s (everyone sees this)" % Outfits.LABELS[drawn])
+	for k in Outfits.KINDS:
+		_outfit_pick.add_item("%s (my choice, this machine)" % Outfits.LABELS[k])
+	var own := Outfits.local_choice(w)
+	_outfit_pick.select(0 if own == "" else 1 + Outfits.KINDS.find(own))
 
 
 func _on_head_picked(i: int) -> void:
 	if Session.wallet == "":
 		return
 	AvatarHeads.set_local_choice(Session.wallet, "" if i == 0 else String(AvatarHeads.KINDS[i - 1]))
+	Session.changed.emit()
+
+
+func _on_outfit_picked(i: int) -> void:
+	if Session.wallet == "":
+		return
+	Outfits.set_local_choice(Session.wallet, "" if i == 0 else String(Outfits.KINDS[i - 1]))
 	Session.changed.emit()
 
 
@@ -135,6 +162,7 @@ func refresh() -> void:
 			_bodies[k]["detail"].text = "—"
 		_head_pick.visible = false
 		_body_pick.visible = false
+		_outfit_pick.visible = false
 		return
 	emblem.visible = true
 	var p := DeepField.for_identity(w)

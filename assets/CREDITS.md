@@ -34,3 +34,8 @@ Sunny's Pub (ported from the cantina prototype, 2026-11-24):
 - `dark_planks` (texture) — "Dark Planks" by Rob Tuytel, CC0, https://polyhaven.com/a/dark_planks
 - `dark_wooden_planks` (texture) — "Dark Wooden Planks" by Amal Kumar, CC0, https://polyhaven.com/a/dark_wooden_planks
 - `wood_table_001` (texture) — "Wood Table 001" by Dimitrios Savva, Rico Cilliers, CC0, https://polyhaven.com/a/wood_table_001
+
+Avatars (2026-11-24):
+
+- Universal Animation Library (Standard) — Quaternius, CC0, https://quaternius.itch.io/universal-animation-library (`assets/characters/quaternius/`)
+- Modular Character Outfits – Fantasy (Standard) — Quaternius, CC0, https://quaternius.itch.io/modular-character-outfits-fantasy (`assets/characters/outfits/`: Peasant and Ranger parts, male and female, regular proportions on the Universal rig; re-coloured in game by `assets/shaders/outfit.gdshader`)

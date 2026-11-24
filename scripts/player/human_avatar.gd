@@ -1,49 +1,63 @@
 class_name HumanAvatar
 extends Node3D
-## The player's avatar: a rigged, skinned body (Quaternius Universal Base
-## Characters, CC0) driven by motion-captured animations (Quaternius
-## Universal Animation Library, CC0: the two share one 65-bone skeleton),
-## wearing the head the player's LAU asks for (AvatarHeads) on its Head bone.
+## The avatar: a rigged person of regular proportions, dressed in an outfit
+## (Outfits: garments from Quaternius' Modular Character Outfits – Fantasy,
+## CC0, re-coloured for the Field and sewn into one skinned mesh by
+## OutfitTailor), driven by motion-captured animations (Quaternius Universal
+## Animation Library, CC0: the same 65-bone Universal rig), wearing the head
+## the player's LAU asks for (AvatarHeads) on its neck.
+##
+## Who wears what: wear_identity(wallet) picks the outfit and colours from the
+## wallet alone, so every viewer sees the same; set_outfit(kind, seed) wears a
+## given design (a player's own pick, an NPC's, or one the network syncs).
 ##
 ## Locomotion picks Idle / Walk / Jog / Sprint by speed, matching playback to
 ## the ground speed so the feet don't skate; Crouch, Jump (start, loop, land)
 ## and a swimming stroke for jetpack flight. Blends are crossfades.
 ##
-## Same interface as the old procedural model, so the controller, Gear and the
-## territory scene drive it unchanged: update_movement, set_head,
-## apply_appearance, modulate_grey, set_crow, set_flying, set_territory_power.
+## Interface used by the controller, Gear, NPCs and the territory scene:
+## update_movement, set_head, set_body, set_outfit, wear_identity,
+## set_suit_colors, apply_appearance, modulate_grey, set_crow, set_flying,
+## set_territory_power, set_seated, set_air_pose, set_arm_patch.
 
 const DIR := "res://assets/characters/quaternius/"
-const BODIES := {"male": DIR + "Superhero_Male_FullBody.gltf", "female": DIR + "Superhero_Female_FullBody.gltf"}
+## The rig per body (regular proportions; the outfit is the visible body).
+const BODIES := OutfitTailor.RIG
 const ANIMS := DIR + "UAL1_Standard.glb"
+const SHADER := "res://assets/shaders/outfit.gdshader"
 const LOOPS := ["Idle", "Walk", "Jog_Fwd", "Sprint", "Crouch_Idle", "Crouch_Fwd", "Jump", "Swim_Fwd", "Swim_Idle",
 	"Driving", "Sitting_Idle", "Sitting_Talking", "Idle_Talking", "Dance"]
 ## Ground speed (m/s) at which each clip plays at 1×.
 const CLIP_SPEED := {"Walk": 1.7, "Jog_Fwd": 3.9, "Sprint": 6.2, "Crouch_Fwd": 1.3}
 const HEAD_SCALE := 0.58
-const FABRIC := Color(0.075, 0.078, 0.095)
-const ARMOUR := Color(0.27, 0.28, 0.32)
+## Worn until someone says otherwise (the old suit's look: a flight suit).
+const DEFAULT_OUTFIT := "flightsuit"
 const XFADE := 0.22
 
 static var _library: AnimationLibrary
+static var _shader: Shader
 
 var body_kind := "male"
 var head_kind := "bear"
+## The outfit design (Outfits.KINDS) and the seed that picks its colours.
+var outfit_kind := DEFAULT_OUTFIT
+var outfit_seed := 0
 var body: Node3D
 var skeleton: Skeleton3D
 var anim: AnimationPlayer
 var extras: AvatarExtras
+var outfit_mesh: MeshInstance3D
 var _head_attach: BoneAttachment3D
 var _head: Node3D
+var _accessories: Array = []
 var _back: BoneAttachment3D
-var _head_bone := -1
-var _hide_human_head := true
+var _badge: BoneAttachment3D
+var _anchors := {}
 var _clip := ""
 ## A clip held regardless of movement (NPCs: "Sitting_Idle", "Idle_Talking"…); "" = follow movement.
 var hold_clip := ""
 var hold_speed := 1.0
-## Set before adding to the tree: an off-duty NPC (no armour, badge, patch or
-## jetpack): about 16 meshes instead of 55, for rooms full of regulars.
+## Set before adding to the tree: an off-duty NPC (no badge, patch or jetpack).
 var civilian := false
 var _vel := Vector3.ZERO
 var _on_floor := true
@@ -59,9 +73,10 @@ var _fly_speed := 0.0
 var _fly_pitch := 0.0
 var _seat_clip := ""  ## "" = on foot; else the clip held while seated (a vehicle: "Driving")
 var air_pose := ""  ## base jumping: "" (jetpack) | freefall | wingsuit | canopy
-var _materials: Array = []  # [StandardMaterial3D, original albedo texture]
-var _suit_mat: StandardMaterial3D
-var _plate_mat: StandardMaterial3D
+var _outfit_mats: Array = []  # ShaderMaterial per outfit surface
+var _skin_mat: StandardMaterial3D
+var _colors := {}  # slot -> Color (Outfits.colors + set_suit_colors overrides)
+var _overrides := {}
 var _boot_mat: StandardMaterial3D
 var _trim_mat: StandardMaterial3D
 var _trim_color := Color(0.45, 0.85, 1.0)
@@ -69,6 +84,17 @@ var _trim_color := Color(0.45, 0.85, 1.0)
 const AFFECTION_GLOW := Color(1.0, 0.56, 0.78)
 var _patch_tex: Texture2D  # the player's Aura fractal, worn as a patch on the left arm
 var _patch: Node3D
+var _hand_r: Node3D
+## A hold point in the right hand (the fair hands out snacks), made on first
+## use. Squashed like the old glove was, which the fair's holder undoes.
+var _glove_right: Node3D:
+	get:
+		if (_hand_r == null or not is_instance_valid(_hand_r)) and skeleton:
+			var ba := _attach("hand_r", Vector3(-0.075, -0.035, 0.035))
+			_hand_r = Node3D.new()
+			_hand_r.basis = Basis(Vector3(0, 0, 1), deg_to_rad(-78.0)) * Basis.from_scale(Vector3(0.85, 0.65, 1.0))
+			ba.get_node("Holder").add_child(_hand_r)
+		return _hand_r
 
 
 func _ready() -> void:
@@ -76,7 +102,8 @@ func _ready() -> void:
 	extras.name = "Extras"
 	add_child(extras)
 	_build(body_kind)
-	set_head("bear")
+	if _head == null:
+		set_head(head_kind, _accessories)
 
 
 static func library() -> AnimationLibrary:
@@ -93,21 +120,19 @@ static func library() -> AnimationLibrary:
 
 func _build(kind: String) -> void:
 	if body:
-		# The flames live on the old body's jetpack: bring them home first.
-		for f in [extras._flame_left, extras._flame_right]:
-			if f and f.get_parent() != extras:
-				f.get_parent().remove_child(f)
-				extras.add_child(f)
+		_home_flames()
 		body.free()
 		_head_attach = null
 		_head = null
 		_back = null
+		_badge = null
+		_patch = null
+		outfit_mesh = null
 	body_kind = kind if BODIES.has(kind) else "male"
-	body = load(BODIES[body_kind]).instantiate()
+	body = OutfitTailor.rig(body_kind)
 	body.name = "Body"
 	add_child(body)
 	skeleton = body.get_node("Armature/Skeleton3D")
-	_head_bone = skeleton.find_bone("Head")
 	anim = AnimationPlayer.new()
 	anim.name = "Anim"
 	body.add_child(anim)
@@ -117,45 +142,102 @@ func _build(kind: String) -> void:
 	_clip = ""
 	_play("Idle")
 	anim.advance(0.0)
-	_collect_materials()
 	_dress()
-	if not civilian:
-		_build_back()
+	if head_kind != "" and is_inside_tree():
+		set_head(head_kind, _accessories)
 	_self_layer()
-	if head_kind != "":
-		set_head(head_kind)
 
 
-func _collect_materials() -> void:
-	_materials.clear()
-	for mi in body.find_children("*", "MeshInstance3D", true, false):
-		var m := mi as MeshInstance3D
-		for i in m.get_surface_override_material_count():
-			var mat := m.get_active_material(i)
-			if mat is StandardMaterial3D:
-				var copy := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
-				m.set_surface_override_material(i, copy)
-				_materials.append([copy, copy.albedo_texture])
+## The flames live on the jetpack: bring them home before it goes.
+func _home_flames() -> void:
+	if extras == null:
+		return
+	for f in [extras._flame_left, extras._flame_right]:
+		if f and f.get_parent() != extras:
+			f.get_parent().remove_child(f)
+			extras.add_child(f)
 
 
-## The suit: the body becomes a dark sci-fi bodysuit (its own normal and
-## roughness maps keep the muscle detail), with gunmetal armour, boots, a
-## collar, a belt and glowing trim bolted to the bones.
+## Wears `kind` (Outfits.KINDS); `seed_value` picks its colours (-1 keeps the
+## current seed). Called with the network's synced choice for remote players.
+func set_outfit(kind: String, seed_value: int = -1) -> void:
+	if not Outfits.DESIGNS.has(kind):
+		kind = DEFAULT_OUTFIT
+	if seed_value >= 0:
+		outfit_seed = seed_value
+	if kind == outfit_kind and (seed_value < 0 or seed_value == outfit_seed) and outfit_mesh != null:
+		return
+	outfit_kind = kind
+	if skeleton:
+		_redress()
+
+
+## The outfit an identity wears for every viewer: from the wallet address only.
+func wear_identity(wallet: String) -> void:
+	var o := Outfits.for_identity(wallet)
+	set_outfit(o["kind"], o["seed"])
+
+
+func _redress() -> void:
+	_home_flames()
+	for n in [outfit_mesh, _back, _badge]:
+		if n and is_instance_valid(n):
+			n.free()
+	if _patch and is_instance_valid(_patch):
+		_patch.get_parent().get_parent().free()
+	outfit_mesh = null
+	_back = null
+	_badge = null
+	_patch = null
+	_dress()
+	if _grey:
+		_grey = false
+		modulate_grey(true)
+	_self_layer()
+
+
+func _material(atlas: String) -> Material:
+	if _shader == null:
+		_shader = load(SHADER)
+	if atlas == "skin":
+		var sk := StandardMaterial3D.new()
+		var g := "Female" if body_kind == "female" else "Male"
+		sk.normal_enabled = true
+		sk.normal_texture = load(OutfitTailor.DIR + "T_Regular_%s_Normal.png" % g)
+		sk.roughness_texture = load(OutfitTailor.DIR + "T_Regular_%s_Roughness.png" % g)
+		sk.roughness = 1.0
+		_skin_mat = sk
+		return sk
+	var m := ShaderMaterial.new()
+	m.shader = _shader
+	if atlas == "tailored":
+		m.set_shader_parameter("textured", false)
+	else:
+		m.set_shader_parameter("mask_tex", load(OutfitTailor.DIR + "T_%s_Mask.png" % atlas))
+		m.set_shader_parameter("normal_tex", load(OutfitTailor.DIR + "T_%s_Normal.png" % atlas))
+		m.set_shader_parameter("orm_tex", load(OutfitTailor.DIR + "T_%s_ORM.png" % atlas))
+	_outfit_mats.append(m)
+	return m
+
+
+## The outfit: one skinned mesh (OutfitTailor) under the skeleton, its
+## colours from Outfits.colors(kind, seed); plus, on duty, the Ⓐ badge.
 func _dress() -> void:
-	for pair in _materials:
-		var m: StandardMaterial3D = pair[0]
-		if m.resource_name.contains("Superhero") or (m.albedo_texture and m.albedo_texture.resource_path.contains("Superhero")):
-			m.albedo_texture = null
-			m.albedo_color = FABRIC
-			m.metallic = 0.15
-			m.roughness = 0.62
-			m.rim_enabled = true
-			m.rim = 0.2
-			_suit_mat = m
-	_plate_mat = StandardMaterial3D.new()
-	_plate_mat.albedo_color = ARMOUR
-	_plate_mat.metallic = 0.8
-	_plate_mat.roughness = 0.3
+	var o := OutfitTailor.build(body_kind, outfit_kind)
+	_anchors = o["anchors"]
+	_outfit_mats.clear()
+	_skin_mat = null
+	outfit_mesh = MeshInstance3D.new()
+	outfit_mesh.name = "Outfit"
+	outfit_mesh.mesh = o["mesh"]
+	outfit_mesh.skin = o["skin"]
+	skeleton.add_child(outfit_mesh)
+	outfit_mesh.skeleton = NodePath("..")
+	var atlases: Array = o["atlases"]
+	for i in atlases.size():
+		outfit_mesh.set_surface_override_material(i, _material(atlases[i]))
+	_colors = Outfits.colors(outfit_kind, outfit_seed)
+	_apply_colors()
 	_boot_mat = StandardMaterial3D.new()
 	_boot_mat.albedo_color = Color(0.05, 0.05, 0.06)
 	_boot_mat.metallic = 0.3
@@ -167,40 +249,40 @@ func _dress() -> void:
 	_trim_mat.emission = _trim_color
 	_trim_mat.emission_energy_multiplier = 1.8
 	if civilian:
-		return  # out of uniform: the bodysuit and the head only
-	var female := body_kind == "female"
-	var chest := 0.95 if female else 1.0
-	# Torso
-	_piece("spine_03", "sphere", Vector3(0.0, 0.06, 0.075), Vector3(0.19 * chest, 0.1, 0.055), _plate_mat)
-	_piece("spine_03", "box", Vector3(0.0, -0.06, 0.133), Vector3(0.012, 0.05, 0.01), _trim_mat)
+		return  # off duty: the outfit and the head only
 	_affection_badge()
-	for i in 3:
-		_piece("spine_01", "box", Vector3(0.0, 0.05 + i * 0.055, 0.105 - i * 0.004), Vector3(0.2 - i * 0.015, 0.042, 0.03), _plate_mat)
-	_piece("neck_01", "torus", Vector3(0.0, -0.035, 0.015), Vector3(0.085, 0.11, 0.0), _plate_mat)
-	_piece("pelvis", "torus", Vector3(0.0, 0.03, 0.035), Vector3(0.16, 0.185, 0.75), _plate_mat)
-	_piece("pelvis", "box", Vector3(0.0, 0.03, 0.155), Vector3(0.06, 0.04, 0.02), _trim_mat)
-	for side in [1.0, -1.0]:
-		var l := "_l" if side > 0.0 else "_r"
-		# Arms (T-pose: along X)
-		_piece("upperarm" + l, "sphere", Vector3(side * 0.035, 0.035, 0.0), Vector3(0.085, 0.05, 0.08), _plate_mat)
-		_piece("lowerarm" + l, "box", Vector3(side * 0.13, 0.0, 0.0), Vector3(0.15, 0.08, 0.085), _plate_mat)
-		_piece("lowerarm" + l, "box", Vector3(side * 0.13, 0.0, 0.045), Vector3(0.06, 0.012, 0.008), _trim_mat)
-		_piece("hand" + l, "box", Vector3(side * 0.035, 0.0, 0.0), Vector3(0.045, 0.06, 0.08), _boot_mat)
-		# Legs (along -Y)
-		_piece("thigh" + l, "box", Vector3(0.0, -0.2, 0.075), Vector3(0.12, 0.2, 0.035), _plate_mat)
-		_piece("thigh" + l, "box", Vector3(side * 0.085, -0.2, 0.0), Vector3(0.012, 0.24, 0.012), _trim_mat)
-		_piece("calf" + l, "sphere", Vector3(0.0, 0.0, 0.055), Vector3(0.05, 0.055, 0.03), _plate_mat)
-		_piece("calf" + l, "box", Vector3(0.0, -0.2, 0.06), Vector3(0.1, 0.22, 0.03), _plate_mat)
-		_piece("foot" + l, "sphere", Vector3(0.0, -0.02, 0.03), Vector3(0.062, 0.06, 0.15), _boot_mat)
-		_piece("foot" + l, "box", Vector3(0.0, -0.072, 0.03), Vector3(0.11, 0.022, 0.27), _plate_mat)
 	_build_patch()
+	_build_back()
 
 
-## Ⓐ in the middle of the chest plate: a dark disc, a glowing ring and an A.
+func _apply_colors() -> void:
+	var c := _colors.duplicate()
+	c.merge(_overrides, true)
+	for m in _outfit_mats:
+		var sm := m as ShaderMaterial
+		for slot in Outfits.SLOTS:
+			sm.set_shader_parameter("col_" + slot, c[slot])
+		sm.set_shader_parameter("col_skin", c["skin"])
+		sm.set_shader_parameter("col_trim", _trim_color)
+		sm.set_shader_parameter("grey", 1.0 if _grey else 0.0)
+	if _skin_mat:
+		var s: Color = c["skin"]
+		if _grey:
+			var l := s.get_luminance()
+			s = Color(l, l, l * 1.05)
+		_skin_mat.albedo_color = s
+
+
+## The colours an outfit slot shows (Outfits.SLOTS + "skin").
+func outfit_color(slot: String) -> Color:
+	return _overrides.get(slot, _colors.get(slot, Color.GRAY))
+
+
 func _affection_badge() -> void:
 	var h := Node3D.new()
-	h.scale = Vector3.ONE * 1.35
-	_attach("spine_03", Vector3(0.0, 0.045, 0.132)).get_node("Holder").add_child(h)
+	h.scale = Vector3.ONE * 1.1
+	_badge = _attach("spine_03", _anchors.get("chest", Vector3(0, 1.4, 0.13)) - _rest_origin("spine_03"))
+	_badge.get_node("Holder").add_child(h)
 	var glow := StandardMaterial3D.new()
 	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	glow.albedo_color = AFFECTION_GLOW
@@ -245,13 +327,16 @@ func _badge_bar(parent: Node3D, at: Vector3, size: Vector3, roll_deg: float, mat
 	parent.add_child(mi)
 
 
-## Re-colours the suit (the bartender wears cream and brown).
+## Re-colours the outfit's main cloth (`fabric`) and its straps and fittings
+## (`armour`): the bartender wears cream and brown. Survives set_outfit.
 func set_suit_colors(fabric: Color, armour: Color) -> void:
-	if _suit_mat:
-		_suit_mat.albedo_color = fabric
-	if _plate_mat:
-		_plate_mat.albedo_color = armour
-		_plate_mat.metallic = 0.2
+	_overrides = {"main": fabric, "accent": fabric.lightened(0.15), "leather": armour, "metal": armour.lightened(0.3)}
+	if skeleton:
+		_apply_colors()
+
+
+func _rest_origin(bone: String) -> Vector3:
+	return skeleton.get_bone_global_rest(skeleton.find_bone(bone)).origin
 
 
 ## The Aura patch on the outside of the left upper arm (Gear supplies the
@@ -267,9 +352,9 @@ func _build_patch() -> void:
 	if _patch and is_instance_valid(_patch):
 		_patch.get_parent().get_parent().queue_free()
 	_patch = null
-	if _patch_tex == null:
+	if _patch_tex == null or civilian:
 		return
-	var h: Node3D = _attach("upperarm_l", Vector3(0.13, 0.052, 0.0)).get_node("Holder")
+	var h: Node3D = _attach("upperarm_l", _anchors.get("arm", Vector3(0.3, 1.47, 0)) - _rest_origin("upperarm_l")).get_node("Holder")
 	_patch = Node3D.new()
 	# Face +Y (outward with the arm down), image-up toward the shoulder (-X), image-right toward the back.
 	_patch.basis = Basis(Vector3(0, 0, -1), Vector3(-1, 0, 0), Vector3(0, 1, 0))
@@ -292,35 +377,6 @@ func _build_patch() -> void:
 	_patch.add_child(face)
 
 
-## A mesh on `bone`, placed in body space (offset from the bone, at rest).
-## Shapes: sphere (size = radii), box (size), torus (x inner, y outer, z flatten).
-func _piece(bone: String, shape: String, offset: Vector3, size: Vector3, mat: Material) -> void:
-	var ba := _attach(bone, offset)
-	var mi := MeshInstance3D.new()
-	match shape:
-		"sphere":
-			var sm := SphereMesh.new()
-			sm.radius = 1.0
-			sm.height = 2.0
-			sm.radial_segments = 24
-			sm.rings = 12
-			mi.mesh = sm
-			mi.scale = size
-		"torus":
-			var tm := TorusMesh.new()
-			tm.inner_radius = size.x
-			tm.outer_radius = size.y
-			mi.mesh = tm
-			if size.z > 0.0:
-				mi.scale = Vector3(1.0, 1.0, size.z)
-		_:
-			var bm := BoxMesh.new()
-			bm.size = size
-			mi.mesh = bm
-	mi.material_override = mat
-	ba.get_node("Holder").add_child(mi)
-
-
 ## A node following `bone`, with its own axes realigned to the body's (Y up,
 ## Z forward) at rest, so attachments are authored in body space.
 func _attach(bone: String, offset: Vector3) -> BoneAttachment3D:
@@ -337,7 +393,7 @@ func _attach(bone: String, offset: Vector3) -> BoneAttachment3D:
 
 func _build_back() -> void:
 	# A slim jetpack on the upper back; the flames come out of its two nozzles.
-	_back = _attach("spine_03", Vector3(0.0, -0.02, -0.16))
+	_back = _attach("spine_03", _anchors.get("back", Vector3(0, 1.38, -0.12)) - _rest_origin("spine_03") + Vector3(0.0, 0.0, -0.05))
 	var h: Node3D = _back.get_node("Holder")
 	var metal := StandardMaterial3D.new()
 	metal.albedo_color = Color(0.22, 0.23, 0.27)
@@ -382,22 +438,23 @@ func _build_back() -> void:
 
 
 ## Swaps the head. "human" shows the body's own head; anything else hides it
-## (the Head bone is collapsed) and builds that head on the Head bone.
+
 func set_head(kind: String, accessories: Array = []) -> void:
 	if not (kind in AvatarHeads.KINDS):
 		kind = "bear"
 	head_kind = kind
+	_accessories = accessories
 	if _head_attach:
 		_head_attach.queue_free()
 		_head_attach = null
-	_hide_human_head = kind != "human"
+	var creature := kind != "human"
 	# On the neck (the Head bone itself is collapsed when a creature head is worn).
 	_head_attach = _attach("neck_01", Vector3(0.0, 0.045, 0.03))
 	var holder: Node3D = _head_attach.get_node("Holder")
 	var scaled := Node3D.new()
 	scaled.scale = Vector3.ONE * HEAD_SCALE
 	holder.add_child(scaled)
-	if _hide_human_head:
+	if creature:
 		_head = AvatarHeads.build(kind)
 		scaled.add_child(_head)
 	else:
@@ -417,7 +474,6 @@ func set_head(kind: String, accessories: Array = []) -> void:
 		AvatarHeads._sphere(_head, 0.22, shell, Vector3(0, 0.25, -0.01), Vector3(1.0, 1.05, 1.05))
 		var visor := AvatarHeads._sphere(_head, 0.2, glass, Vector3(0, 0.25, 0.06), Vector3(0.92, 0.62, 0.9))
 		visor.rotation_degrees.x = -6.0
-		_hide_human_head = true
 	var top := 0.46 if kind != "alien" else 0.56
 	if kind == "human":
 		top = 0.38
@@ -517,9 +573,6 @@ func _process(delta: float) -> void:
 		_fly_pose(delta)
 	else:
 		body.transform = Transform3D.IDENTITY
-	# Hide the human head under a creature head: collapse the Head bone.
-	if _hide_human_head and _head_bone >= 0:
-		skeleton.set_bone_pose_scale(_head_bone, Vector3.ONE * 0.001)
 	# Lean into turns (yaw rate × speed), like a runner banking.
 	var yaw := global_rotation.y
 	var rate := wrapf(yaw - _last_yaw, -PI, PI) / maxf(delta, 0.0001)
@@ -602,6 +655,7 @@ func _set_global(bone: String, delta_basis: Basis, w: float, parent: String = ""
 	skeleton.set_bone_pose_rotation(b, cur.slerp(local, w))
 
 
+
 func apply_appearance(appearance: Dictionary) -> void:
 	var h: float = appearance.get("height", 1.8)
 	scale = Vector3.ONE * clampf(h / 1.8, 0.9, 1.1)
@@ -611,6 +665,8 @@ func apply_appearance(appearance: Dictionary) -> void:
 	if _trim_mat and not _grey:
 		_trim_mat.albedo_color = _trim_color
 		_trim_mat.emission = _trim_color
+	if skeleton:
+		_apply_colors()
 
 
 ## No bars anywhere: drawn without colour (the site's avatar rule).
@@ -632,29 +688,8 @@ func modulate_grey(grey: bool) -> void:
 				var o: Color = hm.get_meta("orig")
 				var lum := o.get_luminance()
 				hm.albedo_color = Color(lum, lum, lum * 1.05, o.a) if grey else o
-	for pair in _materials:
-		var m: StandardMaterial3D = pair[0]
-		var tex: Texture2D = pair[1]
-		if tex == null:
-			continue
-		m.albedo_texture = _grey_of(tex) if grey else tex
-
-
-static var _grey_cache := {}
-
-
-static func _grey_of(tex: Texture2D) -> Texture2D:
-	if _grey_cache.has(tex):
-		return _grey_cache[tex]
-	var img := tex.get_image()
-	if img == null:
-		return tex
-	if img.is_compressed():
-		img.decompress()
-	img.adjust_bcs(1.0, 1.0, 0.0)
-	var t := ImageTexture.create_from_image(img)
-	_grey_cache[tex] = t
-	return t
+	if skeleton:
+		_apply_colors()
 
 
 func set_crow(on: bool) -> void:
