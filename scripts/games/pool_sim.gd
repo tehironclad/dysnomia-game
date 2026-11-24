@@ -101,7 +101,10 @@ func _occupied(x: int, y: int) -> bool:
 ## until everything stops. Returns {first_contact (-1 if none), pocketed:
 ## [ball ids in order], ticks, frames?: [PackedInt64Array of x,y per ball]
 ## every `frame_every` ticks when asked}.
-func shoot(dx: int, dy: int, power: int, frame_every: int = 0) -> Dictionary:
+## Previews (the aiming ghost) may stop early: `max_ticks` caps the run, and
+## `stop_after_contact` >= 0 stops that many ticks after the cue ball's first
+## contact. A real shot always uses the defaults (run to rest).
+func shoot(dx: int, dy: int, power: int, frame_every: int = 0, max_ticks: int = MAX_TICKS, stop_after_contact: int = -1) -> Dictionary:
 	power = clampi(power, 1, 1000)
 	var mag := isqrt(dx * dx + dy * dy)
 	var out := {"first_contact": -1, "pocketed": [], "ticks": 0}
@@ -114,8 +117,11 @@ func shoot(dx: int, dy: int, power: int, frame_every: int = 0) -> Dictionary:
 	var caps := [CORNER_CAPTURE, SIDE_CAPTURE, CORNER_CAPTURE, CORNER_CAPTURE, SIDE_CAPTURE, CORNER_CAPTURE]
 	var pk := pockets()
 	var t := 0
-	while t < MAX_TICKS:
+	var contact_t := -1
+	while t < max_ticks:
 		t += 1
+		if contact_t >= 0 and stop_after_contact >= 0 and t - contact_t > stop_after_contact:
+			break
 		var moving := false
 		for i in 16:
 			if down[i] == 0 and (vx[i] != 0 or vy[i] != 0):
@@ -181,6 +187,7 @@ func shoot(dx: int, dy: int, power: int, frame_every: int = 0) -> Dictionary:
 					vy[j] += ny * k / d2
 					if out["first_contact"] == -1 and (i == 0 or j == 0):
 						out["first_contact"] = j if i == 0 else i
+						contact_t = t
 				var d := isqrt(d2)
 				var push := (2 * R - d) / 2 + 1
 				px[i] -= nx * push / maxi(d, 1)

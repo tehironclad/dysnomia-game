@@ -9,11 +9,15 @@ const COLORS := [Color(0.95, 0.94, 0.9), Color(1.0, 0.8, 0.1), Color(0.1, 0.25, 
 	Color(0.45, 0.15, 0.6), Color(1.0, 0.45, 0.05), Color(0.05, 0.5, 0.2), Color(0.5, 0.08, 0.1), Color(0.03, 0.03, 0.03)]
 const FRAME_EVERY := 8  # sim ticks per animation frame (480 Hz / 8 = 60 fps)
 
+signal roll_finished
+
 var felt_color := Color(0.05, 0.36, 0.2)
+var hold_frame := -1  ## previews: stop a replay at this frame (mid-roll stills)
 var _balls: Array = []
 var _frames: Array = []
 var _frame_t := 0.0
 var _label: Label3D
+var _last := PackedInt64Array()
 
 
 func build(cloth: Color = Color(0.05, 0.36, 0.2)) -> void:
@@ -83,6 +87,20 @@ func _ball(i: int) -> Node3D:
 	m.albedo_color = Color(0.95, 0.94, 0.9) if i >= 9 else base
 	mi.material_override = m
 	n.add_child(mi)
+	# A spot on every ball (the cue ball's is red, like a measle ball), so a roll reads up close.
+	var dot := MeshInstance3D.new()
+	var dm := SphereMesh.new()
+	dm.radius = 0.0105
+	dm.height = 0.006
+	dm.radial_segments = 12
+	dm.rings = 2
+	dot.mesh = dm
+	var dmat := StandardMaterial3D.new()
+	dmat.albedo_color = Color(0.85, 0.1, 0.1) if i == 0 else Color(0.97, 0.96, 0.92)
+	dmat.roughness = 0.2
+	dot.material_override = dmat
+	dot.position = Vector3(0, 0.0262, 0)
+	n.add_child(dot)
 	if i >= 9:  # the stripe
 		var band := MeshInstance3D.new()
 		var cm := CylinderMesh.new()
@@ -103,6 +121,15 @@ func _to3(x: int, y: int) -> Vector3:
 	return Vector3(float(x) / 1e6 - 1.27, BED + 0.0286, float(y) / 1e6 - 0.635)
 
 
+## The position on screen now (a snapshot), the frame playing during a replay.
+func current_snapshot() -> PackedInt64Array:
+	return _last
+
+
+func is_rolling() -> bool:
+	return not _frames.is_empty()
+
+
 ## Shows a table position at rest.
 func show_sim(sim: PoolSim) -> void:
 	_frames.clear()
@@ -110,19 +137,38 @@ func show_sim(sim: PoolSim) -> void:
 
 
 func show_snapshot(s: PackedInt64Array) -> void:
+	var roll := _last.size() == s.size()
 	for i in 16:
 		var b: Node3D = _balls[i]
 		b.visible = s[i * 3 + 2] == 0
-		b.position = _to3(s[i * 3], s[i * 3 + 1])
+		var to := _to3(s[i * 3], s[i * 3 + 1])
+		if roll and b.visible:
+			var d := to - b.position
+			var l := d.length()
+			if l > 1e-5 and l < 0.5:  # rolling without slipping: turn by distance / radius
+				b.rotate(Vector3.UP.cross(d / l).normalized(), l / 0.0286)
+		b.position = to
+	_last = s
 
 
 ## Plays a shot: from the position before it (a snapshot), re-run with frames.
 func play_shot(before: PackedInt64Array, dx: int, dy: int, power: int) -> void:
 	var sim := PoolSim.new()
 	sim.apply_snapshot(before)
-	_frames = sim.shoot(dx, dy, power, FRAME_EVERY).get("frames", [])
+	play_frames(before, sim.shoot(dx, dy, power, FRAME_EVERY).get("frames", []))
+
+
+## Plays recorded frames (every FRAME_EVERY ticks) from a position.
+func play_frames(before: PackedInt64Array, frames: Array) -> void:
+	_frames = frames
 	_frame_t = 0.0
 	show_snapshot(before)
+
+
+## Seated play hides the floating caption (the overlay says it instead).
+func show_caption(on: bool) -> void:
+	if _label:
+		_label.visible = on
 
 
 func set_caption(text: String) -> void:
@@ -134,10 +180,13 @@ func _process(delta: float) -> void:
 	if _frames.is_empty():
 		return
 	_frame_t += delta * 60.0
+	if hold_frame >= 0:
+		_frame_t = minf(_frame_t, float(hold_frame))
 	var i := int(_frame_t)
 	if i >= _frames.size():
 		show_snapshot(_frames[-1])
 		_frames.clear()
+		roll_finished.emit()
 		return
 	show_snapshot(_frames[i])
 

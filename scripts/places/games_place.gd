@@ -19,6 +19,9 @@ var _ui_layer: CanvasLayer
 var _pool_panel: TablePanel
 var _cards_panel: TablePanel
 var dive: ArcadeDive
+var seat: TableSeat  ## sitting at the pool or card table (first person)
+var pool_seat: PoolSeat
+var card_seat: CardSeat
 var _cab: ArcadeCabinet
 var _running := false
 var _busy := false
@@ -27,6 +30,7 @@ var _run_credit: Dictionary = {}
 var _last_score := -1
 var _last_rank := 0
 var _animated_tx := ""
+var _near_cab: ArcadeCabinet
 
 
 func load_territory() -> void:
@@ -66,8 +70,9 @@ func setup_games(echo_spots: Array) -> void:
 	center.add_child(_cards_panel)
 	_cards_panel.setup("cards", book, qing, place, _table_blocker)
 	for p in [_pool_panel, _cards_panel]:
-		p.closed.connect(_resume)
+		p.closed.connect(_on_panel_closed)
 	_build_dive()
+	_build_seats()
 	Wallet.tx_stage.connect(_on_stage)
 
 
@@ -92,9 +97,9 @@ func add_pool_table(xf: Transform3D, cloth: Color = Color(0.05, 0.36, 0.2)) -> v
 	pool_table.transform = xf
 	pool_table.build(cloth)
 	for sx in [-1.0, 1.0]:
-		_spots.append({"at": xf * Vector3(sx * 1.9, 0, 0), "r": 1.3, "prompt": func(): return "play pool: eight-ball in this room's lines", "act": func(): _open_panel(_pool_panel)})
+		_spots.append({"at": xf * Vector3(sx * 1.9, 0, 0), "r": 1.3, "prompt": _pool_prompt, "act": func(): _sit("pool")})
 	for sz in [-1.0, 1.0]:
-		_spots.append({"at": xf * Vector3(0, 0, sz * 1.4), "r": 1.2, "prompt": func(): return "play pool: eight-ball in this room's lines", "act": func(): _open_panel(_pool_panel)})
+		_spots.append({"at": xf * Vector3(0, 0, sz * 1.4), "r": 1.2, "prompt": _pool_prompt, "act": func(): _sit("pool")})
 
 
 func add_card_table(xf: Transform3D) -> void:
@@ -102,7 +107,7 @@ func add_card_table(xf: Transform3D) -> void:
 	add_child(card_table)
 	card_table.transform = xf
 	card_table.build()
-	_spots.append({"at": xf.origin, "r": 2.1, "prompt": func(): return "play Twenty-One: cards dealt by the chain", "act": func(): _open_panel(_cards_panel)})
+	_spots.append({"at": xf.origin, "r": 2.1, "prompt": func(): return "sit at the card table: Twenty-One, first person · cards dealt by the chain", "act": func(): _sit("cards")})
 
 
 ## Any other interactable (the bartender…).
@@ -151,7 +156,7 @@ static func glow(c: Color, e: float = 2.0) -> StandardMaterial3D:
 # --- The tables in 3D -----------------------------------------------------------
 
 func _on_book() -> void:
-	if pool_table:
+	if pool_table and not (pool_seat and pool_seat.is_active()):
 		var m := _latest("pool")
 		if m.is_empty() or m["game"] == null:
 			pool_table.show_sim(PoolSim.new())
@@ -161,12 +166,23 @@ func _on_book() -> void:
 				_animated_tx = m["last_shot"]["tx"]
 				var s: Dictionary = m["last_shot"]
 				pool_table.play_shot(s["before"], s["dx"], s["dy"], s["power"])
-			elif not m.has("last_shot"):
+			elif not pool_table.is_rolling():
 				pool_table.show_sim(m["game"].sim)
 			pool_table.set_caption(_caption(m))
-	if card_table:
+	if card_table and not (card_seat and card_seat.is_active()):
 		var m := _latest("cards")
-		card_table.show_hands(m["game"].hands if not m.is_empty() and m["game"] != null else [[], []])
+		var live: bool = not m.is_empty() and m["game"] != null
+		var d: Duel21 = m["game"] if live else null
+		card_table.show_hands(d.hands if d else [[], []], true)
+		var seats: Array = []
+		for i in 2:
+			var who := "open seat"
+			if not m.is_empty() and m["players"][i] != "":
+				who = book.display(m["players"][i])
+			seats.append({"name": who, "total": Duel21.total(d.hands[i]) if d and d.dealt else -1, "turn": d != null and not d.over() and d.turn == i, "note": " ✓" if d and d.stood[i] else ""})
+		card_table.set_seats(seats)
+		card_table.set_chips(CardSeat.chips_for(m["stake"]) if not m.is_empty() else 0, ArcadePay.fmt(m["stake"]) if not m.is_empty() and not BigInt.is_zero(m["stake"]) else "")
+		card_table.set_dealer(("DEALT BY THE CHAIN\nblock %s" % ArcadeScores.grouped(int(m.get("deal_block", m["created_block"])))) if live else "DEALT BY THE CHAIN")
 		card_table.set_caption("" if m.is_empty() else _caption(m))
 
 
@@ -209,15 +225,28 @@ func _table_blocker() -> String:
 # --- Interaction ----------------------------------------------------------------
 
 func _any_open() -> bool:
-	return (chat_ctl and chat_ctl.is_open()) or (_pool_panel and _pool_panel.is_open()) or (_cards_panel and _cards_panel.is_open()) or (dive and dive.is_active())
+	return (chat_ctl and chat_ctl.is_open()) or (_pool_panel and _pool_panel.is_open()) or (_cards_panel and _cards_panel.is_open()) or (dive and dive.is_active()) or (seat and seat.is_active())
 
 
 func _process(delta: float) -> void:
 	super._process(delta)
 	if player == null or _any_open():
 		return
+	var near_cab: ArcadeCabinet = null
+	var near_d := ArcadeCabinet.TITLE_NEAR
 	for c in cabinets:
 		(c as ArcadeCabinet).set_awake(c.global_position.distance_to(player.global_position) < ArcadeCabinet.NEAR)
+		var f: Vector3 = c.play_spot() - player.global_position
+		var d := Vector2(f.x, f.z).length()
+		if d < near_d:
+			near_d = d
+			near_cab = c
+	if near_cab != _near_cab:
+		if _near_cab:
+			_near_cab.set_near(false)
+		_near_cab = near_cab
+		if _near_cab:
+			_near_cab.set_near(true)
 	if _near_exit:
 		_near_spot = -1
 		return
@@ -234,6 +263,19 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if seat and seat.is_active():
+		if not seat.is_inside() or (_pool_panel and _pool_panel.is_open()) or (_cards_panel and _cards_panel.is_open()):
+			return
+		get_viewport().set_input_as_handled()
+		if event.is_action_pressed("ui_cancel"):
+			_stand()
+		elif event.is_action_pressed("table_lobby"):
+			_open_panel(_pool_panel if pool_seat.is_active() else _cards_panel)
+		elif pool_seat and pool_seat.is_active():
+			pool_seat.handle_input(event)
+		elif card_seat and card_seat.is_active():
+			card_seat.handle_input(event)
+		return
 	if dive and dive.is_active():
 		if not dive.is_inside():
 			return
@@ -262,11 +304,110 @@ func _open_panel(p: TablePanel) -> void:
 	p.open()
 
 
+func _on_panel_closed() -> void:
+	if seat and seat.is_active():
+		# Back to the seat: the aim wants the mouse captured, the card plates want it visible.
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED if pool_seat.is_active() else Input.MOUSE_MODE_VISIBLE)
+		return
+	_resume()
+
+
 func _resume() -> void:
 	player.process_mode = Node.PROCESS_MODE_INHERIT
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 
+
+
+# --- Sitting at a table (first person) ------------------------------------------------
+# Walking up to the pool or card table and using it sits you down (TableSeat): pool from behind
+# the cue ball (PoolSeat), Twenty-One on your stool (CardSeat). Every live move is still a room line
+# through TableBook; the full list (challenge, accept, concede, pay) opens over the seat.
+
+func _pool_prompt() -> String:
+	return "sit at the pool table: eight-ball in first person · shots are this room's lines"
+
+
+func _build_seats() -> void:
+	if pool_table == null and card_table == null:
+		return
+	seat = TableSeat.new()
+	seat.name = "TableSeat"
+	add_child(seat)
+	if pool_table:
+		pool_seat = PoolSeat.new()
+		pool_seat.name = "PoolSeat"
+		add_child(pool_seat)
+		pool_seat.setup(self, pool_table, seat, book)
+	if card_table:
+		card_seat = CardSeat.new()
+		card_seat.name = "CardSeat"
+		add_child(card_seat)
+		card_seat.setup(self, card_table, seat, book)
+
+
+func _hide_cabinet_titles() -> void:
+	if _near_cab:
+		_near_cab.set_near(false)
+	_near_cab = null
+
+
+func _sit(kind: String) -> void:
+	if seat == null or seat.is_active() or (dive and dive.is_active()):
+		return
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	prompt_label.text = ""
+	_hide_cabinet_titles()
+	if kind == "pool" and pool_seat:
+		pool_seat.sit()
+	elif kind == "cards" and card_seat:
+		card_seat.sit()
+
+
+func _stand() -> void:
+	if seat == null or not seat.is_inside():
+		return
+	if pool_seat and pool_seat.is_active():
+		await pool_seat.stand()
+	elif card_seat and card_seat.is_active():
+		await card_seat.stand()
+	_on_book()
+	_resume()
+
+
+## Tools and previews: stand the player `back` metres in front of the cabinet running `id`, facing it.
+func preview_near(id: String, back: float = 2.2) -> void:
+	for c in cabinets:
+		if String(c.entry.get("id", "")) != id:
+			continue
+		player.global_position = c.to_global(Vector3(0, 0.1, back))
+		player.rotation.y = c.global_rotation.y
+		var rig := player.get_node_or_null("CameraRig")
+		if rig and "_yaw" in rig:
+			rig.set("_yaw", c.global_rotation.y)
+		return
+	push_warning("preview_near: no cabinet runs %s" % id)
+
+
+## Tools and previews: sit at a table. kind "pool": phase aim | roll | overhead | enter;
+## kind "cards": seated | enter. Practice mode (nothing is posted, nothing is signed).
+func preview_seat(kind: String, phase: String) -> void:
+	var t: Node3D = pool_table if kind == "pool" else card_table
+	if t == null:
+		push_warning("preview_seat: no %s table here" % kind)
+		return
+	player.global_position = t.global_transform * Vector3(0, 0.1, 2.0 if kind == "pool" else 2.4)
+	await get_tree().process_frame
+	if phase == "enter":
+		seat.freeze_at = 0.5
+	_sit(kind)
+	if phase == "enter":
+		return
+	await seat.entered
+	if kind == "pool":
+		pool_seat.preview(phase)
+	else:
+		card_seat.preview(phase)
 
 
 # --- The arcade -------------------------------------------------------------------
@@ -302,6 +443,7 @@ func _open_cabinet(c: ArcadeCabinet) -> void:
 	_running = false
 	_last_score = -1
 	player.process_mode = Node.PROCESS_MODE_DISABLED
+	_hide_cabinet_titles()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	prompt_label.text = ""
 	if c.game and not c.game.game_over.is_connected(_on_game_over):

@@ -32,6 +32,30 @@ func _ready() -> void:
 		var at := Vector3(-6.0 + i * 2.4, 0.0, 5.6)
 		spots.append(Transform3D(Basis.looking_at(Vector3(0, 0, -1), Vector3.UP, true), at))
 	setup_games(spots)
+	_apply_view()
+
+
+# --- Fixed views for tools/screenshot.gd (--view=cabinets|cabinets_right|tables) ---
+
+const VIEWS := {
+	"cabinets": [Vector3(1.0, 1.7, 0.5), Vector3(-11.3, 1.9, -1.5)],
+	"cabinets_far": [Vector3(10.0, 1.7, 0.5), Vector3(-11.3, 1.9, -1.0)],
+	"tables": [Vector3(0.0, 3.0, 6.5), Vector3(0.5, 0.6, -2.0)],
+}
+
+
+func _apply_view() -> void:
+	var view := ""
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--view="):
+			view = a.substr(7)
+	if not VIEWS.has(view):
+		return
+	var cam := Camera3D.new()
+	cam.fov = 70.0
+	add_child(cam)
+	cam.look_at_from_position(VIEWS[view][0], VIEWS[view][1])
+	cam.current = true
 
 
 static func _catalog() -> Array:

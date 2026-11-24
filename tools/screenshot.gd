@@ -7,6 +7,9 @@ extends SceneTree
 ##       [--toggle=guide|help] (with --view=hud: show that panel)
 ##       [--dive=<arcade catalog id> --dive-phase=push|warp|inside|menu --classic] (an arcade place:
 ##       dive into that cabinet; the attract demo plays, nothing is paid)
+##       [--seat=pool|cards --seat-phase=aim|roll|overhead|seated|enter] (an arcade place or the pub:
+##       sit at that table in first person, practice mode; nothing is posted or signed)
+##       [--near=<arcade catalog id>] (stand in front of that cabinet: its floating title shows)
 ## With --qing, the territory is loaded from the chain first (read-only).
 
 var _out := ""
@@ -22,6 +25,9 @@ var _head := ""
 var _dive := ""  # an arcade place: dive into the cabinet running this catalog id
 var _dive_phase := "inside"  # push | warp | inside | menu
 var _classic := false
+var _seat := ""
+var _seat_phase := "aim"
+var _near := ""
 var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
@@ -41,6 +47,12 @@ func _initialize() -> void:
 			_dive = a.substr(7)
 		elif a.begins_with("--dive-phase="):
 			_dive_phase = a.substr(13)
+		elif a.begins_with("--seat="):
+			_seat = a.substr(7)
+		elif a.begins_with("--seat-phase="):
+			_seat_phase = a.substr(13)
+		elif a.begins_with("--near="):
+			_near = a.substr(7)
 		elif a == "--classic":
 			_classic = true
 		elif a == "--flashlight":
@@ -111,6 +123,16 @@ func _run() -> void:
 			await process_frame
 		if current_scene and current_scene.has_method("preview_dive"):
 			current_scene.preview_dive(_dive, _dive_phase, _classic)
+	if _near != "":
+		for i in 20:
+			await process_frame
+		if current_scene and current_scene.has_method("preview_near"):
+			current_scene.preview_near(_near)
+	if _seat != "":
+		for i in 20:
+			await process_frame
+		if current_scene and current_scene.has_method("preview_seat"):
+			current_scene.preview_seat(_seat, _seat_phase)
 	for i in _frames:
 		await process_frame
 	await RenderingServer.frame_post_draw
