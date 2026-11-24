@@ -128,8 +128,11 @@ func _render() -> void:
 		for a in Session.bars:
 			var t := String(DeepField.for_territory(Registry.get_territory(a)).get("tier", "?"))
 			tiers[t] = tiers.get(t, 0) + 1
-		_row("Atlas: bars at %d of %d territories %s · crowns: %d" % [Session.bars.size(), Registry.count(),
-			str(tiers) if not tiers.is_empty() else "", _opp.crowns.size()], "")
+		var by_tier: PackedStringArray = []
+		for t in tiers:
+			by_tier.append("%s %d" % [t, tiers[t]])
+		_row("Atlas: bars at %d of %d territories%s · crowns: %d" % [Session.bars.size(), Registry.count(),
+			(" (" + ", ".join(by_tier) + ")") if not by_tier.is_empty() else "", _opp.crowns.size()], "")
 	_section("HOT SPOTS · Hypobar per Su", "Only these %d territories hold Fornax: a Su anywhere else adds no Hypobar (still Epibar and +1 YUE)." % _opp.hot.size())
 	for e in _opp.hot.slice(0, 10):
 		var you := ""

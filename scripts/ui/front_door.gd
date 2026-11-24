@@ -596,8 +596,14 @@ func _unhandled_input(event: InputEvent) -> void:
 func _build_bottom() -> void:
 	# The featured QING (its own Julia set), bottom right
 	var fc := PanelContainer.new()
+	# Grows upward from above the strip: a two-line name pushed it onto the strip.
 	fc.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	fc.position = Vector2(-112 - 600, -112 - 150)
+	fc.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	fc.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	fc.offset_left = -112 - 600
+	fc.offset_right = -112
+	fc.offset_top = -112
+	fc.offset_bottom = -112
 	fc.custom_minimum_size = Vector2(600, 0)
 	add_child(fc)
 	var row := HBoxContainer.new()
@@ -691,7 +697,7 @@ func _refresh_news() -> void:
 			FieldIndex.reactors_text(top), dev.size(), rows.size(), TokenFormat.group(str(DevelopmentSnapshot.shipped_block()))])
 	if _lead_news != "":
 		parts.append(_lead_news)
-	_news.text = "NEWS   " + "\n          ".join(parts)
+	_news.text = "NEWS\n" + "\n".join(parts)
 
 
 func _on_leads(lost: Array, gained: Array, block: int) -> void:

@@ -225,6 +225,11 @@ static func acts(snap: Dictionary) -> Array:
 				r.merge({"title": "Read the room", "call": "QING LogEvent history (a read: free)", "doable": true, "blocker": "",
 					"detail": String(r["detail"]) + " · go in, or Y for the history"}, true)
 			out.append(r)
+		elif wallet == "":
+			# Not read yet (or the read failed): reading it is still free, and the hall shows lines as they come.
+			r.merge({"title": "Read the room", "call": "QING LogEvent history (a read: free)", "doable": true, "blocker": "",
+				"detail": "go in, or Y for the history", "priority": 50})
+			out.append(r)
 
 	# Crowns: pass the one above you, or hold your lead.
 	if not me.is_empty() and has_omega and not BigInt.is_zero(omega):

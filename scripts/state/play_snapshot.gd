@@ -52,6 +52,9 @@ static func build(state: TerritoryState, wallet: String, ps: PlayerState, rd: Re
 			room["cover"] = door.cover
 			room["admitted"] = door.admitted
 		s["room"] = room
+	elif feed != null:
+		# Still reading the history: the room is there (and free to read), its last line not known yet.
+		s["room"] = {"loaded": false, "last_block": -1, "head": -1, "cover": null, "admitted": null}
 	var nbs: Array = []
 	var nom: Dictionary = extras.get("neighbour_omega", {})
 	for side in Neighbours.SIDES:

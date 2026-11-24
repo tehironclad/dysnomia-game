@@ -259,10 +259,19 @@ func _build_hud(root: Control) -> void:
 	_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud.visible = false
 	root.add_child(_hud)
+	# A dark backing: the bright cabinet signs behind the table drowned the small print.
+	var back := PanelContainer.new()
+	back.position = Vector2(24, 18)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(DeepFieldTheme.BLACK, 0.8)
+	sb.set_corner_radius_all(6)
+	sb.set_content_margin_all(12)
+	back.add_theme_stylebox_override("panel", sb)
+	_hud.add_child(back)
 	var tl := VBoxContainer.new()
-	tl.position = Vector2(36, 26)
 	tl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_hud.add_child(tl)
+	back.add_child(tl)
 	title = _label(tl, 22, ICE, "DisplayLabel")
 	headline = _label(tl, 40, INK, "DisplayLabel")
 	badge = _label(tl, 15, PRACTICE)

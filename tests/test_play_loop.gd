@@ -122,6 +122,12 @@ func test_newcomer_can_read_the_room() -> void:
 	check(String(room["detail"]).contains("last line at block 40"), room["detail"])
 	eq(_find(acts, "su")["doable"], false)
 	eq(_find(acts, "su")["blocker"], PlayLoop.NO_WALLET)
+	# Before the history is read the newcomer can still go and read; a player gets no act yet.
+	var early := PlayLoop.acts({"wallet": "", "room": {"loaded": false, "last_block": -1, "head": -1, "cover": null, "admitted": null}})
+	eq(_find(early, "room")["title"], "Read the room")
+	eq(_find(early, "room")["doable"], true)
+	var early_mine := PlayLoop.acts({"wallet": ME, "identity": "ok", "room": {"loaded": false, "last_block": -1, "head": -1, "cover": null, "admitted": null}})
+	check(_find(early_mine, "room").is_empty(), "no room act for a player until it is read")
 	# With a wallet the same room is the speaking act.
 	var mine := PlayLoop.acts({"wallet": ME, "identity": "ok", "omega": _w("10"), "room": {"loaded": true, "last_block": 40, "head": 50000}})
 	eq(_find(mine, "room")["title"], "The room is quiet: speak")

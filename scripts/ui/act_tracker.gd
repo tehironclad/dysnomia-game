@@ -33,7 +33,7 @@ func _ready() -> void:
 	v.add_child(_goals)
 	_foot = Label.new()
 	_foot.theme_type_variation = "MutedLabel"
-	_foot.add_theme_font_size_override("font_size", 10)
+	_foot.add_theme_font_size_override("font_size", 11)
 	v.add_child(_foot)
 
 
@@ -68,7 +68,7 @@ func show_loop(acts: Array, goals: Array, block: int) -> void:
 		col.add_child(t)
 		var d := Label.new()
 		d.theme_type_variation = "MutedLabel"
-		d.add_theme_font_size_override("font_size", 11)
+		d.add_theme_font_size_override("font_size", 12)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		d.text = String(a.get("detail", "")) if a["doable"] or String(a.get("blocker", "")) == "" else String(a["blocker"])
 		d.tooltip_text = String(a.get("call", ""))
@@ -83,7 +83,7 @@ func show_loop(acts: Array, goals: Array, block: int) -> void:
 	for g in goals:
 		var l := Label.new()
 		l.theme_type_variation = "MonoLabel"
-		l.add_theme_font_size_override("font_size", 11)
+		l.add_theme_font_size_override("font_size", 12)
 		l.add_theme_color_override("font_color", DeepFieldTheme.MUTED)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.text = String(g["text"])
