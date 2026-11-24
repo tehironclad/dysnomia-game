@@ -8,7 +8,7 @@
 #
 # Safe to run again: each step checks first. A re-run is also how it updates.
 #
-#   1. the `dysnomia` system user, /opt/dysnomia
+#   1. the `dysnomia-server` system user (never a login), /opt/dysnomia
 #   2. a read-only deploy key for it (this repo is private): it prints the
 #      PUBLIC key, waits while you add it in GitHub, checks it with git ls-remote
 #   3. the checkout /opt/dysnomia/game, on BRANCH (master)
@@ -25,7 +25,7 @@ NAME="${NAME:-dysnomia}"
 GODOT_VERSION=4.6.1
 GODOT_ZIP="Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
 GODOT_URL="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
-APP_USER=dysnomia
+APP_USER=dysnomia-server
 APP_HOME=/opt/dysnomia
 GAME_DIR="$APP_HOME/game"
 GODOT_DIR="$APP_HOME/godot"
@@ -46,6 +46,11 @@ for c in git ssh-keygen runuser curl sha512sum python3 systemctl; do command -v 
 [[ "$NAME" =~ ^[A-Za-z0-9._-]{1,40}$ ]] || die "NAME: letters, digits, . _ - (up to 40)"
 
 step "1/6  The $APP_USER user"
+# Only ever a system account: if a person's login has this name (uid 1000+,
+# a shell, sudo), running the server as it would hand the server their rights.
+if id "$APP_USER" >/dev/null 2>&1 && [ "$(id -u "$APP_USER")" -ge 1000 ]; then
+  die "'$APP_USER' is a login account here (uid $(id -u "$APP_USER")), not a service account; this script won't run the server as it"
+fi
 if ! id "$APP_USER" >/dev/null 2>&1; then
   useradd --system --user-group --home-dir "$APP_HOME" --no-create-home --shell /usr/sbin/nologin "$APP_USER"
   note "created"

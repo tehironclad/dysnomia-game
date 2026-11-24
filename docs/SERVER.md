@@ -52,7 +52,7 @@ a systemd service:
 sudo bash tools/install-server-linux.sh            # NAME=<server name> to set --name
 ```
 
-It creates a `dysnomia` user and prints a **read-only deploy key** to add in GitHub (this repo is
+It creates a `dysnomia-server` service account (never a login) and prints a **read-only deploy key** to add in GitHub (this repo is
 private). It clones the repo to `/opt/dysnomia/game` and installs Godot 4.6.1, checked against the
 release's `SHA512-SUMS.txt`. It imports the project and starts `dysnomia-server.service` on
 `127.0.0.1:8787`, with its files in `/var/lib/dysnomia-server`. Extra options from the table above

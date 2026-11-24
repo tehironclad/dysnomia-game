@@ -9,8 +9,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=dysnomia
-Group=dysnomia
+User=dysnomia-server
+Group=dysnomia-server
 Environment=HOME=/opt/dysnomia
 WorkingDirectory=/opt/dysnomia/game
 # --name and anything else: /etc/dysnomia-server/env (SERVER_ARGS=...)
