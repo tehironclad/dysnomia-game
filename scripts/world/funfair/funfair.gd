@@ -108,11 +108,9 @@ func _process(_delta: float) -> void:
 
 func _apply_time(force: bool) -> void:
 	## Lights come up at dusk: bulbs/signs/pools and real lights follow the sun height.
-	var gm := get_node_or_null("/root/GameManager")
-	var tod: float = gm.time_of_day if gm else 0.0
-	var sun_h := sin(tod * TAU - PI * 0.5)
-	var n := 1.0 - clampf((sun_h + 0.08) / 0.33, 0.0, 1.0)
-	n = n * n * (3.0 - 2.0 * n)
+	# v2: Dysnomia is ~96 AU from the Sun and the Deep Field sky is always dark,
+	# so the fair runs its night lighting all the time (bulbs, neon, searchlights).
+	var n := 1.0
 	if not force and absf(n - _last_night) < 0.004:
 		return
 	_last_night = n

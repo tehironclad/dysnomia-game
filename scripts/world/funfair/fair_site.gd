@@ -104,12 +104,24 @@ func set_dev_tier(dev_tier: int) -> void:
 	_fair.initialize(_qing.hex_to_int() if _qing.length() < 16 else _qing.right(12).hex_to_int(), t)
 	if t == 0 and _fair.has_method("set_unlock_hint"):
 		_fair.set_unlock_hint("Opens at Settlement development · grow this QING's Hypobar")
+	if t > 0 and _hud:
+		var names := ["", "Night Market", "Fairground", "Grand Fair"]
+		var dir := _compass(Vector2(position.x, position.z))
+		_hud.ticker("AFFECTION FAIR · %s open · %d m %s of the Core · rides %s each" % [
+			names[t], int(Vector2(position.x, position.z).length()), dir, ArcadePay.fee_text()], DeepFieldTheme.ICE, 30.0)
+	print("[Fair] development %d → fair tier %d · %d rides · at %s" % [dev_tier, t, _fair.get_rides().size(), str(Vector2(position.x, position.z))])
 	for r in _fair.get_rides():
 		r.booth_focus.connect(_on_focus)
 		r.ride_caption.connect(func(text: String) -> void:
 			if text != "":
 				_hud.ticker(text, DeepFieldTheme.ICE, 3.0))
 		r.ride_finished.connect(_on_finished)
+
+
+static func _compass(v: Vector2) -> String:
+	## Map directions with -Z as north (the way you face on arrival).
+	var a := fposmod(rad_to_deg(atan2(v.x, -v.y)), 360.0)
+	return ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][int(round(a / 45.0)) % 8]
 
 
 func _on_focus(ride: RideBase, inside: bool) -> void:

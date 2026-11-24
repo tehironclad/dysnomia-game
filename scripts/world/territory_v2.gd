@@ -183,6 +183,12 @@ func _frame(view: String) -> void:
 		camera.position = Vector3(6.0, core_h + 4.0, 34.0)
 		camera.look_at(Vector3(0.0, core_h + 8.0, 0.0))
 		camera.fov = 60.0
+	elif view == "fair" and fair:
+		# Looking at the Affection Fair from its arrival side
+		var f := fair.global_position
+		camera.position = f + Vector3(0.0, 28.0, -95.0)
+		camera.look_at(f + Vector3(0.0, 8.0, 0.0))
+		camera.fov = 60.0
 	elif view == "sky":
 		camera.position = Vector3(0.0, core_h + 2.0, 0.0)
 		camera.look_at(camera.position + Vector3(-0.55, 0.62, 0.55))
