@@ -636,7 +636,7 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
     preview, as before. Measured 2026-11-24: that two-topic filter over **the whole chain** (block 0 → head)
     answers in < 1 s when the pair has few transfers, but for a busy pair (hundreds of transfers a day) the
     node cuts the body off after ~10 s (HTTP 200, 23 bytes of JSON); scan from `FROM_BLOCK`, never block 0.
-  - Shots: `screenshot.gd -- --qing=<Grand Fair QING> --fair=<game>|rocket [--fair-phase=aim|play|result]
+  - Shots: `screenshot.gd -- --qing=<Grand Fair QING> --fair=<game>|rocket [--fair-phase=aim|play|result|board]
     [--fair-codes=1,2,3]` (practice, nothing paid or posted). `tools/probe_fair.gd [-- --wallet=0x…]` plays
     all seven through, replays each score and checks the rocket's lock from the chain.
 
