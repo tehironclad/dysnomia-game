@@ -80,6 +80,8 @@ const MAX_WALL_CLIMB: float = 1.5  # Seconds of wall climbing before sliding
 
 
 func _ready() -> void:
+	# World triggers (fair ride booths, board/bay zones) find the player by this group
+	add_to_group("player")
 	_camera_rig = $CameraRig
 	_collision_shape = $CollisionShape3D
 	_current_height = stand_height
