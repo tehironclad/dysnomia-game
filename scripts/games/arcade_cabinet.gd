@@ -2,8 +2,9 @@ class_name ArcadeCabinet
 extends Node3D
 ## An upright arcade cabinet running one ArcadeCatalog entry. Its screen is a
 ## 320×240 SubViewport: the game's attract loop while a player is near (and
-## frozen otherwise, to spare low-end PCs); a paid credit starts a real run,
-## which the place shows full screen.
+## frozen otherwise, to spare low-end PCs); a paid credit starts a real run.
+## Using a cabinet dives into it (ArcadeDive): the camera pushes into this
+## screen and you land in the game's 3D world, or this screen full-size.
 
 const NEAR := 9.0
 
@@ -91,8 +92,7 @@ func setup(p_entry: Dictionary, accent: Color) -> void:
 	_screen_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_screen_mat.albedo_texture = viewport.get_texture()
 	screen.material_override = _screen_mat
-	screen.position = Vector3(0, 1.42, 0.33)
-	screen.rotation_degrees.x = -12.0
+	screen.transform = Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-12.0)), Vector3(0, 1.42, 0.33))
 	add_child(screen)
 	var body := StaticBody3D.new()
 	add_child(body)
@@ -128,6 +128,11 @@ func set_awake(on: bool) -> void:
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS if on else SubViewport.UPDATE_DISABLED
 	if game:
 		game.process_mode = Node.PROCESS_MODE_INHERIT if on else Node.PROCESS_MODE_DISABLED
+
+
+## The screen quad's global transform (its +Z faces the player; 0.64 × 0.48 m).
+func screen_transform() -> Transform3D:
+	return global_transform * Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-12.0)), Vector3(0, 1.42, 0.33))
 
 
 ## Where the player stands to play (in front of the controls).

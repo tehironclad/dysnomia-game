@@ -5,6 +5,8 @@ extends SceneTree
 ##       [--scene=res://scenes/main.tscn] [--qing=0x…] [--frames=90] [--quality=0..3]
 ##       [--session=0x…] [--open=su|room|beat|void|world] (with --view=hud: a move's panel, previewed only)
 ##       [--toggle=guide|help] (with --view=hud: show that panel)
+##       [--dive=<arcade catalog id> --dive-phase=push|warp|inside|menu --classic] (an arcade place:
+##       dive into that cabinet; the attract demo plays, nothing is paid)
 ## With --qing, the territory is loaded from the chain first (read-only).
 
 var _out := ""
@@ -17,6 +19,9 @@ var _session := ""
 var _open := ""
 var _toggle := ""
 var _head := ""
+var _dive := ""  # an arcade place: dive into the cabinet running this catalog id
+var _dive_phase := "inside"  # push | warp | inside | menu
+var _classic := false
 var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
@@ -32,6 +37,12 @@ func _initialize() -> void:
 			_frames = int(a.substr(9))
 		elif a.begins_with("--session="):
 			_session = a.substr(10)  # read-only: view a wallet's identity (no signing)
+		elif a.begins_with("--dive="):
+			_dive = a.substr(7)
+		elif a.begins_with("--dive-phase="):
+			_dive_phase = a.substr(13)
+		elif a == "--classic":
+			_classic = true
 		elif a == "--flashlight":
 			_flash = true
 		elif a.begins_with("--head="):
@@ -95,6 +106,11 @@ func _run() -> void:
 		current_scene.get_node("Player")._toggle_flashlight()
 	if _toggle != "" and current_scene and current_scene.get(_toggle) != null:
 		current_scene.get(_toggle).toggle()
+	if _dive != "":
+		for i in 20:
+			await process_frame
+		if current_scene and current_scene.has_method("preview_dive"):
+			current_scene.preview_dive(_dive, _dive_phase, _classic)
 	for i in _frames:
 		await process_frame
 	await RenderingServer.frame_post_draw

@@ -9,7 +9,9 @@ extends Node2D
 ## Simulation: a fixed 60 Hz step. `_process` feeds `step(DT)` only while `playing` or in attract
 ## mode; tests call `step(dt)` directly. Input is read from the `Input` singleton (a SubViewport gets
 ## no input events) through the actions move_left / move_right / move_forward (up) / move_back
-## (down) / jump (fire). `scripted_input` (a bitmask of IN_*) replaces the keyboard for tests.
+## (down) / jump (fire), and the arrow keys (look_*) too. `scripted_input` (a bitmask of IN_*)
+## replaces the keyboard for tests. A dive-in 3D world may set `input_remap` so the keys match its
+## camera (e.g. Entropy Drift's chase view steers the 2D field's vertical axis with left/right).
 ## `game_over(score)` is emitted once per credit, never in attract mode (the demo just restarts).
 
 signal game_over(score: int)
@@ -38,6 +40,7 @@ const ACTIONS := {
 	IN_LEFT: "move_left", IN_RIGHT: "move_right", IN_UP: "move_forward", IN_DOWN: "move_back",
 	IN_FIRE: "jump",
 }
+const ALT_ACTIONS := {IN_LEFT: "look_left", IN_RIGHT: "look_right", IN_UP: "look_up", IN_DOWN: "look_down"}
 
 var playing := false  ## a paid run is live
 var score := 0
@@ -45,6 +48,7 @@ var lives := 3
 var attract_mode := false  ## the self-playing demo is running
 var over := false  ## the game-over screen is up (after game_over was emitted)
 var scripted_input := -1  ## >= 0: use these IN_* bits instead of the Input singleton (tests)
+var input_remap := {}  ## keyboard IN_* bit → game IN_* bit (a 3D world's controls); empty = as is
 var held := 0  ## IN_* bits held this step
 var pressed := 0  ## IN_* bits that went down this step
 var t := 0.0  ## simulated seconds since start / attract
@@ -189,10 +193,22 @@ func _read_input() -> int:
 	if scripted_input >= 0:
 		return scripted_input
 	var bits := 0
-	for bit in ACTIONS:
-		if InputMap.has_action(ACTIONS[bit]) and Input.is_action_pressed(ACTIONS[bit]):
-			bits |= bit
-	return bits
+	for table in [ACTIONS, ALT_ACTIONS]:
+		for bit in table:
+			if InputMap.has_action(table[bit]) and Input.is_action_pressed(table[bit]):
+				bits |= bit
+	return remap_bits(bits, input_remap)
+
+
+## Applies a keyboard → game bit map (bits not in the map pass through). Pure.
+static func remap_bits(bits: int, remap: Dictionary) -> int:
+	if remap.is_empty():
+		return bits
+	var out := 0
+	for bit in [IN_LEFT, IN_RIGHT, IN_UP, IN_DOWN, IN_FIRE]:
+		if bits & bit:
+			out |= int(remap.get(bit, bit))
+	return out
 
 
 # ── drawing ──────────────────────────────────────────────────────────────────

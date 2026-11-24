@@ -1,7 +1,8 @@
 class_name GamesPlace
 extends PlaceBase
-## What the arcade and Sunny's Pub share: arcade cabinets (1 Ⓐ a play, paid
-## to this territory's QING and verified on chain before the run starts), a
+## What the arcade and Sunny's Pub share: arcade cabinets you dive into
+## (ArcadeDive; 1 Ⓐ a play, paid to this territory's QING and verified on
+## chain before the run starts), a
 ## pool table and a card table played through this QING's room lines, the
 ## room's chat (T), and an exit back to the territory.
 
@@ -17,16 +18,14 @@ var _near_spot := -1
 var _ui_layer: CanvasLayer
 var _pool_panel: TablePanel
 var _cards_panel: TablePanel
-var _play: PanelContainer
-var _play_title: Label
-var _play_tex: TextureRect
-var _play_info: Label
-var _play_pay: Button
-var _play_start: Button
+var dive: ArcadeDive
 var _cab: ArcadeCabinet
 var _running := false
 var _busy := false
 var _pay_label := ""
+var _run_credit: Dictionary = {}
+var _last_score := -1
+var _last_rank := 0
 var _animated_tx := ""
 
 
@@ -68,7 +67,7 @@ func setup_games(echo_spots: Array) -> void:
 	_cards_panel.setup("cards", book, qing, place, _table_blocker)
 	for p in [_pool_panel, _cards_panel]:
 		p.closed.connect(_resume)
-	_build_play_ui(center)
+	_build_dive()
 	Wallet.tx_stage.connect(_on_stage)
 
 
@@ -210,7 +209,7 @@ func _table_blocker() -> String:
 # --- Interaction ----------------------------------------------------------------
 
 func _any_open() -> bool:
-	return (chat_ctl and chat_ctl.is_open()) or (_pool_panel and _pool_panel.is_open()) or (_cards_panel and _cards_panel.is_open()) or (_play and _play.visible)
+	return (chat_ctl and chat_ctl.is_open()) or (_pool_panel and _pool_panel.is_open()) or (_cards_panel and _cards_panel.is_open()) or (dive and dive.is_active())
 
 
 func _process(delta: float) -> void:
@@ -235,10 +234,18 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _play and _play.visible:
+	if dive and dive.is_active():
+		if not dive.is_inside():
+			return
 		if event.is_action_pressed("ui_cancel"):
 			get_viewport().set_input_as_handled()
-			_close_play()
+			_on_escape()
+		elif event.is_action_pressed("arcade_view"):
+			get_viewport().set_input_as_handled()
+			dive.toggle_view()
+		elif event.is_action_pressed("arcade_start"):
+			get_viewport().set_input_as_handled()
+			_start_run()
 		return
 	if _any_open():
 		return
@@ -260,99 +267,88 @@ func _resume() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 
+
+
 # --- The arcade -------------------------------------------------------------------
+# Using a cabinet dives into it (ArcadeDive). Inside, the game's attract demo plays behind a menu:
+# pay (ArcadePay: simulate, sign, verify the receipt, re-read the QING), play a credit, the
+# cabinet's high-score board (this computer only), leave. A run hides the menu; game over brings it
+# back with the score. Esc ends a run (the score counts), then leaves.
 
 func _cabinet_prompt(c: ArcadeCabinet, title: String) -> String:
 	if not c.playable():
-		return "%s (an attract screen: Maria's cartridge art)" % title
+		return "dive into %s (Maria's cartridge, full-screen CRT, free)" % title
 	var n := ArcadePay.credits(Session.wallet, qing)
-	return "play %s · %s a play, to this QING%s" % [title, ArcadePay.fee_text(), (" · %d credit%s" % [n, "" if n == 1 else "s"]) if n > 0 else ""]
+	return "dive into %s · %s a play, to this QING%s" % [title, ArcadePay.fee_text(), (" · %d credit%s" % [n, "" if n == 1 else "s"]) if n > 0 else ""]
 
 
-func _build_play_ui(center: Control) -> void:
-	_play = PanelContainer.new()
-	_play.theme = DeepFieldTheme.get_theme()
-	var sb := DeepFieldTheme.panel_style()
-	sb.bg_color.a = 0.97
-	_play.add_theme_stylebox_override("panel", sb)
-	_play.visible = false
-	center.add_child(_play)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
-	_play.add_child(col)
-	_play_title = Label.new()
-	_play_title.theme_type_variation = "DisplayLabel"
-	_play_title.add_theme_font_size_override("font_size", 18)
-	col.add_child(_play_title)
-	_play_tex = TextureRect.new()
-	_play_tex.custom_minimum_size = Vector2(800, 600)
-	_play_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_play_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_play_tex.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	col.add_child(_play_tex)
-	_play_info = Label.new()
-	_play_info.theme_type_variation = "MutedLabel"
-	_play_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_play_info.custom_minimum_size = Vector2(800, 0)
-	col.add_child(_play_info)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	col.add_child(row)
-	_play_pay = Button.new()
-	_play_pay.pressed.connect(_pay_credit)
-	row.add_child(_play_pay)
-	_play_start = Button.new()
-	_play_start.text = "Play (uses a credit)"
-	_play_start.pressed.connect(_start_run)
-	row.add_child(_play_start)
-	var close := Button.new()
-	close.text = "Leave the cabinet (Esc)"
-	close.pressed.connect(_close_play)
-	row.add_child(close)
+func _build_dive() -> void:
+	dive = ArcadeDive.new()
+	dive.name = "ArcadeDive"
+	add_child(dive)
+	dive.pay_pressed.connect(_pay_credit)
+	dive.start_pressed.connect(_start_run)
+	dive.leave_pressed.connect(_on_escape)
+	dive.view_pressed.connect(func(): dive.toggle_view())
+	dive.entered.connect(func():
+		if not _running:
+			dive.show_menu())
 
 
 func _open_cabinet(c: ArcadeCabinet) -> void:
+	if dive.is_active():
+		return
 	_cab = c
 	_running = false
+	_last_score = -1
 	player.process_mode = Node.PROCESS_MODE_DISABLED
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	_play_title.text = String(c.entry.get("title", "")).to_upper() + " · " + String(territory.get("name", ""))
-	_play_tex.texture = c.viewport.get_texture()
-	_play.visible = true
+	prompt_label.text = ""
 	if c.game and not c.game.game_over.is_connected(_on_game_over):
 		c.game.game_over.connect(_on_game_over)
+	dive.enter(c, {"qing": qing, "territory": territory, "accent": accent, "model": player.get_node_or_null("PlayerModel")})
 	_refresh_play()
 	_read_balance()
 
 
 func _refresh_play(note: String = "") -> void:
-	if _cab == null:
+	if _cab == null or dive == null:
 		return
 	var n := ArcadePay.credits(Session.wallet, qing)
 	var blocker := _signer_blocker()
-	_play_pay.text = "Pay %s for a play" % ArcadePay.fee_text()
-	_play_pay.visible = _cab.playable() and not _running
-	_play_pay.disabled = _busy or blocker != ""
-	_play_start.visible = _cab.playable() and not _running
-	_play_start.disabled = _busy or n <= 0
-	var how := String(_cab.entry.get("blurb", ""))
-	var info := "%s\nA play costs %s: AFFECTION.transfer to %s's QING contract (its own balance), checked in the receipt on chain before the game starts. Credits here: %d." % [how, ArcadePay.fee_text(), String(territory.get("name", "")), n]
+	var title := String(_cab.entry.get("title", ""))
+	dive.menu_title.text = title.to_upper() + " · " + String(territory.get("name", ""))
+	dive.menu_blurb.text = String(_cab.entry.get("blurb", ""))
+	dive.pay_button.text = "Pay %s for a play" % ArcadePay.fee_text()
+	dive.pay_button.visible = _cab.playable() and not _running
+	dive.pay_button.disabled = _busy or blocker != ""
+	dive.start_button.text = "Play (uses a credit) · %s" % ControlsHelp.key_of("arcade_start")
+	dive.start_button.visible = _cab.playable() and not _running
+	dive.start_button.disabled = _busy or n <= 0
+	var info := "A play costs %s: AFFECTION.transfer to %s's QING contract (its own balance), checked in the receipt on chain before the game starts. Credits here: %d." % [ArcadePay.fee_text(), String(territory.get("name", "")), n]
 	if not _cab.playable():
-		info = "%s\nThis cartridge is a picture, not a game: it shows on the screen for free." % how
-	if _running:
-		info = "%s\nPlaying: arrows / WASD to move, Space for the action. Esc stops the run." % how
+		info = "This cartridge runs by itself on the Folklore CPU: it shows here for free and takes no credits."
+	if _last_score >= 0:
+		info = "GAME OVER · score %s%s\n%s" % [ArcadeScores.grouped(_last_score), (" · #%d on this cabinet's board" % _last_rank) if _last_rank > 0 else "", info]
 	if blocker != "" and not _running and _cab.playable():
 		info += "\n" + blocker
 	if note != "":
 		info += "\n" + note
-	_play_info.text = info
+	dive.menu_info.text = info
+	var playable := _cab.playable()
+	dive.scores_title.visible = playable
+	dive.scores_label.visible = playable
+	if playable:
+		var board := ArcadeScores.board(qing, String(_cab.entry.get("id", "")))
+		dive.scores_title.text = "%s: the credit's block shows it was paid." % ArcadeScores.LABEL
+		dive.scores_label.text = "\n".join(ArcadeScores.lines(board)) if not board.is_empty() else "No paid runs on this cabinet yet (on this computer)."
 
 
 func _read_balance() -> void:
 	if Session.wallet == "":
 		return
 	var r := await ArcadePay.read_balance(Session.wallet)
-	if _play.visible and not _running:
+	if dive.is_active() and not _running:
 		_refresh_play(("Your Ⓐ: %s (AFFECTION.balanceOf, latest block)." % ArcadePay.fmt(r["balance"])) if r["ok"] else "Your Ⓐ balance could not be read: —")
 
 
@@ -373,15 +369,25 @@ func _pay_credit() -> void:
 
 
 func _start_run() -> void:
-	if _cab == null or _running:
+	if _cab == null or _running or _busy or not dive.is_inside() or not _cab.playable():
 		return
 	var credit := ArcadePay.use_credit(Session.wallet, qing)
 	if credit.is_empty():
 		_refresh_play("No credit left: pay for a play first.")
 		return
 	_running = true
-	var seed := String(credit["tx"]).substr(2, 12).hex_to_int()
+	_busy = true
+	_run_credit = credit
+	_last_score = -1
+	var cab := _cab
+	var seed := ArcadeWorld.seed_from_tx(String(credit["tx"]))
+	if dive.world:
+		seed = await dive.world.prepare_run(credit)
+	_busy = false
+	if _cab != cab:
+		return
 	_cab.start_run(seed)
+	dive.set_running(true, "PAID RUN · credit tx %s · block %s · %s to this QING, verified in the receipt" % [ArcadeScores.short(String(credit["tx"])), ArcadeScores.grouped(int(credit.get("block", 0))), ArcadePay.fee_text()])
 	_refresh_play()
 
 
@@ -389,23 +395,83 @@ func _on_game_over(score: int) -> void:
 	if not _running:
 		return
 	_running = false
-	_refresh_play("Game over · score %d." % score)
+	_last_score = score
+	_last_rank = 0
+	if not _run_credit.is_empty() and _cab:
+		_last_rank = ArcadeScores.record(qing, String(_cab.entry.get("id", "")), {
+			"score": score, "wallet": Session.wallet.to_lower(), "tx": String(_run_credit["tx"]),
+			"block": int(_run_credit.get("block", 0)), "at": int(Time.get_unix_time_from_system()),
+		})
+	_run_credit = {}
+	dive.set_running(false)
+	_refresh_play()
+
+
+## Esc inside a cabinet: ends a live run (its score counts), otherwise leaves.
+func _on_escape() -> void:
+	if _busy and _running:
+		return
+	if _running and _cab and _cab.game and _cab.game.playing:
+		_cab.game.end_game()
+		return
+	_close_play()
 
 
 func _close_play() -> void:
-	if _cab:
-		_cab.back_to_attract()
+	if not dive.is_active():
+		return
+	var cab := _cab
+	var toast := ""
+	if cab and _last_score >= 0:
+		toast = "%s · SCORE %s%s" % [String(cab.entry.get("title", "")).to_upper(), ArcadeScores.grouped(_last_score),
+			(" · #%d on this cabinet's board (this computer)" % _last_rank) if _last_rank > 0 else ""]
 	_running = false
-	_play.visible = false
+	_last_score = -1
+	dive.leave()
+	await dive.exited
+	if cab:
+		cab.back_to_attract()
 	_cab = null
 	_resume()
+	if toast != "":
+		dive.show_toast(toast)
 
 
 func _on_stage(label: String, stage: String, info: Dictionary) -> void:
-	if not (_play and _play.visible) or label != _pay_label:
+	if not (dive and dive.is_active()) or label != _pay_label:
 		return
 	match stage:
 		"simulate": _refresh_play("Simulating the transfer from your wallet…")
 		"sign": _refresh_play("Waiting for your signature in the browser wallet…")
 		"pending": _refresh_play("Sent %s · waiting for the receipt…" % String(info.get("hash", "")))
 		"confirmed": _refresh_play("Mined in block %d. Checking the Transfer log…" % int(info.get("block", -1)))
+
+
+## Tools and previews: dive into the cabinet running catalog entry `id`. phase: "push" or "warp"
+## hold the transition there; "inside" lands and hides the menu (the demo plays full-screen);
+## "menu" lands with the menu up. classic: the cabinet's own screen instead of the 3D world.
+func preview_dive(id: String, phase: String = "inside", classic: bool = false) -> void:
+	for c in cabinets:
+		if String(c.entry.get("id", "")) != id:
+			continue
+		player.global_position = c.play_spot()
+		player.rotation.y = c.global_rotation.y
+		var rig := player.get_node_or_null("CameraRig")
+		if rig and "_yaw" in rig:
+			rig.set("_yaw", c.global_rotation.y)
+		await get_tree().process_frame
+		match phase:
+			"push":
+				dive.freeze_at = 0.3
+			"warp":
+				dive.freeze_at = 0.62
+		_open_cabinet(c)
+		if phase in ["push", "warp"]:
+			return
+		await dive.entered
+		if classic:
+			dive.toggle_view()
+		if phase == "inside":
+			dive.menu.visible = false
+		return
+	push_warning("preview_dive: no cabinet runs %s" % id)

@@ -66,7 +66,11 @@
   Transfer logs), `PoolSim`/`EightBall` (integer physics), `Duel21` (cards from block hashes). The arcade
   library is `scripts/arcade/` (ArcadeGame, three original games, the Folklore 6502 cart player,
   ArcadeCatalog). Places: `arcade_place.gd` (every territory, door `ArcadeFront` on the plaza) and
-  `sunny_pub.gd` (TehSunFlowrScioety QING), both on `GamesPlace`.
+  `sunny_pub.gd` (TehSunFlowrScioety QING), both on `GamesPlace`. Cabinets are dived into
+  (`scripts/arcade/dive/`: `ArcadeDive` transition + overlay, one `ArcadeWorld` per original game that
+  only reads the 2D game's state, `DriftTrack` from QING.Entropy() + a block hash, `ArcadeScores` local
+  board). Render a dive: `screenshot.gd -- --scene=res://scenes/places/arcade_place.tscn
+  --dive=void_lanes|entropy_drift|bar_raiser|cart_… [--dive-phase=push|warp|inside|menu] [--classic]`.
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
   total; skyline towers per player (`bar_columns.gd`, `tower.gdshader`), structures (`development_site.gd`),
   city lights/roads (terrain shader), aurora (sky shader). `tools/live_development.gd` measures every territory.

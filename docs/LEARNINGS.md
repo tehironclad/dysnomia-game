@@ -552,3 +552,18 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   reads AFFECTION `Transfer(loser → winner)` logs after the game's last block and allocates them
   oldest debt first. ✓ paid / ⚠ unpaid is what everyone sees.
 - **Sunny's Pub** replaces the arcade in TehSunFlowrScioety QING `0x2b78b345880807ac9be28c1309ab55d6fa8796de`.
+- **Diving into a cabinet** (`scripts/arcade/dive/`, 2026-11-24). Using a cabinet runs `ArcadeDive`: the
+  camera pushes into the screen (CRT bulge, scanlines), a light tunnel and a flash, and you land in the
+  game's world; Esc reverses it and the arcade shows your score.
+  - **The 2D game stays the source of truth.** An `ArcadeWorld` (Void Lanes, Entropy Drift, Bar Raiser)
+    only reads its cabinet's `ArcadeGame` state every frame and stages it in 3D (own World3D in a
+    SubViewport). Scores, lives, game_over and the unit tests are the 2D game's. A world may remap the
+    keys to its camera (`ArcadeGame.input_remap`; scripted test input is never remapped).
+  - **Entropy Drift's road is chain data:** `DriftTrack` = SHA-256(`QING.Entropy()` decimal `:` block
+    hash). A paid run uses the block holding the credit's transfer (and seeds the field from the same
+    bytes); the demo uses the latest block. No hash read → a flat road labelled "—", never a made-up one.
+  - Cartridges, and V ("classic") in any game, show the cabinet's own 320×240 screen full-size in a CRT bezel.
+  - The flow inside is unchanged: ArcadePay (simulate, sign, verify the receipt, re-read the QING), then
+    a credit starts the run. **Scores are local** (`ArcadeScores`, `user://arcade_scores.cfg`, top 10
+    per QING and cabinet): a game's score is self-reported, so a room line would prove nothing. Every
+    entry carries its credit's tx hash and block, and the board says "on this computer (not on chain)".

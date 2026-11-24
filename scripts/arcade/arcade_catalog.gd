@@ -2,7 +2,9 @@ class_name ArcadeCatalog
 extends RefCounted
 ## Everything an arcade cabinet can run.
 ##
-## Each entry: {id, title, blurb, script, kind: "game" | "cartridge", playable, [cart, cart_type]}.
+## Each entry: {id, title, blurb, script, kind: "game" | "cartridge", playable, [cart, cart_type], [world]}.
+##   - world: the ArcadeWorld you dive into (scripts/arcade/dive/); without one the dive shows the
+##     cabinet's own screen full-size in a CRT bezel (every cartridge).
 ##   - kind "game": `load(script).new()` is a ready ArcadeGame.
 ##   - kind "cartridge": script is folklore_cart.gd; the cabinet MUST call `load_cart(cart)` on the
 ##     new node before `start(seed)` / `attract()`. Sprite cartridges (cart_type "sprite") are art
@@ -17,16 +19,19 @@ const GAMES := [
 		"id": "entropy_drift", "title": "Entropy Drift",
 		"blurb": "Steer the probe, grab gold Fornax motes, dodge shards. Fire: pulse.",
 		"script": "res://scripts/arcade/entropy_drift.gd",
+		"world": "res://scripts/arcade/dive/entropy_drift_world.gd",
 	},
 	{
 		"id": "void_lanes", "title": "Void Lanes",
 		"blurb": "Catch true chat lines; dodge or flag the imposters. Fire: flag.",
 		"script": "res://scripts/arcade/void_lanes.gd",
+		"world": "res://scripts/arcade/dive/void_lanes_world.gd",
 	},
 	{
 		"id": "bar_raiser", "title": "Bar Raiser",
 		"blurb": "Hold fire to grow the Hypobar; release on the gold Epibar mark.",
 		"script": "res://scripts/arcade/bar_raiser.gd",
+		"world": "res://scripts/arcade/dive/bar_raiser_world.gd",
 	},
 ]
 

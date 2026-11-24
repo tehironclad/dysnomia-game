@@ -19,7 +19,9 @@ GODOT=/path/to/godot tools/check.sh
 
 The tests cover BigInt and the ABI, selectors against keccak goldens, projection and Deep Field params
 against the site's real JS, heightfield hashes, readiness, chat parsing and badges, Su deltas, the Join
-plan, the WORLD bytecode classifier, the CREATE table, acts, controls and sound.
+plan, the WORLD bytecode classifier, the CREATE table, acts, controls and sound, the arcade games and
+the Folklore CPU, and the arcade dive (score board, Entropy Drift's chain track, each 3D world following
+its game headlessly).
 
 Per-script `--check-only` gives false "Identifier not found" errors for autoloads; don't use it. A script
 that fails to parse makes `-s` tools hang, so run `check.sh` first.
@@ -52,6 +54,10 @@ VK_ICD_FILENAMES=/opt/lavapipe/lvp_icd.json xvfb-run -a -s "-screen 0 1280x720x2
 - `--view` sets the camera: `aerial`, `ground`, `core`, `sky` or `hud`.
 - `--session` views a wallet read-only.
 - `--open` opens a move's panel (preview only).
+- `--dive=<catalog id>` (with `--scene=res://scenes/places/arcade_place.tscn`) dives into that cabinet:
+  `--dive-phase=push|warp` holds the transition, `inside` (default) shows the attract demo full-screen,
+  `menu` adds the cabinet menu; `--classic` shows the cabinet's own screen. Nothing is paid. Use
+  `--frames=260` or so: the transition and the demo need time on lavapipe.
 
 ## Performance (WP 7.5)
 
