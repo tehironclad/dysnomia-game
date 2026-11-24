@@ -60,6 +60,8 @@ void fragment() {
 	} else {
 		int s = int(round(COLOR.r * 15.0));
 		c = slot_color(s);
+		// Match the textured cloth, which carries its own fold shading and AO.
+		if (s <= 6 && s != 5) c *= 0.72;
 		if (s == 5) { metal = 0.8; rough = 0.35; }
 		if (s == 8) { EMISSION = col_trim * trim_energy * (1.0 - grey); }
 	}
