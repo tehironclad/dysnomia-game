@@ -10,6 +10,9 @@ extends SceneTree
 ##       [--seat=pool|cards --seat-phase=aim|roll|overhead|seated|enter] (an arcade place or the pub:
 ##       sit at that table in first person, practice mode; nothing is posted or signed)
 ##       [--near=<arcade catalog id>] (stand in front of that cabinet: its floating title shows)
+##       [--fair=<midway game id>|rocket --fair-phase=aim|play|result|board] (a territory: play that fair game
+##       in first person, a scripted practice round held mid-play or on its result screen; rocket: the
+##       rocket's 7-light board, with --fair-codes=1,2,3 lit as a preview. Nothing is paid or posted)
 ## With --qing, the territory is loaded from the chain first (read-only).
 
 var _out := ""
@@ -28,6 +31,12 @@ var _classic := false
 var _seat := ""
 var _seat_phase := "aim"
 var _near := ""
+var _fair := ""
+var _fair_phase := "play"
+var _fair_codes: Array = []
+var _chat := ""  # bar | history: the chat bar open (with --chat-text) or the history panel
+var _chat_text := ""
+var _chat_replay := 0  # replay the room's last N real lines as new (bubbles, echoes rising, feed rows)
 var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
@@ -51,8 +60,21 @@ func _initialize() -> void:
 			_seat = a.substr(7)
 		elif a.begins_with("--seat-phase="):
 			_seat_phase = a.substr(13)
+		elif a.begins_with("--fair="):
+			_fair = a.substr(7)
+		elif a.begins_with("--fair-phase="):
+			_fair_phase = a.substr(13)
+		elif a.begins_with("--fair-codes="):
+			for c in a.substr(13).split(","):
+				_fair_codes.append(int(c))
 		elif a.begins_with("--near="):
 			_near = a.substr(7)
+		elif a.begins_with("--chat="):
+			_chat = a.substr(7)
+		elif a.begins_with("--chat-text="):
+			_chat_text = a.substr(12)
+		elif a.begins_with("--chat-replay="):
+			_chat_replay = int(a.substr(14))
 		elif a == "--classic":
 			_classic = true
 		elif a == "--flashlight":
@@ -133,6 +155,19 @@ func _run() -> void:
 			await process_frame
 		if current_scene and current_scene.has_method("preview_seat"):
 			current_scene.preview_seat(_seat, _seat_phase)
+	if _fair != "":
+		var t0 := Time.get_ticks_msec()
+		var fs = null
+		while Time.get_ticks_msec() - t0 < 90000:
+			fs = current_scene.find_child("AffectionFair", true, false) if current_scene else null
+			if fs and fs.get("_fair") != null and int(fs.get("_tier")) >= (3 if _fair == "rocket" else 2):
+				break
+			await process_frame
+		if fs:
+			fs.preview_game(_fair, _fair_phase, _fair_codes)
+			await create_timer(2.5).timeout
+	if _chat != "" or _chat_replay > 0:
+		await _chat_preview()
 	for i in _frames:
 		await process_frame
 	await RenderingServer.frame_post_draw
@@ -140,3 +175,28 @@ func _run() -> void:
 	img.save_png(_out)
 	print("saved %s (%dx%d)" % [_out, img.get_width(), img.get_height()])
 	quit()
+
+
+## The room chat (ChatFeed): waits for the feed, replays the last real lines
+## as if new (each keeps its own block), opens the bar or the history. Nothing
+## is posted or signed.
+func _chat_preview() -> void:
+	var cf = root.get_node("ChatFeed")
+	var t0 := Time.get_ticks_msec()
+	while (cf.current == null or not cf.current.is_loaded()) and Time.get_ticks_msec() - t0 < 90000:
+		await process_frame
+	for i in 4:
+		await process_frame
+	if cf.current and _chat_replay > 0:
+		var ls: Array = cf.current.lines.slice(maxi(0, cf.current.lines.size() - _chat_replay))
+		await cf.current.resolve_wallets(ls)
+		cf.hud.feed._on_arrived(ls)
+		for l in ls:
+			cf.bubble.emit(l)
+			for i in 3:
+				await process_frame
+	if _chat == "bar":
+		cf.hud.bar.open(_chat_text)
+	elif _chat == "history":
+		cf.hud.feed.toggle_history()
+

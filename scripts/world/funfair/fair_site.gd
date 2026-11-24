@@ -5,8 +5,11 @@ extends Node3D
 ## through ArcadePay: 1 Ⓐ AFFECTION.transfer to this territory's QING, simulated,
 ## signed, receipt-verified, then the ride starts. No wallet → a free preview ride
 ## that is labelled as such and records nothing. Use works at a ride's booth or
-## anywhere near the ride; the midway stalls and the high striker are games
-## (MidwayGame / MidwayOverlay) sold the same way, seeded by the ticket's tx hash.
+## anywhere near the ride; the midway stalls and the high striker are first-person 3D
+## mini games (MidwayPlay: MidwaySim rules, the stall's MidwayStage), sold the same way:
+## 1 Ⓐ + the game's code in wei (FairProgress), seeded by the ticket's tx hash. Each stall
+## shows the room's verified board (FairBoard); the Upsilon Rocket unlocks for a wallet once
+## the chain shows a ticket for every game here (FairProgress; RocketLights by its booth).
 ##
 ## Development tier (0..5) → fair tier: Wild/Outpost = surveyed lot, Settlement =
 ## night market + carousel, Town = + wheel and drop tower, City/Capital = grand fair.
@@ -27,7 +30,12 @@ var _riding: RideBase = null
 var _paying := false
 var _focus_key := ""   ## "ride:<id>" / "game:<id>" / "" (the prompt shown)
 var _focus_game := ""
-var _game: MidwayOverlay = null
+var _game: MidwayPlay = null
+var _lights: RocketLights = null
+var _progress := {"codes": [], "state": "nowallet", "block": -1, "wallet": ""}
+var _boards_busy := false
+var _progress_busy := false
+var _preview := false
 var _height_fn: Callable   ## ground height at (x, z) relative to the Core (parent), minus the Core's y
 var _voyage: Node = null
 var _ground_mat: Material = null  ## the terrain's own material (colours by world XZ) so the terrace continues the land
@@ -120,11 +128,21 @@ func set_dev_tier(dev_tier: int) -> void:
 			names[t], int(Vector2(position.x, position.z).length()), dir, ArcadePay.fee_text()], DeepFieldTheme.ICE, 30.0)
 	print("[Fair] development %d → fair tier %d · %d rides · at %s" % [dev_tier, t, _fair.get_rides().size(), str(Vector2(position.x, position.z))])
 	_focus_key = ""
+	_lights = null
 	for r in _fair.get_rides():
+		if r.ride_id == "rocket":
+			_lights = RocketLights.new()
+			_lights.name = "RocketLights"
+			_lights.position = Vector3(9.6, 0.0, 10.2)
+			r.add_child(_lights)
+			_lights.build()
 		r.ride_caption.connect(func(text: String) -> void:
 			if text != "":
 				_hud.ticker(text, DeepFieldTheme.ICE, 3.0))
 		r.ride_finished.connect(_on_finished)
+	if t > 0 and not _fair.game_spots.is_empty():
+		refresh_boards()
+		refresh_progress()
 
 
 static func _compass(v: Vector2) -> String:
@@ -139,6 +157,9 @@ static func _compass(v: Vector2) -> String:
 func _process(_delta: float) -> void:
 	if _fair == null or _player == null or _riding != null or _paying or _game != null:
 		return
+	# Another wallet connected (or none now): its own progress, read from the chain
+	if not _preview and not _progress_busy and Wallet.address.to_lower() != String(_progress.get("wallet", "")):
+		refresh_progress()
 	var p := _player.global_position
 	var best := INF
 	var f := {}
@@ -173,7 +194,9 @@ func _process(_delta: float) -> void:
 	_focus_game = String(f.get("game", ""))
 	var paid := Wallet.address != ""
 	var price := ("%s to this QING" % ArcadePay.fee_text()) if paid else "free practice (no wallet)"
-	if _focus != null:
+	if _focus != null and _rocket_locked(_focus):
+		_hud.show_prompt("%s  UPSILON ROCKET · %s" % [ControlsHelp.key_of("interact"), _progress_line()])
+	elif _focus != null:
 		_hud.show_prompt("%s  RIDE %s · %s" % [ControlsHelp.key_of("interact"), String(_focus.item.get("name", "Ride")).to_upper(), price])
 	elif _focus_game != "":
 		_hud.show_prompt("%s  PLAY %s · %s" % [ControlsHelp.key_of("interact"), MidwayGame.title(_focus_game), price])
@@ -190,17 +213,25 @@ func _unhandled_input(event: InputEvent) -> void:
 	var game := _focus_game
 	var what := String(ride.item.get("name", "ride")) if ride else MidwayGame.title(game)
 	_focus_key = ""
+	if ride and _rocket_locked(ride):
+		# The rocket opens once the chain shows a ticket for every game here (checked again now)
+		_hud.ticker("%s · each game's 1 Ⓐ ticket at this QING lights a lamp by the rocket" % _progress_line(), Color("#ffd27a"), 8.0)
+		_hud.show_prompt("UPSILON ROCKET · " + _progress_line())
+		refresh_progress()
+		return
 	if Wallet.address == "":
 		if ride:
 			_start(ride, "PREVIEW RIDE · nothing paid")
 		else:
-			_play(game, randi() & 0x7fffffff, false, "practice · nothing paid · not on the board", {})
+			_play(game, randi() & 0x7fffffff, false, "PRACTICE · nothing paid · on no board (connect a wallet to play for the boards)", {})
 		return
 	_paying = true
 	_hud.show_prompt("TICKET · approve %s to this QING in your wallet window…" % ArcadePay.fee_text())
 	_hud.ticker("Ticket for %s: approve %s to this QING in your wallet…" % [what, ArcadePay.fee_text()], DeepFieldTheme.ICE, 20.0)
-	# A ticket is a plain transfer to the QING (no arcade credit is left behind)
-	var res: Dictionary = await ArcadePay.transfer_to_qing(_qing, "Affection Fair · %s (%s)" % [what, ArcadePay.fee_text()])
+	# A ticket is a plain transfer to the QING (no arcade credit is left behind). A game's ticket carries its code in the last wei (1 Ⓐ + k wei): the chain then knows
+	# which stall it paid for (the rocket's progress); the screen still says 1 Ⓐ.
+	var fee := FairProgress.fee_wei(game) if ride == null else ArcadePay.FEE_WEI
+	var res: Dictionary = await ArcadePay.transfer_to_qing(_qing, "Affection Fair · %s (%s)" % [what, ArcadePay.fee_text()], fee)
 	_paying = false
 	_hud.hide_prompt()
 	if not res.get("ok", false):
@@ -214,31 +245,179 @@ func _unhandled_input(event: InputEvent) -> void:
 	if ride:
 		_start(ride, "TICKET VERIFIED · block %d" % int(res.get("block", 0)))
 	else:
+		var code := FairProgress.code_of(res.get("value", BigInt.zero()))
+		FairProgress.add_verified(String(res["from"]), _qing, code, int(res["block"]))
+		if String(_progress.get("wallet", "")) == String(res["from"]).to_lower():
+			_progress["codes"] = FairProgress.merge(_progress["codes"], [code] if code > 0 else [])
+			_show_progress()
+		refresh_progress()
 		_play(game, MidwayGame.seed_from_tx(String(res["hash"])), true,
-			"ticket %s · block %d · this round is seeded by its hash" % [ArcadeScores.short(String(res["hash"])), int(res["block"])], res)
+			"TICKET %s · block %s · this round is seeded by its hash" % [ArcadeScores.short(String(res["hash"])), ArcadeScores.grouped(int(res["block"]))], res)
 
 
-## A midway game in the overlay; the player stands still while it runs.
+## A midway game in first person at its stall (MidwayPlay); the player stands still while it runs.
 func _play(id: String, seed_v: int, paid: bool, note: String, ticket: Dictionary) -> void:
 	_hud.hide_prompt()
-	var layer := CanvasLayer.new()
-	layer.layer = 20
-	add_child(layer)
-	_game = MidwayOverlay.new()
-	layer.add_child(_game)
-	_game.start(id, seed_v, paid, note, ArcadeScores.board(_qing, "fair:" + id))
+	var spot := {}
+	for g in _fair.game_spots:
+		if g["id"] == id:
+			spot = g
+	if spot.is_empty() or spot.get("stage") == null:
+		return
 	_player.set_physics_process(false)
 	_player.velocity = Vector3.ZERO
-	_game.finished.connect(func(sc: int) -> void:
-		if paid and sc >= 0 and MidwayGame.max_score(id) > 0:
-			var rank := ArcadeScores.record(_qing, "fair:" + id, {"score": sc, "wallet": Wallet.address, "tx": ticket.get("hash", ""),
-				"block": int(ticket.get("block", 0)), "at": int(Time.get_unix_time_from_system())})
-			if rank > 0:
-				_hud.ticker("%s · %d · #%d on this stall's board (this computer)" % [MidwayGame.title(id), sc, rank], Color("#ffd27a"), 10.0)
-		layer.queue_free()
+	refresh_boards()  # others may have posted since: the result screen shows the latest
+	_game = MidwayPlay.new()
+	_game.name = "MidwayPlay"
+	add_child(_game)
+	_game.closed.connect(func(sc: int) -> void:
+		if paid and sc >= 0:
+			_hud.ticker("%s · %d · on this computer's board; post it to the room from the result screen" % [MidwayGame.title(id), sc], Color("#ffd27a"), 8.0)
+		_game.queue_free()
 		_game = null
 		_focus_key = ""
-		_player.set_physics_process(true))
+		_player.set_physics_process(true)
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED))
+	_game.start(self, spot["stage"], id, seed_v, paid, note, ticket, [_hud] if _hud is CanvasLayer else [])
+
+
+## Reads the room's score lines and writes every stall's board (and an open result screen).
+func refresh_boards() -> void:
+	if _boards_busy or _qing == "":
+		return
+	_boards_busy = true
+	_write_boards()
+	await FairBoard.read(_qing)
+	_boards_busy = false
+	_write_boards()
+
+
+func _write_boards() -> void:
+	if _fair == null:
+		return
+	var st := FairBoard.state_of(_qing)
+	for g in _fair.game_spots:
+		var l = g.get("board")
+		if l is Label3D and is_instance_valid(l):
+			var t := FairBoard.sign_text(String(g["id"]), st)
+			if l.text != t:
+				l.text = t
+	if _game != null:
+		_game.refresh_boards()
+
+
+## The connected wallet's games played here, from the chain (FairProgress), onto the rocket's board.
+func refresh_progress() -> void:
+	var w := Wallet.address.to_lower()
+	if w == "":
+		_progress = {"codes": [], "state": "nowallet", "block": -1, "wallet": ""}
+		_show_progress()
+		return
+	if _progress_busy:
+		return
+	_progress_busy = true
+	var c := FairProgress.cached(w, _qing)
+	if _progress.get("wallet", "") != w:
+		_progress = {"codes": c["codes"], "state": "reading", "block": c["block"], "wallet": w}
+		_show_progress()
+	var r: Dictionary = await FairProgress.refresh(w, _qing)
+	_progress_busy = false
+	if Wallet.address.to_lower() != w:
+		return
+	_progress = {"codes": r["codes"], "state": "ok" if r["ok"] else "failed", "block": int(r["block"]), "wallet": w}
+	print("[Fair] rocket progress %s@%s: %s (%s, block %d)" % [w, _qing, str(r["codes"]), _progress["state"], int(r["block"])])
+	_show_progress()
+
+
+func _show_progress() -> void:
+	if _lights:
+		_lights.show_progress(_progress["codes"], _progress["state"], int(_progress["block"]))
+	_focus_key = ""  # the prompt re-reads it
+
+
+## Locked: the rocket, a wallet connected, and not every game played here (or not read yet).
+func _rocket_locked(ride: RideBase) -> bool:
+	if ride == null or ride.ride_id != "rocket" or Wallet.address == "":
+		return false
+	return not (_progress.get("state", "") == "ok" or _progress.get("state", "") == "failed") or not FairProgress.unlocked(_progress["codes"])
+
+
+func _progress_line() -> String:
+	match String(_progress.get("state", "")):
+		"reading": return "Rocket: reading your tickets from the chain… —"
+		"failed":
+			return FairProgress.text(_progress["codes"]) + " (read failed: —)"
+	return FairProgress.text(_progress["codes"])
+
+
+## Previews (screenshot.gd --fair=<game>|rocket): first person at a stall, a scripted round of
+## practice (nothing is paid or posted), held at `phase`: aim | play | result; `board`: the stall's
+## room board close up.
+func preview_game(id: String, phase: String, codes: Array = []) -> void:
+	_preview = true
+	if id == "rocket":
+		_progress = {"codes": codes, "state": "ok", "block": FairProgress.FROM_BLOCK + 4200, "wallet": "preview"}
+		_show_progress()
+		if _lights:
+			var cam := Camera3D.new()
+			add_child(cam)
+			cam.global_position = _lights.to_global(Vector3(0.0, 1.9, 4.4))
+			cam.look_at(_lights.to_global(Vector3(0.0, 1.65, 0.0)))
+			cam.fov = 60.0
+			cam.current = true
+		return
+	if phase == "board":  # the stall's room board, close up
+		for g in _fair.game_spots:
+			var l = g.get("board")
+			if g["id"] == id and l is Label3D:
+				var cam := Camera3D.new()
+				add_child(cam)
+				var c: Vector3 = l.to_global(Vector3(0.6, -0.62, 0.0))
+				cam.global_position = c + l.global_transform.basis.z.normalized() * 1.9 + Vector3.UP * 0.1
+				cam.look_at(c)
+				cam.fov = 50.0
+				cam.current = true
+		return
+	_play(id, 0x2b1c0de5, false, "PREVIEW · practice round · nothing paid or posted", {})
+	if _game == null:
+		return
+	var g := _game
+	await get_tree().create_timer(1.3).timeout
+	g.begin_play()
+	g.hold = true
+	var plan: Dictionary = {"striker": [[96 + 46, 0, 0]], "entropy": [[30, -120, 0]], "regolith": [[20, 0, 0], [130, -300, 200]],
+		"crystal": [[10, 200, 0], [90, -200, 400]], "motzkin": [[260, 0, 0], [420, 300, 200]], "waat": [[20, 0, 0]], "saat": [[0, 0, 0], [40, 0, 0]]}
+	var stop := {"striker": 96 + 46 + 16 + 30, "entropy": 30 + 30, "regolith": 130 + 20, "crystal": 90 + 14, "motzkin": 424, "waat": 60, "saat": 70}
+	var presses: Array = plan.get(id, [])
+	var i := 0
+	var until: int = stop.get(id, 60)
+	if phase == "result":
+		until = MidwaySim.MAX_TICKS
+	elif phase == "aim":  # still aiming: the sight (and the meter) before the first press
+		var aims := {"striker": [40, 0, 0], "entropy": [40, 250, 0], "regolith": [40, -330, 190], "crystal": [40, 120, 300],
+			"motzkin": [300, -200, 150], "waat": [40, 0, 0], "saat": [10, 0, 0]}
+		var a: Array = aims.get(id, [40, 0, 0])
+		presses = [[MidwaySim.MAX_TICKS, a[1], a[2]]]
+		until = int(a[0])
+		g.set_aim(Vector2(a[1], a[2]))
+	while not g.sim.done and g.sim.tick < until:
+		if i < presses.size() and g.sim.tick >= int(presses[i][0]) and g.sim.accepts():
+			g.set_aim(Vector2(presses[i][1], presses[i][2]))
+			g.press()
+			i += 1
+		elif phase == "result" and id == "motzkin" and g.sim.accepts():
+			for k in g.sim.schedule.size():  # the preview shoots the primes it sees
+				var e: Array = g.sim.schedule[k]
+				if g.sim.target_up(k, g.sim.tick) and g.sim.tick - int(e[1]) > 12 and MidwaySim.is_prime(int(e[3])):
+					g.set_aim(Vector2(int(MidwaySim.SLOTS_X[int(e[0]) % 4]) * MidwaySim.AIM / 1800, (int(MidwaySim.SLOTS_Y[int(e[0]) / 4]) - 1825) * MidwaySim.AIM / 700))
+					g.press()
+					break
+		elif phase == "result" and id != "motzkin" and g.sim.accepts() and g.sim.phase_t > 20:
+			g.press()
+		g.sim.step()
+	if presses.size() > 0:
+		g.set_aim(Vector2(presses[-1][1], presses[-1][2]))
+	g.hold = phase != "result"
 
 
 func _start(ride: RideBase, note: String) -> void:
