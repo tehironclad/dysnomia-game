@@ -34,6 +34,9 @@ var _near := ""
 var _fair := ""
 var _fair_phase := "play"
 var _fair_codes: Array = []
+var _chat := ""  # bar | history: the chat bar open (with --chat-text) or the history panel
+var _chat_text := ""
+var _chat_replay := 0  # replay the room's last N real lines as new (bubbles, echoes rising, feed rows)
 var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
@@ -66,6 +69,12 @@ func _initialize() -> void:
 				_fair_codes.append(int(c))
 		elif a.begins_with("--near="):
 			_near = a.substr(7)
+		elif a.begins_with("--chat="):
+			_chat = a.substr(7)
+		elif a.begins_with("--chat-text="):
+			_chat_text = a.substr(12)
+		elif a.begins_with("--chat-replay="):
+			_chat_replay = int(a.substr(14))
 		elif a == "--classic":
 			_classic = true
 		elif a == "--flashlight":
@@ -157,6 +166,8 @@ func _run() -> void:
 		if fs:
 			fs.preview_game(_fair, _fair_phase, _fair_codes)
 			await create_timer(2.5).timeout
+	if _chat != "" or _chat_replay > 0:
+		await _chat_preview()
 	for i in _frames:
 		await process_frame
 	await RenderingServer.frame_post_draw
@@ -164,3 +175,28 @@ func _run() -> void:
 	img.save_png(_out)
 	print("saved %s (%dx%d)" % [_out, img.get_width(), img.get_height()])
 	quit()
+
+
+## The room chat (ChatFeed): waits for the feed, replays the last real lines
+## as if new (each keeps its own block), opens the bar or the history. Nothing
+## is posted or signed.
+func _chat_preview() -> void:
+	var cf = root.get_node("ChatFeed")
+	var t0 := Time.get_ticks_msec()
+	while (cf.current == null or not cf.current.is_loaded()) and Time.get_ticks_msec() - t0 < 90000:
+		await process_frame
+	for i in 4:
+		await process_frame
+	if cf.current and _chat_replay > 0:
+		var ls: Array = cf.current.lines.slice(maxi(0, cf.current.lines.size() - _chat_replay))
+		await cf.current.resolve_wallets(ls)
+		cf.hud.feed._on_arrived(ls)
+		for l in ls:
+			cf.bubble.emit(l)
+			for i in 3:
+				await process_frame
+	if _chat == "bar":
+		cf.hud.bar.open(_chat_text)
+	elif _chat == "history":
+		cf.hud.feed.toggle_history()
+

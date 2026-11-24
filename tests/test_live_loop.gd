@@ -124,14 +124,13 @@ func test_bar_column_height() -> void:
 
 
 func test_chat_merge_dedups_and_orders() -> void:
-	var c := ChatController.new()
-	c.lines = [{"tx": "0x1", "log_index": 0, "block": 10, "name": "a", "text": "x"}]
-	var fresh := c._merge([{"tx": "0x1", "log_index": 0, "block": 10, "name": "a", "text": "x"},
+	# The hall, the HUD feed and the tables share RoomFeed, which merges with ChatLines.merge.
+	var lines: Array = [{"tx": "0x1", "log_index": 0, "block": 10, "name": "a", "text": "x"}]
+	var fresh := ChatLines.merge(lines, [{"tx": "0x1", "log_index": 0, "block": 10, "name": "a", "text": "x"},
 		{"tx": "0x2", "log_index": 3, "block": 11, "name": "b", "text": "y"}])
 	eq(fresh.size(), 1, "the already-seen line is not new")
-	eq(c.lines.size(), 2)
+	eq(lines.size(), 2)
 	eq(fresh[0]["text"], "y")
-	c.free()
 
 
 func test_echoes_pick_latest_distinct_speakers() -> void:

@@ -108,6 +108,13 @@
   `--rendering-method gl_compatibility` (an explicit `--rendering-method`/`--quality=` on the command line is
   respected). In play, 10 s frame-rate windows step the level down (<24 fps) or up (headroom; never past
   High). F2 has the "Adjust graphics automatically" box. Tools run with `-s` and headless runs skip all of this.
+- QING chat anywhere (LEARNINGS §17): autoload `ChatFeed` keeps one live `RoomFeed` per room (shared by the HUD,
+  the hall, the tables and Phenomena; it survives scene changes) and owns the overlay `ChatHud`: the bar
+  (`ChatBar`, T; Enter posts, Esc keeps the text, Up recalls, 1–4 quick lines, Tab say/post when an autoload
+  `Net` exists) and the feed (`ChatFeedPanel`, Y history). Posts queue in `ChatOutbox` (several → one Multicall3
+  tx). `ChatInputGuard` lifts gameplay actions while typing. World: `scripts/world/chat_life.gd` (bubbles via
+  `ChatFeed.bubble_for(wallet)`/`register_speaker`, rising echoes, crown glow, top-speaker tower markers).
+  Check: `tools/live_chat.gd` (read-only). Shots: `--chat=bar|history [--chat-text=…] --chat-replay=N`, `--view=chat`.
 - Textures: `assets/textures/polyhaven` (CC0 moon regolith in the terrain shader; metal plates).
 - `tools/avatar_sheet.gd -- --out=<png> --mode=heads|poses|closeup [--head=rat --acc=crown]` renders the
   avatar in a studio (needs Xvfb). Heads come from the LAU's Username/name/symbol (`AvatarHeads`).
