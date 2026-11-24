@@ -5,27 +5,38 @@ extends RefCounted
 ## ground *is* the card). Deterministic: 64-bit doubles on the CPU, same input →
 ## same heights on every machine; GPU shaders only add visual detail.
 ##
-## Mapping (all distances in metres, see docs/REWORK_PLAN.md §3.4):
-## - inside the filled set → a raised plateau with gentle orbit-trap relief;
+## Mapping v2 (all distances in metres; docs/LEARNINGS.md §11 "Relief"):
+## - inside the filled set → the plateau. Each Fatou component rises into a
+##   stepped highland: its height follows the orbit trap s (how close the orbit
+##   comes to the critical point 0), so every hill is one component of the set
+##   and its terraces are contour lines of s. Where the orbit passes through 0
+##   (s → 0) the summit holds a crater. Highlands grow with the distance to the
+##   coast, so the coast stays a walkable shelf and tiny beads stay low;
 ## - at the boundary        → a crest (the filaments become ridges);
-## - outside                → the land falls away with the distance estimate,
-##                            lightly terraced;
-## - the centre             → a flat disc for the Core.
+## - outside                → the land falls away with the distance estimate in
+##                            terraces, cut by canyons along the external rays
+##                            (the arg of the escaping orbit);
+## - the centre             → the Core's plain: a flat disc, relief fades in
+##                            between 40 m and 120 m from the Core;
+## - the border             → the land eases down to 0 m over the outer 40 m,
+##                            so neighbours meet level at the force-field wall.
+## What sets each landform: relief_params().
 ##
 ## World ↔ complex plane: z = R(rotation) · (x, z_world) / half_size · extent.
 
 const SIZE_M := 512.0  ## territory edge length (metres)
 const MAX_ITER := 140
 const PLATEAU_M := 22.0
-const RELIEF_M := 3.0  ## interior undulation from the orbit trap
-const CREST_M := 4.0  ## ridge along the boundary
 const CREST_W_M := 3.0
-const FALLOFF_W_M := 38.0  ## how fast land drops outside the set
-const TERRACE_M := 2.0
+const FALLOFF_W_M := 46.0  ## how fast land drops outside the set
+const COAST_W_M := 34.0  ## highlands reach full height this far inside the coast
 const CORE_RADIUS_M := 24.0
 const CORE_BLEND_M := 14.0
+const PLAIN_IN_M := 90.0  ## relief starts this far from the Core…
+const PLAIN_OUT_M := 160.0  ## …and is full from here
+const EDGE_BLEND_M := 40.0  ## land eases to 0 m over the border's outer metres
 const CACHE_DIR := "user://cache/terrain"
-const VERSION := 1  ## bump when the mapping changes (invalidates caches)
+const VERSION := 2  ## bump when the mapping changes (invalidates caches)
 
 var n := 257  ## samples per side
 var heights := PackedFloat32Array()  ## row-major, n*n, metres
@@ -49,7 +60,8 @@ static func world_to_z(p: Dictionary, x: float, zw: float) -> Array:
 	return [ux * ca - uy * sa, ux * sa + uy * ca]
 
 
-## Escape data at one complex point: [inside(bool), trap, de(complex units), nu].
+## Escape data at one complex point: [inside(bool), trap, de(complex units), nu,
+## iterations to escape, log|z| at escape (both 0 inside)].
 static func probe(p: Dictionary, zx: float, zy: float, max_iter: int = MAX_ITER) -> Array:
 	var c: Array = p["c"]
 	var c0: float = c[0]
@@ -79,72 +91,250 @@ static func probe(p: Dictionary, zx: float, zy: float, max_iter: int = MAX_ITER)
 			break
 		i += 1
 	if i >= max_iter:
-		return [true, trap, 0.0, float(max_iter)]
+		return [true, trap, 0.0, float(max_iter), 0, 0.0]
 	var rr := sqrt(m)
 	var de := 0.5 * rr * log(rr) / maxf(1e-300, sqrt(dx * dx + dy * dy))
 	var nu := i + 1 - log(log(rr)) / log(float(d))
-	return [false, trap, de, nu]
+	return [false, trap, de, nu, i + 1, log(rr)]
 
 
-## Raw (unsmoothed) height in metres for one probe result.
-static func height_of(pr: Array, metres_per_unit: float) -> float:
-	if pr[0]:
-		return PLATEAU_M + RELIEF_M * (1.0 - exp(-3.0 * float(pr[1])))
-	var de_m: float = float(pr[2]) * metres_per_unit
-	var h := PLATEAU_M * exp(-de_m / FALLOFF_W_M) + CREST_M * exp(-de_m / CREST_W_M)
-	# Light terracing of the slopes (the site's "bands" made of land).
-	var tq := roundf(h / TERRACE_M) * TERRACE_M
-	return lerpf(h, tq, 0.35)
+## The territory's landforms, each from its Deep Field numbers (so from
+## QING.Entropy() and the address). Pure; the same for every viewer.
+## - relief:  highland height above the plateau (m), 10–22 from `depth`, +5 for
+##            Legendary and Mythic;
+## - mesa_w:  how far inland (m) the highlands take to rise, 18–42 from `frame`;
+## - mesa, dome, sharp: the mix of landforms by family. Spirals build terraced
+##            mesas that follow the coast; period bulbs add trap domes with deep
+##            craters; star sets (D > 2) rise into sharp peaks;
+## - terrace: step height (m), 2–3.5 from (arms + turn) mod 4;
+## - crater:  the summit crater's reach in normalised trap units (0.08–0.20,
+##            from `hue`) and its depth (m);
+## - crest:   the boundary ridge (m), 3–6, +2 for star sets;
+## - rays:    canyons run along the external rays at angles j/rays turns
+##            (rays = the spiral's arms, else 2·D + 1), from the border in
+##            toward the points where those rays land on the set;
+## - canyon:  their depth (m), 5–10 from `depth`.
+static func relief_params(p: Dictionary) -> Dictionary:
+	var depth: float = float(p.get("depth", 0.5))
+	var family := String(p.get("family", "spiral"))
+	var tier := String(p.get("tier", ""))
+	var arms: int = int(p.get("arms", 0))
+	var turn: int = int(p.get("turn", 0))
+	var power: int = int(p.get("power", 2))
+	var frame: float = float(p.get("frame", 1.0))
+	var hue: float = float(p.get("hue", 0.5))
+	var rp := {
+		"relief": 10.0 + 12.0 * depth + (5.0 if tier == "Legendary" or tier == "Mythic" else 0.0),
+		"mesa_w": 18.0 + 60.0 * clampf(frame - 0.8, 0.0, 0.4),
+		"mesa": 1.0, "dome": 0.35, "sharp": 1.0,
+		"terrace": 2.0 + 0.5 * float((arms + turn) % 4),
+		"crater": 0.08 + 0.12 * hue,
+		"crater_depth": 0.4,
+		"crest": 3.0 + 3.0 * (1.0 - depth),
+		"canyon": 5.0 + 5.0 * depth,
+	}
+	if family.begins_with("period"):
+		rp["mesa"] = 0.7
+		rp["dome"] = 0.7
+		rp["sharp"] = 1.4
+		rp["crater_depth"] = 0.7
+	elif family == "star":
+		rp["mesa"] = 0.55
+		rp["dome"] = 1.0
+		rp["sharp"] = 1.8
+		rp["crest"] = float(rp["crest"]) + 2.0
+	rp["crater_depth"] = float(rp["relief"]) * float(rp["crater_depth"])
+	rp["rays"] = arms if arms >= 3 else 2 * power + 1
+	return rp
 
 
-## Computes the heightfield (blocking; uses worker threads). `samples` should be 2^k + 1.
+## Soft terraces: flat treads, the rise over the top `riser` fraction of each step.
+static func terrace(h: float, step: float, riser: float = 0.35) -> float:
+	if step <= 0.0:
+		return h
+	var k := floorf(h / step)
+	var f := h / step - k
+	return step * (k + smoothstep(1.0 - riser, 1.0, f))
+
+
+## Height inside the set (metres above the plateau, before the Core's plain):
+## a terraced highland rising with the distance from the coast (`coast_m`),
+## plus a dome over the orbit trap, with a crater where s → 0. `t` is s
+## normalised by the territory's own interior s (0..1).
+static func interior_relief(t: float, coast_m: float, rp: Dictionary) -> float:
+	var relief: float = rp["relief"]
+	var inland := smoothstep(0.0, COAST_W_M, coast_m)
+	var mesa := float(rp["mesa"]) * relief * (1.0 - exp(-coast_m / float(rp["mesa_w"])))
+	var dome := float(rp["dome"]) * relief * pow(clampf(1.0 - t, 0.0, 1.0), float(rp["sharp"])) * inland
+	var h := terrace(mesa + dome, float(rp["terrace"]))
+	var tc: float = rp["crater"]
+	if t < tc:
+		var u := t / tc
+		h -= float(rp["crater_depth"]) * (1.0 - u * u) * (1.0 - u * u) * inland
+	var rim := (t - tc) / (0.45 * tc)  # the crater's raised rim
+	return h + relief * 0.15 * exp(-rim * rim) * inland
+
+
+## The plain flank outside the set (metres): falls with the distance estimate,
+## with the crest on the boundary.
+static func flank(de_m: float, rp: Dictionary) -> float:
+	return PLATEAU_M * exp(-de_m / FALLOFF_W_M) + float(rp["crest"]) * exp(-de_m / CREST_W_M)
+
+
+## The external angle (turns × 2π) of a point outside the set, from n
+## iterations: Θ ← D·Θ + arg(1 + c / z^D), angle = Θ / D^n (Böttcher's
+## coordinate, branch-tracked). Continuous wherever |z_k^D| > |c| along the
+## orbit, i.e. away from the set (canyons fade out near it).
+static func external_angle(p: Dictionary, zx: float, zy: float, n: int) -> float:
+	var c: Array = p["c"]
+	var c0: float = c[0]
+	var c1: float = c[1]
+	var d: int = p["power"]
+	var th := atan2(zy, zx)
+	var scale := 1.0
+	for k in n:
+		var wx := 1.0
+		var wy := 0.0
+		for e in d:
+			var t1 := wx * zx - wy * zy
+			wy = wx * zy + wy * zx
+			wx = t1
+		var nx := wx + c0
+		var ny := wy + c1
+		th = d * th + atan2(wx * ny - wy * nx, wx * nx + wy * ny)
+		scale *= d
+		zx = nx
+		zy = ny
+	return th / scale
+
+
+## How far (metres) a point outside the set is from the nearest canyon ray
+## (external angle j/rays turns): the angle offset scaled to the ground by
+## |φ| / |φ'| ≈ D^n · |z_n| / |z_n'| = D^n · 2·de / log|z_n|.
+static func ray_offset_m(angle: float, n: int, d: int, log_r: float, de_m: float, rays: int) -> float:
+	var a := fposmod(angle * rays + PI, TAU) - PI  # offset from the nearest ray, × rays
+	return absf(a) / rays * pow(float(d), n) * 2.0 * de_m / maxf(1e-6, log_r)
+
+
+## Height outside the set (metres, before the Core's plain): the flank in
+## terraces, cut by canyons along the external rays, widening downstream.
+## `ray_m`: ray_offset_m() for this point.
+static func exterior_height(de_m: float, ray_m: float, rp: Dictionary) -> float:
+	var h := flank(de_m, rp)
+	h = lerpf(h, terrace(h, float(rp["terrace"]), 0.3), 0.75)
+	var off := ray_m
+	var w := 4.0 + 0.07 * de_m
+	return h - float(rp["canyon"]) * exp(-off * off / (w * w)) * smoothstep(4.0, 22.0, de_m)
+
+
+## Computes the heightfield (blocking). `samples` should be 2^k + 1.
 static func compute(p: Dictionary, addr: String, samples: int = 257) -> JuliaHeightfield:
 	var hf := JuliaHeightfield.new()
 	hf.n = samples
 	hf.params = p
 	hf.address = addr.to_lower()
-	hf.heights.resize(samples * samples)
-	hf.inside.resize(samples * samples)
 	var spacing := sample_spacing(samples)
 	var half := SIZE_M * 0.5
 	var mpu := half / float(p["extent"])  # metres per complex unit
-	# Each worker fills its own row buffers; writing `hf.heights[k]` from a
-	# lambda would copy the whole packed array on every write (and race).
-	var row_h: Array = []
-	var row_in: Array = []
-	row_h.resize(samples)
-	row_in.resize(samples)
-	var lock := Mutex.new()
-	var task := func(row: int) -> void:
+	var rp := relief_params(p)
+	var count := samples * samples
+	# Pass 1: escape data per sample. Single-threaded: deterministic and simple
+	# (a WorkerThreadPool version stalled in headless runs).
+	var ins := PackedByteArray()
+	var sv := PackedFloat32Array()  # inside: sqrt(trap); outside: de in metres
+	var av := PackedFloat32Array()  # outside: metres to the nearest canyon ray
+	ins.resize(count)
+	sv.resize(count)
+	av.resize(count)
+	var rays: int = rp["rays"]
+	var power: int = p["power"]
+	var interior_s := PackedFloat32Array()
+	for row in samples:
 		var zw := -half + row * spacing
-		var hs := PackedFloat32Array()
-		var ins := PackedByteArray()
-		hs.resize(samples)
-		ins.resize(samples)
+		for col in samples:
+			var z := world_to_z(p, -half + col * spacing, zw)
+			var pr := probe(p, z[0], z[1])
+			var k := row * samples + col
+			if pr[0]:
+				ins[k] = 1
+				sv[k] = sqrt(float(pr[1]))
+				interior_s.append(sv[k])
+			else:
+				sv[k] = float(pr[2]) * mpu
+				av[k] = 1e6
+				if sv[k] > 4.0:  # canyons fade in from 4 m off the set
+					var ang := external_angle(p, z[0], z[1], int(pr[4]))
+					av[k] = ray_offset_m(ang, int(pr[4]), power, float(pr[5]), sv[k], rays)
+	# The territory's own scale for s: its 98th percentile inside.
+	var s_max := 1.0
+	if interior_s.size() > 8:
+		interior_s.sort()
+		s_max = maxf(1e-6, interior_s[int((interior_s.size() - 1) * 0.98)])
+	var coast := inland_distance(ins, samples, spacing)
+	# Pass 2: heights.
+	var hs := PackedFloat32Array()
+	hs.resize(count)
+	var crest: float = rp["crest"]
+	for row in samples:
+		var zw := -half + row * spacing
 		for col in samples:
 			var x := -half + col * spacing
-			var z := world_to_z(p, x, zw)
-			var pr := probe(p, z[0], z[1])
-			hs[col] = height_of(pr, mpu)
-			ins[col] = 1 if pr[0] else 0
-		lock.lock()
-		row_h[row] = hs
-		row_in[row] = ins
-		lock.unlock()
-	# Single-threaded: deterministic and simple. (A WorkerThreadPool version
-	# stalled in headless runs; revisit with a C#/GDExtension path if needed.)
-	for row in samples:
-		task.call(row)
-	var all_h := PackedFloat32Array()
-	var all_in := PackedByteArray()
-	for r in samples:
-		all_h.append_array(row_h[r])
-		all_in.append_array(row_in[r])
-	hf.heights = all_h
-	hf.inside = all_in
+			var k := row * samples + col
+			var plain := smoothstep(PLAIN_IN_M, PLAIN_OUT_M, sqrt(x * x + zw * zw))
+			if ins[k] == 1:
+				var t := clampf(sv[k] / s_max, 0.0, 1.0)
+				hs[k] = PLATEAU_M + crest * exp(-coast[k] / CREST_W_M) + interior_relief(t, coast[k], rp) * plain
+			else:
+				hs[k] = lerpf(flank(sv[k], rp), exterior_height(sv[k], av[k], rp), plain)
+	hf.heights = hs
+	hf.inside = ins
 	hf._smooth(2)
 	hf._flatten_core()
+	hf._ease_border()
 	return hf
+
+
+## Distance (metres) from each inside sample to the nearest outside one, by a
+## two-pass chamfer transform; outside samples read 0. Land running off the
+## frame counts as inland (capped at 10 km).
+static func inland_distance(ins: PackedByteArray, n: int, spacing: float) -> PackedFloat32Array:
+	var d := PackedFloat32Array()
+	d.resize(n * n)
+	for k in n * n:
+		d[k] = 1e4 if ins[k] == 1 else 0.0
+	var a := spacing
+	var b := spacing * 1.41421356
+	for r in n:
+		for c in n:
+			var k := r * n + c
+			var v := d[k]
+			if v == 0.0:
+				continue
+			if c > 0:
+				v = minf(v, d[k - 1] + a)
+			if r > 0:
+				v = minf(v, d[k - n] + a)
+				if c > 0:
+					v = minf(v, d[k - n - 1] + b)
+				if c < n - 1:
+					v = minf(v, d[k - n + 1] + b)
+			d[k] = v
+	for r in range(n - 1, -1, -1):
+		for c in range(n - 1, -1, -1):
+			var k := r * n + c
+			var v := d[k]
+			if v == 0.0:
+				continue
+			if c < n - 1:
+				v = minf(v, d[k + 1] + a)
+			if r < n - 1:
+				v = minf(v, d[k + n] + a)
+				if c < n - 1:
+					v = minf(v, d[k + n + 1] + b)
+				if c > 0:
+					v = minf(v, d[k + n - 1] + b)
+			d[k] = v
+	return d
 
 
 ## Box blur passes: tames the fractal's aliasing into walkable land.
@@ -179,6 +369,23 @@ func _flatten_core() -> void:
 			elif d < reach:
 				var t := smoothstep(0.0, 1.0, (d - CORE_RADIUS_M) / CORE_BLEND_M)
 				hs[r * n + c] = lerpf(core_height, hs[r * n + c], t)
+	heights = hs
+
+
+## Every territory's land eases down to 0 m along its border, so a neighbour's
+## ground meets this one level at the force-field wall.
+func _ease_border() -> void:
+	var hs := heights
+	var spacing := sample_spacing(n)
+	var half := SIZE_M * 0.5
+	var reach := ceili(EDGE_BLEND_M / spacing)
+	for r in n:
+		var dz := half - absf(-half + r * spacing)
+		for c in n:
+			if r > reach and r < n - 1 - reach and c > reach and c < n - 1 - reach:
+				continue
+			var dx := half - absf(-half + c * spacing)
+			hs[r * n + c] *= smoothstep(0.0, EDGE_BLEND_M, minf(dx, dz))
 	heights = hs
 
 
@@ -255,6 +462,35 @@ func slope_stats() -> Dictionary:
 			steep += 1
 	return {"p50": angles[angles.size() / 2], "p95": angles[int(angles.size() * 0.95)],
 		"max": angles[angles.size() - 1], "steep_pct": 100.0 * steep / angles.size()}
+
+
+## Relief preview for reviewing landforms: height tinted (0 m dark blue,
+## the plateau slate, highlands pale), hillshaded, a contour every 2 m.
+func relief_image() -> Image:
+	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
+	var light := Vector3(-0.6, 0.75, -0.3).normalized()
+	var sp := sample_spacing(n)
+	var low := Color("#0a1430")
+	var mid := Color("#46506a")
+	var top := Color("#e8e2d0")
+	for r in n:
+		for c in n:
+			var hl := heights[r * n + maxi(c - 1, 0)]
+			var hr := heights[r * n + mini(c + 1, n - 1)]
+			var hu := heights[maxi(r - 1, 0) * n + c]
+			var hd := heights[mini(r + 1, n - 1) * n + c]
+			var nrm := Vector3(hl - hr, 2.0 * sp, hu - hd).normalized()
+			var shade := 0.3 + 0.7 * clampf(nrm.dot(light), 0.0, 1.0)
+			var h := heights[r * n + c]
+			var base := low.lerp(mid, clampf(h / PLATEAU_M, 0.0, 1.0)) if h < PLATEAU_M \
+				else mid.lerp(top, clampf((h - PLATEAU_M) / 20.0, 0.0, 1.0))
+			if h < 0.0:
+				base = Color("#200a10").lerp(low, clampf(1.0 + h / 8.0, 0.0, 1.0))
+			var f := absf(fposmod(h, 2.0) - 1.0)
+			if f > 0.93:
+				base = base * 0.8
+			img.set_pixel(c, r, base * shade)
+	return img
 
 
 ## Preview in the Deep Field look: dark hillshaded ground, the boundary crest

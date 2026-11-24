@@ -2,7 +2,8 @@ extends SceneTree
 ## Writes hillshaded heightfield previews for real territories (CPU only).
 ##   godot --headless --path . -s res://tools/preview_terrain.gd -- --out=/abs/dir [--n=257] [--qing=0x…,0x…]
 ## Default: one territory per style/power. Writes <out>/terrain.png (contact
-## sheet) plus per-territory PNGs, and prints timing + plateau stats.
+## sheet), relief.png (height-tinted hillshade, contours every 2 m) and
+## per-territory PNGs, and prints timing, slope and height stats.
 
 
 func _initialize() -> void:
@@ -40,6 +41,7 @@ func _run() -> void:
 			picks.append(registry.get_territory(a))
 	var cols := 4
 	var sheet := Image.create(cols * n, ceili(picks.size() / float(cols)) * n, false, Image.FORMAT_RGB8)
+	var relief := Image.create(cols * n, ceili(picks.size() / float(cols)) * n, false, Image.FORMAT_RGB8)
 	for i in picks.size():
 		var q: Dictionary = picks[i]
 		var t0 := Time.get_ticks_msec()
@@ -51,7 +53,14 @@ func _run() -> void:
 		var img := hf.preview_image()
 		img.save_png(out.path_join("%02d_%s.png" % [i, String(q["symbol"]).validate_filename()]))
 		sheet.blit_rect(img, Rect2i(0, 0, n, n), Vector2i((i % cols) * n, (i / cols) * n))
+		relief.blit_rect(hf.relief_image(), Rect2i(0, 0, n, n), Vector2i((i % cols) * n, (i / cols) * n))
+		var lo := INF
+		var hi := -INF
+		for h in hf.heights:
+			lo = minf(lo, h)
+			hi = maxf(hi, h)
 		var st := hf.slope_stats()
-		print("%2d %-30s %-7s D=%d  %5d ms  inside %4.1f%%  core %.1f m  slope p50 %.0f° p95 %.0f° max %.0f° >40°: %.1f%%" % [i, q["name"], hf.params["style"], hf.params["power"], ms, 100.0 * ins / hf.inside.size(), hf.core_height, st["p50"], st["p95"], st["max"], st["steep_pct"]])
+		print("%2d %-30s %-7s D=%d  %5d ms  inside %4.1f%%  core %.1f m  slope p50 %.0f° p95 %.0f° max %.0f° >40°: %.1f%%  heights %.1f..%.1f m" % [i, q["name"], hf.params["style"], hf.params["power"], ms, 100.0 * ins / hf.inside.size(), hf.core_height, st["p50"], st["p95"], st["max"], st["steep_pct"], lo, hi])
 	sheet.save_png(out.path_join("terrain.png"))
+	relief.save_png(out.path_join("relief.png"))
 	quit()

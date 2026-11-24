@@ -34,3 +34,16 @@ func test_no_land_gives_best_effort_not_a_fake_site() -> void:
 	var s: Dictionary = F.find_site(func(_x: float, _z: float) -> float: return -30.0)
 	check(not s["ok"], "no fully-on-land spot is reported as such")
 	check(s.has("at"), "still returns the best effort")
+
+
+func test_real_relief_still_has_fair_sites() -> void:
+	# The v2 relief (terraced highlands round the Core's plain) must still leave
+	# flat land for the fair: a full on-land site, steps under 5 m, on real territories.
+	var F = load("res://scripts/world/funfair/fair_site.gd")
+	for a in ["0xd127839b83cbf537c29b7d268c135f745a0da2e8", "0xe4169cf239e2fdc6e6e4a3a6fa0a703058ce400b", Registry.all()[7]["address"]]:
+		var q: Dictionary = Registry.get_territory(a)
+		var hf := JuliaHeightfield.compute(DeepField.for_territory(q), a, 129)
+		var core := hf.core_height
+		var s: Dictionary = F.find_site(func(x: float, z: float) -> float: return hf.height_at(x, z) - core)
+		check(s["ok"], "%s: a fair site on land" % q["name"])
+		check(float(s["top"]) - float(s["low"]) < 5.0, "%s: flat enough (%.1f m)" % [q["name"], float(s["top"]) - float(s["low"])])
