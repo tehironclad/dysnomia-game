@@ -14,6 +14,11 @@ extends CanvasLayer
 
 signal opened
 signal closed
+## A confirmed Su, measured: YUE.Bar(QING) before (the preview's block) and as
+## re-read at the receipt's block (the diegetic loop celebrates these numbers).
+signal su_measured(hypo_before: PackedInt64Array, hypo_after: PackedInt64Array, d_epi: PackedInt64Array, block: int)
+## A confirmed Beat (receipt status 1, read from the chain).
+signal beat_confirmed(block: int)
 
 var territory: Dictionary = {}
 var qing := ""
@@ -140,6 +145,7 @@ func _do_su(p: Dictionary) -> void:
 			res["block"], TokenFormat.group(BigInt.to_decimal(hb)), TokenFormat.group(BigInt.to_decimal(dh)),
 			TokenFormat.group(BigInt.to_decimal(eb)), TokenFormat.group(BigInt.to_decimal(de))], Color("#64e3a8"))
 		hud.ticker("YOUR SU · +%s Hypobar · block %d" % [TokenFormat.group(BigInt.to_decimal(dh)), res["block"]], Color("#64e3a8"))
+		su_measured.emit(v["hypo_before"], hb, de, int(res["block"]))
 	else:
 		action.set_status("Mined in block %d (status 1), but the bar re-read failed: —. It will show on the next refresh." % res["block"], Color("#ffd27a"))
 	core.cascade(0.7)
@@ -207,6 +213,7 @@ func _do_beat(p: Dictionary) -> void:
 	Acts.set_flag(Session.wallet, "beat")
 	hud.ticker("YOUR BEAT · %s · block %d" % [_tname(), res["block"]], Color("#64e3a8"))
 	action.set_status("The Heart beat: mined in block %d, status 1." % res["block"], Color("#64e3a8"))
+	beat_confirmed.emit(int(res["block"]))
 	state.refresh()
 	Session.refresh()
 

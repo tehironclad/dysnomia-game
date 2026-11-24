@@ -35,6 +35,7 @@ var score: TerritoryScore
 var border: BorderRing
 var roads: TerritoryRoads  # the Core's ring road and roads to every place (scripts/world/roads/)
 var chat_life: ChatLife  # room chat in the world: bubbles, echoes, glow, tower markers
+var act_loop: ActLoop  # the diegetic loop: act markers, the Steward, the HUD tracker (scripts/world/play/)
 var _settings: PanelContainer
 var _monitor: Control
 var _near := ""
@@ -96,6 +97,7 @@ func _ready() -> void:
 	monolith.build()
 	monolith.position = Vector3(MONOLITH_AT.x, terrain.get_height_at(MONOLITH_AT.x, MONOLITH_AT.y) - 0.2, MONOLITH_AT.y)
 	monolith.look_at(Vector3(0.0, monolith.position.y, 0.0), Vector3.UP, true)
+	CoreDressing.base_under(monolith, 2.4, 0.5, DeepFieldTheme.ICE)
 	phenomena = Phenomena.new()
 	phenomena.name = "Phenomena"
 	add_child(phenomena)
@@ -110,6 +112,7 @@ func _ready() -> void:
 	arcade.build(String(territory["address"]), DeepField.to_color(terrain.params["color"]))
 	arcade.position = Vector3(ArcadeFront.AT.x, terrain.get_height_at(core.global_position.x + ArcadeFront.AT.x, core.global_position.z + ArcadeFront.AT.y) - core_y - 0.3, ArcadeFront.AT.y)
 	arcade.look_at(core.global_position + Vector3(0.0, arcade.global_position.y - core.global_position.y, 0.0), Vector3.UP, true)
+	CoreDressing.dress_arcade(arcade, DeepField.to_color(terrain.params["color"]))
 	# The Affection Fair: rides paid in Ⓐ to this QING, sized by Development
 	fair = FairSite.new()
 	fair.name = "AffectionFair"
@@ -207,6 +210,13 @@ func _ready() -> void:
 		add_child(presence)
 		presence.setup(String(territory["address"]), player, hud)
 	# --- end Online
+	# --- Acts (scripts/world/play/): markers at the buildings, the Steward, the tracker.
+	act_loop = ActLoop.new()
+	act_loop.name = "ActLoop"
+	core.add_child(act_loop)
+	act_loop.setup(territory, state, core, hud, actions, border, columns, player,
+		func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y, view != "")
+	# --- end Acts
 	view_mode = view
 	if view == "":
 		# Play: the player's camera. (With no current camera, Godot would pick
@@ -248,6 +258,10 @@ func _frame(view: String) -> void:
 		camera.fov = 62.0
 	elif view.begins_with("border") and border:  # --view=border_n|e|s|w: across a force field
 		border.frame_camera(camera, view.substr(7) if view.length() > 7 else "n")
+	elif view == "steward" and act_loop:  # the Steward and the act markers at the Core
+		camera.position = Vector3(10.5, core_h + 2.2, 19.5)
+		camera.look_at(Vector3(1.0, core_h + 2.6, 6.0))
+		camera.fov = 62.0
 	elif view == "chat" and chat_life:  # the Room's front: echoes, bubbles, glow
 		chat_life.frame(camera)
 	elif view == "relief":  # from the highest ground, back over the terraces
@@ -267,8 +281,14 @@ func _frame(view: String) -> void:
 		camera.fov = 55.0
 
 
+var _ticked_block := -1
+
+
 ## Shared territory state → the world (same for every viewer).
 func _on_state_changed() -> void:
+	if state.block > 0 and state.block != _ticked_block:
+		_ticked_block = state.block
+		core.block_tick()  # the Heart ticks with each new block read here
 	core.set_well("fornax", state.fornax)
 	core.set_well("eris", state.eris)
 	core.set_well("tethys", state.tethys)
@@ -321,6 +341,7 @@ func _set_development(tier: int, hypo: PackedInt64Array, energy: float, board: A
 	dev_tier = tier
 	columns.set_energy(energy)
 	development.set_tier(dev_tier, energy)
+	core.set_development(dev_tier, energy)  # the Heart's rings (HeartOrrery)
 	if fair:
 		fair.set_dev_tier(dev_tier)
 	if landmark:

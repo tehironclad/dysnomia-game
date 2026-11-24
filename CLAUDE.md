@@ -99,6 +99,13 @@
   (`RocketLights`). `tools/probe_fair.gd` plays all seven through. Shots: `--fair=<game>|rocket --fair-phase=aim|play|result|board`.
   The Upsilon Rocket is piloted after liftoff (`RocketVoyage`: W/S, mouse or A/D, Shift; slow climb to this world's
   light speed `C_MS`; past 0.97 c a wormhole opens on the flight line and leads to the Field; Esc returns to the pad).
+- The diegetic loop (`scripts/world/play/`, LEARNINGS §20): `PlayLoop` (pure: acts + goals from a snapshot, BigInt goal
+  maths), `PlaySnapshot` (builds it from TerritoryState/Session/the room feed + door and neighbour-Ω reads), `ActLoop`
+  (beacons `ActBeacon` at the buildings, the Steward NPC at the Core, HUD `ActTracker`, celebrations of *measured* changes
+  from `CoreActions.su_measured/beat_confirmed` and `ChatFeed.posted`). Check: `tools/live_acts.gd [-- --wallet= --qing=a,b]`.
+  Shots: `--view=steward`, `--view=hud --session=0x… [--open=steward]`. The Heart is `HeartOrrery` (rings = tier + 1,
+  ticks per block read, beats on a confirmed Beat); the tier shaft is `light_shaft.gdshader`; Core detail is `CoreDressing`.
+  Prompts: `hud.show_prompt("<key>  what it does")` renders the key as a chip (`HudV2.split_prompt`).
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
   total; skyline towers per player (`bar_columns.gd`, `tower.gdshader`), structures (`development_site.gd`),
   city lights/roads (terrain shader), aurora (sky shader). `tools/live_development.gd` measures every territory.

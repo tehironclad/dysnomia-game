@@ -61,6 +61,7 @@ func build(tint: Color) -> void:
 	body.position.y = 1.2
 	root.add_child(body)
 	Solid.box(root, Vector3(1.0, 2.4, 1.0), Vector3(0.0, 1.2, 0.0))
+	CoreDressing.base_under(root, 1.2, 1.2, Color("#ffd27a"))
 	plinth_label = Label3D.new()
 	plinth_label.font = DeepFieldTheme.mono_font()
 	plinth_label.font_size = 40

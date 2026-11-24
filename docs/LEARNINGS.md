@@ -842,3 +842,32 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
     balance(block) − balance(block−1) + gasUsed·effectiveGasPrice.
 - **Check it:** `tools/live_swaps.gd [-- --wallet=0x… --qing=0x… --all]`, `tools/live_yue_exchange.gd
   [-- --wallet=0x… --qing=0x…,0x…]` (read-only). Previews: `--view=swap|swap_in|swap_panel|yue|yue_panel`.
+
+---
+
+## 20. The diegetic loop, the Heart, Core detail (2026-11-24)
+
+- **Acts are derived, never invented.** `PlayLoop.acts(snapshot)` turns reads the game already makes into at most
+  six things to do *here*, each naming its call: Su at the pylons (Ω; "your tower grows" when `floors_for(mine + Ω)`
+  rises), Beat at the Heart (only when readiness is ready/fragile, else the diagnosis), the room (quiet = no line within
+  one DysnomiaTime day ≈ 11,223 blocks; a covered room you are not admitted to = Join), crowns (pass #k in ≤ 25 Su; hold
+  the lead), a neighbour beyond a field where `Session.bars` has nothing (Ω there from Fornax ÷ Entropy), dry wells
+  (balanceOf(QING) = 0: a fact, no call offered: a donation is owner-withdrawable, GWAT = false). Unread → null → "—".
+- **Goals:** next tier (`Development.next_threshold` − total, ⌈÷ Ω⌉ Su), your tower (floors and Su to the next floor,
+  found by an exact BigInt search over `floors_for`), streak (PlayerRecord's YUE mint logs), territories with bars
+  (avatar gear thresholds 3 and 10). Totals are floors (known players).
+- **Measured on 2026-11-24 for `0x18f6…3111`** (`tools/live_acts.gd`): RatKing Ω 875,634, tower 12 floors, next
+  floor in 340 Su, Beat ready, room quiet since block 27,787,864 (a "PulsePunk: Anyone home?" broadcast to many
+  rooms); Illinois Ω 26, #5 → pass #4 in 2 Su, Settlement in 281 Su; MrStu Ω 66, no bars yet (first Su builds a
+  1-floor tower), the west neighbour Noumenon has Ω 39,193. Most neighbours read Ω = 0.
+- **Celebrations show only re-read numbers:** Su = YUE.Bar at the receipt's block minus the preview's; a room line =
+  YUE.Bar at block − 1 → block; Beat = receipt status 1. Markers/tracker/steward text are personal UI; the territory's
+  own look still depends only on territory state.
+- **The Heart (owner: "the sphere and beam were cheesy")** is an armillary orrery: a faceted crystal with a light
+  inside, one gimbal ring per tier (Wild 1 … Capital 6) tilted by arg(c) + k·golden angle, turning with the energy
+  (Epibar total); it ticks on each new block read and beats (shock ring) on a confirmed Beat. The tier shaft is an
+  additive shader (`light_shaft.gdshader`: brightest mid-silhouette, fades with height and at its edges), 14 + 10·tier m,
+  280 m at Capital with a 48-light halo (one MultiMesh) instead of the gold torus.
+- **Core detail** (`CoreDressing`): metal-plate paving r 22 m with kerb, inlaid light lines and 36 bollards (MultiMesh;
+  gaps at the four roads), the Room's plinth band, cornice and door portal (Column_Astra, canopy, threshold, spot),
+  stepped bases on the pylons/monolith/World plinth, metal well rims, tower podiums. Label3Ds on the Core have outlines.

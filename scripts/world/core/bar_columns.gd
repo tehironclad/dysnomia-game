@@ -78,6 +78,12 @@ func update_board(board: Array, block: int, me: String = "") -> void:
 		body.position.y = h * 0.5
 		var solid: StaticBody3D = c["solid"]
 		((solid.get_child(0) as CollisionShape3D).shape as BoxShape3D).size = Vector3(width, h, width)
+		var podium: MeshInstance3D = c["root"].get_node("Podium")
+		podium.scale = Vector3(width + 1.3, 1.7, width + 1.3)
+		podium.position.y = 0.85
+		var band: MeshInstance3D = c["root"].get_node("Band")
+		band.scale = Vector3(width + 1.34, 0.06, width + 1.34)
+		band.position.y = 1.4
 		solid.position.y = h * 0.5
 		var grew: bool = not (c["last"] as PackedInt64Array).is_empty() and BigInt.cmp(hb, c["last"]) > 0
 		c["last"] = hb
@@ -125,6 +131,19 @@ func _make(wallet: String) -> Dictionary:
 	body.material_override = mat
 	root.add_child(body)
 	var solid := Solid.box(root, Vector3.ONE, Vector3.ZERO)  # resized with the tower
+	# The tower's base: a dark podium and a lit band, sized with the tower
+	# (detail only: the height is the number).
+	var podium := MeshInstance3D.new()
+	podium.name = "Podium"
+	podium.mesh = bx
+	podium.material_override = CoreDressing.dark_metal()
+	root.add_child(podium)
+	var band := MeshInstance3D.new()
+	band.name = "Band"
+	band.mesh = bx
+	band.material_override = CoreDressing.glow(_tint, 1.6)
+	band.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(band)
 	var lab := Label3D.new()
 	lab.font = DeepFieldTheme.mono_font()
 	lab.font_size = 44
