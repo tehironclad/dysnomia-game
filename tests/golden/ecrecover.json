@@ -1,0 +1,161 @@
+{
+ "generator": "tools/golden/ecrecover.js (ethers 6.13.4)",
+ "keccak": [
+  {
+   "text": "",
+   "hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+  },
+  {
+   "text": "abc",
+   "hash": "0x4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45"
+  },
+  {
+   "text": "Dysnomia",
+   "hash": "0xd9da18346f27723f75273da23f7290b0fafde25d730938998ff5019630ab31ae"
+  },
+  {
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "hash": "0x16570bdb055e663ea1cb57ac6f09194f4bc7b7070847971fc0b86710366dc34f"
+  },
+  {
+   "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+   "hash": "0x299eb9c75467c19fbc1653d67b1f49ff3bb50fc9c1c9ce98c205e5ac6a05b9c8"
+  },
+  {
+   "text": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+   "hash": "0x32fe0c7ccc0a26485fc1555eb4075da8b6c66da403bdf0fedb664a4a876d7a98"
+  },
+  {
+   "text": "é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ é∑ unicode ✓ ",
+   "hash": "0x3ea00dd9fe4ab55e5072c29b88da9e27cec6df77b8930c87b570742b19f7ec68"
+  }
+ ],
+ "signatures": [
+  {
+   "key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+   "address": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+   "message": "hello",
+   "hash": "0x50b2c43fd39106bafbba0da34fc430e1f91e3c96ea2acee2bc34119f92b37750",
+   "signature": "0xe5ddc160e4c8f92de507c7db9b982d4f9b7197bfa421864aeadc586bc96b09ae0ba0c5b131650ae4994cff1839341d00f3735ef5abc62ac8fe2cf50f65208e2a1b"
+  },
+  {
+   "key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+   "address": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+   "message": "Dysnomia game server login\nServer: test\nNonce: 00112233445566778899aabbccddeeff",
+   "hash": "0xaf1927959e7d2b95dcbc8a1589806ab95fef461b6d27b58f68a8a8728999b08c",
+   "signature": "0xc1244308d6b862d3165a3993c75dc6f8d4ee8e21e687ae2adb1dcf0987a4393f1f739ef8b4d10b4122ec9091dee71481fc2ed177c472864303d21959c76723fa1b"
+  },
+  {
+   "key": "0x0000000000000000000000000000000000000000000000000000000000000001",
+   "address": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+   "message": "",
+   "hash": "0x5f35dce98ba4fba25530a026ed80b2cecdaa31091ba4958b99b52ea1d068adad",
+   "signature": "0x0ac02a3eb3039b7a3ebb6a35f1e0dd31a4ed51781205a2c193354752a25edad50593868baf38c519b78bdc61a23c3f55e058c29f8b83d79ae48cc47d931afaed1b"
+  },
+  {
+   "key": "0x0000000000000000000000000000000000000000000000000000000000000002",
+   "address": "0x2b5ad5c4795c026514f8317c7a215e218dccd6cf",
+   "message": "hello",
+   "hash": "0x50b2c43fd39106bafbba0da34fc430e1f91e3c96ea2acee2bc34119f92b37750",
+   "signature": "0x9bc682e9f6f30bde13c466b808900dc7d8d89d5d9b71e580f206f71a149c018c7daa06cb5e3a0a6bbd3d825d31ece8130859e302da9670f543e89a21add786c51c"
+  },
+  {
+   "key": "0x0000000000000000000000000000000000000000000000000000000000000002",
+   "address": "0x2b5ad5c4795c026514f8317c7a215e218dccd6cf",
+   "message": "Dysnomia game server login\nServer: test\nNonce: 00112233445566778899aabbccddeeff",
+   "hash": "0xaf1927959e7d2b95dcbc8a1589806ab95fef461b6d27b58f68a8a8728999b08c",
+   "signature": "0xb1803de9d0a4802ce293469f3e4297f97ff0f2f30d951211d23a87db3591e6fa0430c2f74d1e06bc82a382c812be9e9d350c502edf1d502ba19d811dc91e70921c"
+  },
+  {
+   "key": "0x0000000000000000000000000000000000000000000000000000000000000002",
+   "address": "0x2b5ad5c4795c026514f8317c7a215e218dccd6cf",
+   "message": "",
+   "hash": "0x5f35dce98ba4fba25530a026ed80b2cecdaa31091ba4958b99b52ea1d068adad",
+   "signature": "0x829366c4921fd25ad1381d209254c30c6c3f43aaad4efbde3f964decce582cd45b1ced385ac9798d55f950345382f5f528b8bee889fe6c9c45b79d9073c526ba1b"
+  },
+  {
+   "key": "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318",
+   "address": "0x2c7536e3605d9c16a7a3d7b1898e529396a65c23",
+   "message": "hello",
+   "hash": "0x50b2c43fd39106bafbba0da34fc430e1f91e3c96ea2acee2bc34119f92b37750",
+   "signature": "0xa5d58782075bdf09490159d634d1aae66a8f6777c7247d2f233e9511cfd7c64c34f288cdbcea5370e4863fdbe9f4d86654c2ba1d86589e9ebb64494c649008591b"
+  },
+  {
+   "key": "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318",
+   "address": "0x2c7536e3605d9c16a7a3d7b1898e529396a65c23",
+   "message": "Dysnomia game server login\nServer: test\nNonce: 00112233445566778899aabbccddeeff",
+   "hash": "0xaf1927959e7d2b95dcbc8a1589806ab95fef461b6d27b58f68a8a8728999b08c",
+   "signature": "0x97accac18ec51a3b957daf5dc7b350648a12dc657a0c417e4103c318d0f1742d738d09204b6cfaf985bc51275b9b078df37ceddd3b329a62190c4b10169e08bc1c"
+  },
+  {
+   "key": "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318",
+   "address": "0x2c7536e3605d9c16a7a3d7b1898e529396a65c23",
+   "message": "",
+   "hash": "0x5f35dce98ba4fba25530a026ed80b2cecdaa31091ba4958b99b52ea1d068adad",
+   "signature": "0x8a68b4e66cd2b575338e16069d7b65f6f67c7ceae8945dccf8cb7bdb06278d933dd9c888f3444ca4698464079a067ad3cfffe96d493b8ecf56885169d0fdfe7d1b"
+  },
+  {
+   "key": "0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140",
+   "address": "0x80c0dbf239224071c59dd8970ab9d542e3414ab2",
+   "message": "hello",
+   "hash": "0x50b2c43fd39106bafbba0da34fc430e1f91e3c96ea2acee2bc34119f92b37750",
+   "signature": "0x8648246ef6426fcf581e12142a8ca3ff42ba15e5c01c8e64c184aa2a12883df24ccae02753833791cdf68e695fbfbc50f1a812f2485e735286d530bfdea9e47e1b"
+  },
+  {
+   "key": "0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140",
+   "address": "0x80c0dbf239224071c59dd8970ab9d542e3414ab2",
+   "message": "Dysnomia game server login\nServer: test\nNonce: 00112233445566778899aabbccddeeff",
+   "hash": "0xaf1927959e7d2b95dcbc8a1589806ab95fef461b6d27b58f68a8a8728999b08c",
+   "signature": "0xfa79598f5e95f32d13ce88fd8e2a92d81afe2bdbd7c7d1b76cf2f8f0eb5b7a1c37bf51f0c84c83e516825371f079578e3e3473db5479182009f60a3f1d406d221b"
+  },
+  {
+   "key": "0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140",
+   "address": "0x80c0dbf239224071c59dd8970ab9d542e3414ab2",
+   "message": "",
+   "hash": "0x5f35dce98ba4fba25530a026ed80b2cecdaa31091ba4958b99b52ea1d068adad",
+   "signature": "0x7f0369ff554ebf5e11da5d6a7fac510d4d61a4635b14c2b70062c048b9b882b02b3d3c67492573d59fc2ae7739a14b2204775306623bda6bf7832b982c17abcd1c"
+  },
+  {
+   "key": "0x2d56b5d6f0cf6fb728095e3bf80c85dc7e37568c957723f24156c69e187337e7",
+   "address": "0x1361b465baaf8ff90e141d2efcfa8c163c09b658",
+   "message": "hello",
+   "hash": "0x50b2c43fd39106bafbba0da34fc430e1f91e3c96ea2acee2bc34119f92b37750",
+   "signature": "0x9cace7f8679b8fa1820105f569d9bf636f8d23aae8b60926881dd9ca0aeac84320c171cce33304d51e804c9712041566a8a97fb5b2276ad7617bf90a4e63cce01b"
+  },
+  {
+   "key": "0x2d56b5d6f0cf6fb728095e3bf80c85dc7e37568c957723f24156c69e187337e7",
+   "address": "0x1361b465baaf8ff90e141d2efcfa8c163c09b658",
+   "message": "Dysnomia game server login\nServer: test\nNonce: 00112233445566778899aabbccddeeff",
+   "hash": "0xaf1927959e7d2b95dcbc8a1589806ab95fef461b6d27b58f68a8a8728999b08c",
+   "signature": "0x5d2e92682853eff1e19309c0e8ffc3a548e02314def1f219edd16b2c3bf112423525e7de868a119b87bb64d8827a0156ca3c90a50fdf9445f5b819610769e48f1c"
+  },
+  {
+   "key": "0x2d56b5d6f0cf6fb728095e3bf80c85dc7e37568c957723f24156c69e187337e7",
+   "address": "0x1361b465baaf8ff90e141d2efcfa8c163c09b658",
+   "message": "",
+   "hash": "0x5f35dce98ba4fba25530a026ed80b2cecdaa31091ba4958b99b52ea1d068adad",
+   "signature": "0x83c93b8f424ebdbb8bf057b4c27c0f840cbbd62796cc1ec906a10d8b0cca5dfa573d42a94218ead253ecaee2c16ec9631e020e4574836f7173b0d922e2d0d5c21b"
+  },
+  {
+   "key": "0xbcb421ecc76c38ea571ad3b2780699e79281989fe7403966d6fab616d7d31101",
+   "address": "0xfd82f6f4925293e462ef79272ba51df99f4d590c",
+   "message": "hello",
+   "hash": "0x50b2c43fd39106bafbba0da34fc430e1f91e3c96ea2acee2bc34119f92b37750",
+   "signature": "0xafb8af737a2adf10f327c15bdf08e25941913574484515b51885fbee6669c0055328d70ce726b8278d2105fb3062ec447e07b5fa41fa23aa9f54bfb11c2276431b"
+  },
+  {
+   "key": "0xbcb421ecc76c38ea571ad3b2780699e79281989fe7403966d6fab616d7d31101",
+   "address": "0xfd82f6f4925293e462ef79272ba51df99f4d590c",
+   "message": "Dysnomia game server login\nServer: test\nNonce: 00112233445566778899aabbccddeeff",
+   "hash": "0xaf1927959e7d2b95dcbc8a1589806ab95fef461b6d27b58f68a8a8728999b08c",
+   "signature": "0xc74bc1840ec00e6119b5f4af33dd143dbb32462e4a5d51e03255275602c9b5bf703673e164bbbbdd506a5b43f87a3c1afbefa5257b62a9bd3419495df46dddb51b"
+  },
+  {
+   "key": "0xbcb421ecc76c38ea571ad3b2780699e79281989fe7403966d6fab616d7d31101",
+   "address": "0xfd82f6f4925293e462ef79272ba51df99f4d590c",
+   "message": "",
+   "hash": "0x5f35dce98ba4fba25530a026ed80b2cecdaa31091ba4958b99b52ea1d068adad",
+   "signature": "0x6cb3e00914a267f563da131304a525618484eb7210399e1ecaf22399d96ac41451c70aec22b473ed224ee090290c1287492090aad0eda88d4177fe8a946e148a1c"
+  }
+ ]
+}
