@@ -445,16 +445,42 @@ func _stall(pos: Vector3, facing: Vector3, kind: String, pair: Array) -> void:
 	_batch.pool(root.transform * Vector3(0, 0.14, 0.0), 1.8, inner * 0.35)
 	_stall_goods(root, b, kind, w, d)
 	b.flush(root)
-	if MidwayGame.has_game(kind):
-		# Where a player stands to play: in front of the counter
-		game_spots.append({"id": kind, "pos": root.transform * Vector3(0, 0, d * 0.5 + 1.3), "face": root.transform.basis * Vector3.BACK})
+	var game := MidwayGame.has_game(kind)
+	if game:
+		# The game happens in the stall (MidwayStage); where a player stands: in front of the counter.
+		# The room's verified board hangs on the outside of the side wall.
+		var stage := MidwayStage.create(kind)
+		root.add_child(stage)
+		stage.build()
+		game_spots.append({"id": kind, "pos": root.transform * Vector3(0, 0, d * 0.5 + 1.3), "face": root.transform.basis * Vector3.BACK,
+			"stage": stage, "board": _score_board(root, Vector3(w * 0.5 + 0.07, 1.65, 0.1), PI * 0.5)})
 	FairKit.solid_box(root, Vector3(w, h, d - 0.2), Vector3(0, h * 0.5, -0.1))
-	# Vendor behind the counter (spawned with the crowd)
-	_vendor_spots.append([root.transform * Vector3(-0.7, 0.12, d * 0.5 - 0.95), root.transform.basis * Vector3.BACK])
+	# Vendor behind the counter (spawned with the crowd); at a game, off to the side (the teller behind her table)
+	var vendor := Vector3(-0.7, 0.12, d * 0.5 - 0.95)
+	if kind == "saat":
+		vendor = Vector3(0.0, 0.12, -0.95)
+	elif game:
+		vendor = Vector3(-1.62, 0.12, d * 0.5 - 0.6)
+	_vendor_spots.append([root.transform * vendor, root.transform.basis * Vector3.BACK])
 	# Back-of-house clutter
 	for i in 2:
 		_batch.prop("Barrel_02" if i == 0 else "Barrel_01", Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), root.transform * Vector3(-1.2 + i * 0.7, 0.006, -d * 0.5 - 0.55)))
 	FairKit.model(self, "wooden_crate_01", root.transform * Vector3(1.0, 0.0, -d * 0.5 - 0.55), root.rotation.y + _rng.randf_range(-0.3, 0.3))
+
+
+## A game's room board: a dark panel with a Label3D whose top-left sits at the panel's corner
+## (FairSite writes the verified top 10 into it).
+func _score_board(parent: Node3D, pos: Vector3, rot_y: float) -> Label3D:
+	var turn := Basis(Vector3.UP, rot_y)
+	var p := FairKit.box(parent, Vector3(1.24, 1.42, 0.03), pos, FairKit.paint(Color(0.03, 0.035, 0.06), 0.7, 0.2))
+	p.rotation.y = rot_y
+	var frame := FairKit.box(parent, Vector3(1.3, 0.04, 0.05), pos + turn * Vector3(0, 0.73, 0.0), FairKit.glow(Color(1.0, 0.8, 0.4), 2.5, 1.0))
+	frame.rotation.y = rot_y
+	var l := FairKit.label(parent, "ROOM BOARD\n—", pos + turn * Vector3(-0.58, 0.66, 0.025), 30, Color(0.85, 0.92, 1.0), rot_y, Color(0.01, 0.01, 0.02), 0.0016)
+	l.font = DeepFieldTheme.mono_font()
+	l.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	return l
 
 
 func _stall_goods(root: Node3D, b: FairKit.Batch, kind: String, w: float, d: float) -> void:
@@ -463,55 +489,30 @@ func _stall_goods(root: Node3D, b: FairKit.Batch, kind: String, w: float, d: flo
 	var back := -d * 0.5
 	match kind:
 		"entropy":
-			# Dice of fate on a violet felt table; every third die is a Dysnomia crystal die
+			# The scoring board inside is TossStage; a violet felt runner on the counter with two
+			# crystal dice at its ends (the middle stays clear: you toss over it)
 			FairKit.box(root, Vector3(w - 0.4, 0.02, 0.5), Vector3(0, cy + 0.01, front), FairKit.paint(Color(0.22, 0.1, 0.38), 0.95, 0.0))
-			var ivory := FairKit.paint(Color(0.95, 0.94, 0.9), 0.25, 0.0, 0.8)
-			for i in 9:
-				var mat: Material = ivory if i % 3 != 0 else FairKit.crystal_mat(FairKit.CRYSTAL_COLORS[i % 4])
-				var dm := FairKit.box(root, Vector3(0.13, 0.13, 0.13), Vector3(-1.6 + i * 0.4, cy + 0.085, front + sin(i * 1.7) * 0.12), mat)
-				dm.rotation.y = i * 0.9
-			for i in 2:
-				FairKit.cyl(root, 0.11, 0.09, 0.22, Vector3(-1.2 + i * 2.4, cy + 0.11, front - 0.15), FairKit.paint(Color(0.35, 0.12, 0.08), 0.6, 0.1), 14)
+			for sx in [-1.0, 1.0]:
+				var dm := FairKit.box(root, Vector3(0.13, 0.13, 0.13), Vector3(sx * 1.65, cy + 0.085, front), FairKit.crystal_mat(FairKit.CRYSTAL_COLORS[1 if sx > 0 else 0]))
+				dm.rotation.y = 0.6 * sx
 			_prize_rack(root, w, d)
 		"waat":
-			# The Waat wheel: striped disc on the back wall, bulbs round the rim, gold pointer
-			var disc_mesh := FairKit.cached_mesh("waat_disc", func() -> Mesh:
-				return FairKit.lathe(PackedVector2Array([Vector2(0.0, 0.0), Vector2(1.05, 0.0)]), 48))
-			var disc := FairKit.mesh(root, disc_mesh, Vector3(0, 1.75, back + 0.12), FairKit.shader_mat("fair_awning"))
-			disc.rotation.x = PI * 0.5
-			disc.set_instance_shader_parameter("color_a", Color(0.1, 0.55, 0.75))
-			disc.set_instance_shader_parameter("color_b", Color(0.95, 0.75, 0.2))
-			disc.set_instance_shader_parameter("stripes", 12.0)
-			FairKit.cyl(root, 0.12, 0.12, 0.1, Vector3(0, 1.75, back + 0.16), FairKit.glow(FairKit.NEON_CYAN, 4.0, 1.5), 16).rotation.x = PI * 0.5
-			FairKit.box(root, Vector3(0.12, 0.3, 0.06), Vector3(0, 2.9, back + 0.16), FairKit.paint(Color(0.95, 0.74, 0.32), 0.25, 0.95))
+			# The Waat wheel itself turns: WheelStage (wheel, hub, pointer); here the bulbs round its rim
 			var rim := PackedVector3Array()
 			for i in 24:
 				var a := TAU * i / 24.0
 				rim.append(Vector3(cos(a) * 1.12, 1.75 + sin(a) * 1.12, back + 0.16))
 			b.bulb_line(rim, [FairKit.BULB_WARM, FairKit.NEON_CYAN], 0.04, 0.045)
-			_mini_rockets(root, Vector3(0, cy, front), 7)
+			# Toy rockets at the counter's ends (the middle stays clear: the wheel is the show)
+			_mini_rockets(root, Vector3(-0.15, cy, front), 2)
+			_mini_rockets(root, Vector3(2.9, cy, front), 2)
 		"regolith":
-			# Regolith pegs on a sloped board with glowing tips; rings stacked on the counter
-			var board := FairKit.box(root, Vector3(w - 0.4, 0.06, 1.2), Vector3(0, 1.1, -0.45), FairKit.pbr("asphalt_02", Color(0.8, 0.8, 0.85), 1.5))
-			board.rotation.x = -0.35
-			var rock := FairKit.pbr("asphalt_02", Color(0.85, 0.85, 0.9), 2.0)
-			for i in 18:
-				var x := -1.5 + (i % 6) * 0.6
-				var z := -0.85 + int(i / 6) * 0.4
-				var y := 1.1 - (z + 0.45) * tan(0.35) + 0.13
-				FairKit.cyl(root, 0.05, 0.08, 0.26, Vector3(x, y, z), rock, 8)
-				FairKit.mesh(root, FairKit.sphere_mesh(0.04, 8), Vector3(x, y + 0.15, z), FairKit.glow(FairKit.CRYSTAL_COLORS[i % 4], 4.0, 1.5), Vector3.ZERO, false)
+			# The sloped peg board is RingStage (its pegs are the game's); spare rings on the counter
 			for i in 6:
 				FairKit.mesh(root, FairKit.torus_mesh(0.07, 0.1, 16, 6), Vector3(1.3, cy + 0.02 + i * 0.03, front), FairKit.glow(FairKit.NEON_CYAN if i % 2 == 0 else FairKit.NEON_VIOLET, 2.5, 0.8))
 			_prize_rack(root, w, d)
 		"crystal":
-			# Crystal Shy: crystals perched on posts — knock one off, win it
-			var steel := FairKit.paint(Color(0.3, 0.32, 0.36), 0.4, 0.8)
-			for i in 6:
-				var x2 := -1.5 + i * 0.6
-				var top := 1.3 + float(i % 2) * 0.35
-				b.strut(Vector3(x2, 0.12, -0.75), Vector3(x2, top, -0.75), 0.03, steel)
-				FairKit.crystal_cluster(root, Vector3(x2, top, -0.75), _rng, FairKit.CRYSTAL_COLORS[i % 4], 3, 0.32)
+			# Crystal Shy: the rails and their sliding crystals are ShyStage; a pile of balls here
 			for i in 7:
 				FairKit.mesh(root, FairKit.sphere_mesh(0.07, 10), Vector3(1.2 + (i % 3) * 0.15, cy + 0.07 + int(i / 3) * 0.1, front - 0.1), FairKit.paint(Color(0.85, 0.85, 0.8), 0.6, 0.0))
 			_shelves(root, d)
@@ -545,23 +546,12 @@ func _stall_goods(root: Node3D, b: FairKit.Batch, kind: String, w: float, d: flo
 				FairKit.cyl(root, 0.03, 0.03, 0.16, Vector3(sx, 1.08, -0.12), FairKit.paint(Color(0.92, 0.9, 0.82), 0.6, 0.0), 8)
 				FairKit.mesh(root, FairKit.sphere_mesh(0.022, 6), Vector3(sx, 1.18, -0.12), FairKit.glow(Color(1.0, 0.7, 0.35), 5.0, 1.5), Vector3.ZERO, false)
 			b.pool(Vector3(0, 1.0, -0.3), 0.9, Color(0.7, 0.5, 1.0) * 0.5)
-			for i in 5:
-				var cd := FairKit.box(root, Vector3(0.14, 0.01, 0.22), Vector3(-0.9 + i * 0.45, cy + 0.01, front), FairKit.paint(Color(0.12, 0.08, 0.2), 0.5, 0.2))
-				cd.rotation.y = (i - 2) * 0.12
-				FairKit.box(root, Vector3(0.08, 0.012, 0.12), Vector3(-0.9 + i * 0.45, cy + 0.012, front), FairKit.glow(FairKit.CRYSTAL_COLORS[i % 4], 3.0, 1.0)).rotation.y = (i - 2) * 0.12
 			var stars := PackedVector3Array()
 			for i in 22:
 				stars.append(Vector3(_rng.randf_range(-1.7, 1.7), _rng.randf_range(1.3, 2.6), back + 0.14))
 			b.bulb_line(stars, [Color(0.85, 0.8, 1.0)], 0.13, 0.025)
 		"motzkin":
-			# Motzkin Prime Shooter: only the prime targets score
-			var primes := ["2", "3", "5", "7", "11", "13", "17", "19"]
-			for i in primes.size():
-				var tp := Vector3(-1.5 + (i % 4) * 1.0, 1.45 + int(i / 4) * 0.75, back + 0.12)
-				FairKit.cyl(root, 0.26, 0.26, 0.04, tp, FairKit.paint(Color(0.92, 0.92, 0.9), 0.4, 0.1), 24).rotation.x = PI * 0.5
-				FairKit.mesh(root, FairKit.torus_mesh(0.17, 0.21, 24, 4), tp + Vector3(0, 0, 0.03), FairKit.glow(FairKit.CRYSTAL_COLORS[i % 4], 3.5, 1.2), Vector3(PI * 0.5, 0, 0), false)
-				var lb := FairKit.label(root, primes[i], tp + Vector3(0, 0, 0.04), 36, Color(0.1, 0.08, 0.12), 0.0, Color(0, 0, 0, 0))
-				lb.shaded = true
+			# Motzkin Prime Shooter: the pop-up targets are PrimeStage; the counter guns stay
 			var gun := FairKit.paint(Color(0.18, 0.19, 0.22), 0.35, 0.8)
 			for i in 3:
 				var gp := Vector3(-1.2 + i * 1.2, cy + 0.08, front)
@@ -890,7 +880,6 @@ func _high_striker(pos: Vector3, facing: Vector3) -> void:
 	FairKit.box(root, Vector3(0.08, 6.8, 0.08), Vector3(0, 3.8, -0.11), gold)
 	FairKit.mesh(root, FairKit.sphere_mesh(0.3, 16), Vector3(0, 7.65, -0.2), gold)
 	FairKit.box(root, Vector3(0.6, 0.15, 0.5), Vector3(0, 0.33, 0.3), FairKit.paint(Color(0.2, 0.2, 0.22), 0.4, 0.8))
-	FairKit.box(root, Vector3(0.22, 0.16, 0.12), Vector3(0, 4.9, -0.08), FairKit.paint(Color(0.95, 0.95, 0.9), 0.3, 0.6))
 	var pts := PackedVector3Array()
 	var cols: Array = []
 	for i in 22:
@@ -905,7 +894,18 @@ func _high_striker(pos: Vector3, facing: Vector3) -> void:
 	b.flush(root)
 	FairKit.solid_box(root, Vector3(1.6, 2.0, 1.2), Vector3(0, 1.0, 0))
 	_batch.pool(pos + Vector3(0, 0.08, 0), 3.0, Color(1.0, 0.6, 0.4) * 0.5)
-	game_spots.append({"id": "striker", "pos": root.transform * Vector3(0, 0, 1.9), "face": root.transform.basis * Vector3.BACK})
+	var stage := MidwayStage.create("striker")
+	root.add_child(stage)
+	stage.build()
+	var bp := Node3D.new()
+	bp.position = Vector3(1.75, 0, 0.7)
+	bp.rotation.y = -0.35
+	root.add_child(bp)
+	for sx in [-0.62, 0.62]:
+		FairKit.box(bp, Vector3(0.07, 2.4, 0.07), Vector3(sx, 1.2, -0.05), FairKit.paint(Color(0.2, 0.21, 0.24), 0.45, 0.8))
+	FairKit.solid_box(bp, Vector3(1.3, 2.4, 0.2), Vector3(0, 1.2, -0.05))
+	game_spots.append({"id": "striker", "pos": root.transform * Vector3(0, 0, 1.9), "face": root.transform.basis * Vector3.BACK,
+		"stage": stage, "board": _score_board(bp, Vector3(0, 1.55, 0.0), 0.0)})
 
 
 # ─── Launch bleachers ──────────────────────────────────────────────────

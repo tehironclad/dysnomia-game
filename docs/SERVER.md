@@ -123,7 +123,8 @@ Either:
   with wallet*, the wallet asks for a free signature of a text that names your server and a one-time
   code. The server checks it with `ecrecover`. After that, a 24-hour session token means no more
   prompts.
-- **Chat** (Y): free, and not on chain. It appears in the HUD feed and as a bubble over the speaker.
+- **Chat**: in the chat bar (T), press Tab to switch to **say**. It is free and not on chain. It shows in
+  the chat feed and as a bubble over the speaker.
   You can mute players (F2 → Online & voice), and mutes are kept on that player's computer only.
 - **Voice** (hold X): off until the player turns the mic on in F2 → Online & voice. It is
   positional: you hear people within 40 m, from where they stand.

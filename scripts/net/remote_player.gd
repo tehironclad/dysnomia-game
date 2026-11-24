@@ -1,13 +1,14 @@
 class_name RemotePlayer
 extends Node3D
 ## Another player in this territory (Net): a HumanAvatar driven by the
-## interpolated pose, a name tag, a speaking mark, chat bubbles and their
-## voice played at the avatar (AudioStreamPlayer3D + AudioStreamGenerator).
+## interpolated pose, a name tag, a speaking mark, and their voice played at
+## the avatar (AudioStreamPlayer3D + AudioStreamGenerator). A signed-in player
+## registers with ChatFeed as a speaker, so ChatLife floats their chat bubbles
+## (free "say" lines and on-chain lines) over this avatar.
 ## Uses HumanAvatar's public API only (set_head, set_body, update_movement,
 ## set_seated). Someone driving or on a ride is drawn seated (simplified).
 
 const TAG_Y := 2.05
-const BUBBLE_S := 6.0
 const VOICE_RATE := 16000.0
 
 var peer_id := -1
@@ -19,8 +20,6 @@ var is_crouching := false
 var avatar: HumanAvatar
 var tag: Label3D
 var speak_mark: Label3D
-var bubble: Label3D
-var _bubble_t := 0.0
 var voice: AudioStreamPlayer3D
 var _playback: AudioStreamGeneratorPlayback
 var _voice_t := 0.0
@@ -45,15 +44,6 @@ func setup(info: Dictionary) -> void:
 	speak_mark.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	speak_mark.text = "◉ talking"
 	speak_mark.visible = false
-	bubble = _label(30, Color(1, 1, 1))
-	bubble.position.y = TAG_Y
-	bubble.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	bubble.offset = Vector2(0, 118)
-	bubble.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	bubble.width = 560.0
-	bubble.outline_size = 26
-	bubble.outline_modulate = Color(0.03, 0.06, 0.12, 0.92)
-	bubble.visible = false
 	voice = AudioStreamPlayer3D.new()
 	var gen := AudioStreamGenerator.new()
 	gen.mix_rate = VOICE_RATE
@@ -85,7 +75,14 @@ func _label(px: int, col: Color) -> Label3D:
 
 ## Name, wallet and look from the server's peer record.
 func apply_info(info: Dictionary) -> void:
-	wallet = String(info.get("wallet", ""))
+	var w := String(info.get("wallet", ""))
+	if w != wallet:
+		var chat_feed := get_node_or_null("/root/ChatFeed")
+		if chat_feed and wallet != "":
+			chat_feed.unregister_speaker(wallet)
+		if chat_feed and w != "":
+			chat_feed.register_speaker(w, self)
+	wallet = w
 	var guest: bool = info.get("guest", true) or wallet == ""
 	display_name = String(info.get("name", ""))
 	var shown := display_name if display_name != "" else ("guest" if guest else NetProto.short_wallet(wallet))
@@ -121,11 +118,6 @@ func apply_pose(s: Dictionary) -> void:
 		avatar.update_movement(s["vel"], flags & NetProto.F_ON_FLOOR != 0, flags & NetProto.F_FLYING != 0)
 
 
-func say(text: String) -> void:
-	bubble.text = "“%s”" % text
-	bubble.visible = true
-	_bubble_t = BUBBLE_S + text.length() * 0.05
-
 
 func play_voice(pcm: PackedFloat32Array, volume: float) -> void:
 	_voice_t = 0.3
@@ -144,10 +136,12 @@ func play_voice(pcm: PackedFloat32Array, volume: float) -> void:
 	_playback.push_buffer(frames)
 
 
+func _exit_tree() -> void:
+	var chat_feed := get_node_or_null("/root/ChatFeed")
+	if chat_feed and wallet != "" and chat_feed.bubble_for(wallet) == self:
+		chat_feed.unregister_speaker(wallet)
+
+
 func _process(delta: float) -> void:
 	_voice_t = maxf(0.0, _voice_t - delta)
 	speak_mark.visible = _voice_t > 0.0 or _flag_speaking
-	if _bubble_t > 0.0:
-		_bubble_t -= delta
-		if _bubble_t <= 0.0:
-			bubble.visible = false

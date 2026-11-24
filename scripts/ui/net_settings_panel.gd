@@ -59,7 +59,7 @@ func _ready() -> void:
 	note.theme_type_variation = "MutedLabel"
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.custom_minimum_size = Vector2(520, 0)
-	note.text = "Guests see everyone. To talk, sign in once with your wallet: a free signature, not a transaction. Chat and voice here are not on chain; %s opens the say line. Mutes stay on this computer." % ControlsHelp.key_of("say")
+	note.text = "Guests see everyone. To talk, sign in once with your wallet: a free signature, not a transaction. Chat (the chat bar, %s, Tab: say) and voice here are not on chain. Mutes stay on this computer." % ControlsHelp.key_of("chat")
 	col.add_child(note)
 	_people = VBoxContainer.new()
 	col.add_child(_people)

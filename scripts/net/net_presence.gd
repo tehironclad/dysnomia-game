@@ -1,8 +1,9 @@
 class_name NetPresence
 extends Node3D
 ## Online presence in one territory (Net): joins the QING's room, sends the
-## local player's pose at 10 Hz, draws everyone else (RemotePlayer), their
-## chat bubbles and voice, and puts the free-chat feed on the HUD.
+## local player's pose at 10 Hz, draws everyone else (RemotePlayer) and plays
+## their voice, and puts the online status line on the HUD. Chat bubbles over
+## remote players come from ChatLife (RemotePlayer registers as a speaker).
 ## Added by the territory scene with one line; does nothing when offline.
 ##   var p := NetPresence.new(); add_child(p); p.setup(qing, player, hud)
 
@@ -11,7 +12,6 @@ var player: Node3D
 var hud: CanvasLayer
 var feed: NetChatFeed
 var remotes := {}  # peer id → RemotePlayer
-var _typing_paused := false
 
 
 func setup(p_qing: String, p_player: Node3D, p_hud: CanvasLayer) -> void:
@@ -29,7 +29,6 @@ func setup(p_qing: String, p_player: Node3D, p_hud: CanvasLayer) -> void:
 		return
 	c.peer_joined.connect(_on_peer)
 	c.peer_left.connect(_on_left)
-	Net.chat_received.connect(_on_chat)
 	Net.voice_pcm.connect(_on_voice)
 	Session.changed.connect(Net.refresh_profile)
 	for id in c.peers:
@@ -65,13 +64,6 @@ func _on_left(id: int) -> void:
 	remotes.erase(id)
 
 
-func _on_chat(w: String, _n: String, text: String, _pos: Vector3) -> void:
-	for id in remotes:
-		if remotes[id].wallet == w and w != "":
-			remotes[id].say(text)
-			return
-
-
 func _on_voice(id: int, pcm: PackedFloat32Array, _level: float) -> void:
 	var r: RemotePlayer = remotes.get(id)
 	if r:
@@ -86,7 +78,7 @@ func local_flags() -> int:
 		f |= NetProto.F_FLYING
 	if bool(player.get("is_crouching")):
 		f |= NetProto.F_CROUCH
-	if (not player.is_physics_processing() and not _typing_paused) or not player.visible:
+	if not player.is_physics_processing() or not player.visible:
 		f |= NetProto.F_SEATED  # driving or on a ride: drawn seated for others
 	return f
 
@@ -111,18 +103,4 @@ func _process(_delta: float) -> void:
 		if not s.is_empty():
 			r.visible = true
 			r.apply_pose(s)
-	# The say line takes the keyboard: hold the player still while typing.
-	if feed and player:
-		var typing := feed.is_typing()
-		if typing and not _typing_paused and player.is_physics_processing():
-			_typing_paused = true
-			player.set_physics_process(false)
-		elif not typing and _typing_paused:
-			_typing_paused = false
-			player.set_physics_process(true)
 
-
-func _unhandled_input(event: InputEvent) -> void:
-	if feed and event.is_action_pressed("say") and not feed.is_typing():
-		get_viewport().set_input_as_handled()
-		feed.open_input()
