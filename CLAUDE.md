@@ -50,6 +50,9 @@
   the tool's parse time the autoloads aren't registered yet, so it fails with "Identifier not found".
   Use `load("res://…").new()` inside a deferred function instead. Godot's stdout is buffered when piped:
   redirect to a file to see errors from killed runs.
+- `GODOT=godot tools/e2e_wallet.sh` runs the payment path end to end (real bridge + real `wallet.html` in
+  Playwright Chromium with a mock EIP-1193 wallet; real receipts; nothing broadcast). Payment failures print
+  `[Pay]`; the HUD `WalletChip` shows wallet state + stage; F2 → "Test my wallet" is `WalletDiagnosis.run()`.
 - `godot --headless --path . -s res://tools/live_readiness.gd [-- --n=12]` prints identity + WORLD
   readiness for real players (read-only).
 - `screenshot.gd -- --session=<wallet>` views any wallet's identity read-only. Nothing is signed.
@@ -57,7 +60,11 @@
 - `godot --headless --path . -s res://tools/live_moves.gd [-- --wallet=0x… --qing=0x…]` runs the Phase 5
   previews against the chain (Su, Beat, door, room and Void lines, World watch). It is read-only.
 - `tools/perf.gd` samples draw calls, objects, primitives and object growth (under Xvfb), or script cost
-  (headless; `--disable=<node>` to profile).
+  (headless; `--disable=<node>` to profile). Pass `--quality=3` (the budgets are for High; shadows
+  count). `tools/perf_breakdown.gd [--by-shadow]` says which subtrees the objects and sun casters come
+  from. Under the Core, `DetailCull` gives every prop a screen-size visibility range and a shadow LOD,
+  `LegibleLabels` keeps billboard labels readable or ends them; creature heads are one baked mesh
+  (`AvatarHeads.bake`). Label3D: a left-aligned label *starts* at its position.
 - The avatar is `scripts/player/human_avatar.gd`: regular-proportioned bodies dressed in outfits, on the
   Quaternius CC0 Universal rig, animated by the UAL clips in `assets/characters/quaternius/` (same 65 bones).
   Outfits (`outfits.gd`: 8 designs, palettes, `for_identity(wallet)` = what everyone sees, `local_choice` = the
@@ -96,9 +103,20 @@
   `MidwaySim` (pure integer rules, replayable from the ticket + input log), `minigame/MidwayPlay` (seat glide,
   input, result screen) and one `MidwayStage` per stall. Tickets are 1 Ⓐ + the game's code in wei; scores post
   as `🎪` room lines checked by `FairBoard` (receipt + replay); `FairProgress` (Transfer logs) unlocks the rocket
-  (`RocketLights`). `tools/probe_fair.gd` plays all seven through. Shots: `--fair=<game>|rocket --fair-phase=aim|play|result|board`.
+  (`RocketLights`). `tools/probe_fair.gd` plays all seven through. Shots: `--fair=<game>|rocket
+  --fair-phase=aim|play|hit|cheer|howto|result|board`. Sim v2: streaks multiply, escalation, bonus targets, a final
+  FRENZY ×2; Saat is Higher or Lower. Game feel: `FairFx` (particles, pop-ups, chase bulbs), `FairSfx` (synthesised),
+  `FairCrowd` (onlookers who cheer), shake + hit-stop in `MidwayPlay`; prizes you can see: `FairPrizes` (local shelf
+  per stall). Rides board/alight with a short step (RideBase, DoorWalk pace), never a teleport.
   The Upsilon Rocket is piloted after liftoff (`RocketVoyage`: W/S, mouse or A/D, Shift; slow climb to this world's
   light speed `C_MS`; past 0.97 c a wormhole opens on the flight line and leads to the Field; Esc returns to the pad).
+- The diegetic loop (`scripts/world/play/`, LEARNINGS §20): `PlayLoop` (pure: acts + goals from a snapshot, BigInt goal
+  maths), `PlaySnapshot` (builds it from TerritoryState/Session/the room feed + door and neighbour-Ω reads), `ActLoop`
+  (beacons `ActBeacon` at the buildings, the Steward NPC at the Core, HUD `ActTracker`, celebrations of *measured* changes
+  from `CoreActions.su_measured/beat_confirmed` and `ChatFeed.posted`). Check: `tools/live_acts.gd [-- --wallet= --qing=a,b]`.
+  Shots: `--view=steward`, `--view=hud --session=0x… [--open=steward]`. The Heart is `HeartOrrery` (rings = tier + 1,
+  ticks per block read, beats on a confirmed Beat); the tier shaft is `light_shaft.gdshader`; Core detail is `CoreDressing`.
+  Prompts: `hud.show_prompt("<key>  what it does")` renders the key as a chip (`HudV2.split_prompt`).
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
   total; skyline towers per player (`bar_columns.gd`, `tower.gdshader`), structures (`development_site.gd`),
   city lights/roads (terrain shader), aurora (sky shader). `tools/live_development.gd` measures every territory.
@@ -106,6 +124,13 @@
   `SwapPanel`; a surveyed lot at Wild) and the YUE Exchange (`YueFloor`, a sky lobby stop of the tower's glass
   lift, else the hall's counter: `YueExchange`, `YuePanel`). Read-only checks: `tools/live_swaps.gd`,
   `tools/live_yue_exchange.gd`. Shots: `--view=swap|swap_in|swap_panel|yue|yue_panel [--session=0x…]`.
+- Doors and motion polish: Use at the Room, the Void or the arcade/pub runs a `DoorSequence` (pure timeline
+  `DoorWalk`; ~1.5–2.4 s, any key skips): the player auto-walks (`player.auto_walk_to`) to the door, a `PassDoor`
+  (slide panels or a light curtain) opens, `ScreenFade` (on the tree root, self-clearing) fades out; the place
+  arrives walking in through `PlaceBase.add_door`, and leaving comes out of the same building's door
+  (`Travel.through_door/out_door/take_door`). Flight off keeps momentum and falls (`MotionMath`, `LandDust`);
+  vehicles hop in and step out. Check: `tools/probe_motion.gd [-- --only=room,void,arcade,pub,skip,fly,vehicle]`
+  (headless); with xvfb + lavapipe `--shots=<abs dir>` saves mid-transition frames. HUD prompts fade (`PromptFade`).
 - Collision: `scripts/world/solid.gd` (`Solid.box/cylinder/wrap`). Solid: the Core's room walls (doorway
   open), pylons, skyline towers (resized with them), the monolith, the World plinth, development props.
   Walk-through on purpose: the Heart, beacon/spire (sky), well basins, landing pads, floor lamps.
@@ -149,5 +174,20 @@
   then `screenshot.gd -- --net-url=ws://127.0.0.1:N` (no `--view`).
   The site's pulse node (entropy-ai-pulse `pulse-node/`) bridges to this server as a guest: `C_INFO`/`S_INFO`
   (counts only, no wallets) and `C_LB_TOP`, served as the site's `/api/game-live` (SERVER.md §5b).
+
+- Front door (`scripts/ui/front_door.gd`): the title screen over `FieldGlobe` (the moon + every QING; warm halo =
+  developed, ice ring = yours, white ring = here; shared with the Field). Four doors (Connect · Explore · Continue to my
+  QING · The Field), who-you-are, news + status strip. `open_panel(void|identity|guide|opps)`; shot `--open=`.
+- LAU picker: `LauFinder` (every LAU a wallet owns: address-less OwnershipUpdate logs, each proven by Saat(2) = wallet %
+  Motzkin; switching = `CHO.Enter(lau)`, re-read via GetUserTokenAddress at the receipt block) + `LauPicker` (front door →
+  "Switch LAU…", `--open=laus`). Read-only check: `tools/live_laus.gd [-- --wallet=0x…]`.
+- The Field finder: `FieldIndex` (pure rows/search/filters; development from `DevelopmentSnapshot`, unmeasured = "—"),
+  chips mine/joined/fair/YUE/near, keys `field_*`. Shot: `--scene=res://scenes/field/field.tscn --field-search=…
+  --field-filter=mine,yue,fair,near,tier:2`.
+- Access steps (`scripts/ui/access/`): `AccessGates.resolve(goal, facts)` (pure, tested) → numbered ✓/→/✗/checking…/—
+  steps; `AccessSteps` gathers the facts (Session, Wallet, `WalletDiagnosis` verdicts via `AccessGates.from_diagnosis`,
+  balances, doors, fair logs) and draws them, embedded (`embed` + `update_for`) or `popup(host, goal, ctx, handlers)`.
+  Wherever a move is blocked, show the steps, not a refusal. Hooks: `add_provider(callable)`, `set_handler(action, c)`.
+  Shot: `--access=<goal> [--qing=0x… --session=0x… --access-fee=wei]`.
 
 **Research source:** `tehironclad/entropy-ai-pulse`. Attach it read-only when a WP says "port from …".

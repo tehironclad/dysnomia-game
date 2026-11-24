@@ -42,6 +42,9 @@ var site_api_enabled: bool = true
 
 # Wallet relay (local HTTP + WebSocket)
 var wallet_bridge_port: int = 38420
+## The browser the wallet window opens in (full path to its .exe); blank = automatic:
+## the default browser when it is Chrome/Brave/Edge, else the default browser itself.
+var wallet_browser: String = ""
 
 const SETTINGS_PATH := "user://settings.cfg"
 const QUALITY_NAMES := ["Potato (no GPU)", "Low", "Medium", "High", "Ultra"]
@@ -49,11 +52,13 @@ const QUALITY_NAMES := ["Potato (no GPU)", "Low", "Medium", "High", "Ultra"]
 const QUALITY_PRESETS: Array[Dictionary] = [
 	# scale: 3D render resolution (FSR upscales below 1.0) · iter: fractal iterations on the ground
 	# simple_sky: stars/Eris/sun only · detail: regolith + city lights on the ground · warp_iter: the dive
-	{"ssao": false, "ssil": false, "glow": false, "volumetric_fog": false, "shadow_distance": 60.0, "msaa": Viewport.MSAA_DISABLED, "scale": 0.5, "iter": 24, "shadows": false, "simple_sky": true, "detail": 0.0, "warp_iter": 40},
-	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 90.0, "msaa": Viewport.MSAA_DISABLED, "scale": 0.6, "iter": 40, "shadows": false, "simple_sky": false, "detail": 0.6, "warp_iter": 70},
-	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 160.0, "msaa": Viewport.MSAA_DISABLED, "scale": 0.8, "iter": 64, "shadows": true, "simple_sky": false, "detail": 1.0, "warp_iter": 110},
-	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": false, "shadow_distance": 260.0, "msaa": Viewport.MSAA_2X, "scale": 1.0, "iter": 96, "shadows": true, "simple_sky": false, "detail": 1.0, "warp_iter": 160},
-	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": true, "shadow_distance": 320.0, "msaa": Viewport.MSAA_4X, "scale": 1.0, "iter": 128, "shadows": true, "simple_sky": false, "detail": 1.0, "warp_iter": 200},
+	# shadow_distance / shadow_splits: the sun's shadow reach and cascades (perf 2026-11-24: at the old
+	# 260 m × 4 splits the whole fair, off screen behind you at the Core, cast into the shadow maps; High is now 120 m, Medium 90 m in 2 splits)
+	{"ssao": false, "ssil": false, "glow": false, "volumetric_fog": false, "shadow_distance": 60.0, "shadow_splits": 2, "msaa": Viewport.MSAA_DISABLED, "scale": 0.5, "iter": 24, "shadows": false, "simple_sky": true, "detail": 0.0, "warp_iter": 40},
+	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 90.0, "shadow_splits": 2, "msaa": Viewport.MSAA_DISABLED, "scale": 0.6, "iter": 40, "shadows": false, "simple_sky": false, "detail": 0.6, "warp_iter": 70},
+	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 90.0, "shadow_splits": 2, "msaa": Viewport.MSAA_DISABLED, "scale": 0.8, "iter": 64, "shadows": true, "simple_sky": false, "detail": 1.0, "warp_iter": 110},
+	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": false, "shadow_distance": 120.0, "shadow_splits": 4, "msaa": Viewport.MSAA_2X, "scale": 1.0, "iter": 96, "shadows": true, "simple_sky": false, "detail": 1.0, "warp_iter": 160},
+	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": true, "shadow_distance": 320.0, "shadow_splits": 4, "msaa": Viewport.MSAA_4X, "scale": 1.0, "iter": 128, "shadows": true, "simple_sky": false, "detail": 1.0, "warp_iter": 200},
 ]
 
 ## Frame-rate follow: a 10 s window, after a 12 s settle on every new scene.
@@ -279,6 +284,7 @@ func apply() -> void:
 	if is_instance_valid(_sun):
 		_sun.directional_shadow_max_distance = minf(p["shadow_distance"], render_distance)
 		_sun.shadow_enabled = p["shadows"]
+		_sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if int(p.get("shadow_splits", 4)) >= 4 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	if is_instance_valid(_terrain_material):
 		_terrain_material.set_shader_parameter("max_iter", int(p["iter"]))
 		_terrain_material.set_shader_parameter("detail_strength", float(p["detail"]))
@@ -338,6 +344,7 @@ func save_settings() -> void:
 	c.set_value("chain", "site_api_base", site_api_base)
 	c.set_value("chain", "site_api_enabled", site_api_enabled)
 	c.set_value("wallet", "bridge_port", wallet_bridge_port)
+	c.set_value("wallet", "browser", wallet_browser)
 	c.save(SETTINGS_PATH)
 
 
@@ -363,3 +370,4 @@ func load_settings() -> void:
 	site_api_base = String(c.get_value("chain", "site_api_base", site_api_base))
 	site_api_enabled = bool(c.get_value("chain", "site_api_enabled", site_api_enabled))
 	wallet_bridge_port = int(c.get_value("wallet", "bridge_port", wallet_bridge_port))
+	wallet_browser = String(c.get_value("wallet", "browser", wallet_browser))

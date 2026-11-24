@@ -50,6 +50,7 @@ func _ready() -> void:
 	exit_at = Vector3(0, 0, STREET - 0.8)
 	exit_radius = 2.2
 	setup_player(Vector3(0, 0.1, STREET - 3.0), 0.0)
+	add_door("curtain", 3.0, 2.8, Vector3(0, 0, STREET - 0.1), Color(1.0, 0.8, 0.45))
 	setup_hud("SUNNY'S PUB · %s" % String(territory.get("name", "")).to_upper())
 	info_label.text = "The bar (%s at the counter: drinks are your own AFFECTION calls; a round is %s to this QING), the arcade (%s a play), pool and Twenty-One in this room's lines (%s: the chat)." % [
 		ControlsHelp.key_of("bar_menu"), ArcadePay.fee_text(), ArcadePay.fee_text(), ControlsHelp.key_of("chat")]

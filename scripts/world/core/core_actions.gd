@@ -14,6 +14,11 @@ extends CanvasLayer
 
 signal opened
 signal closed
+## A confirmed Su, measured: YUE.Bar(QING) before (the preview's block) and as
+## re-read at the receipt's block (the diegetic loop celebrates these numbers).
+signal su_measured(hypo_before: PackedInt64Array, hypo_after: PackedInt64Array, d_epi: PackedInt64Array, block: int)
+## A confirmed Beat (receipt status 1, read from the chain).
+signal beat_confirmed(block: int)
 
 var territory: Dictionary = {}
 var qing := ""
@@ -24,6 +29,8 @@ var phenomena: Phenomena
 var monolith: VoidMonolith
 var lattice: WorldLattice
 var action: ActionPanel
+## The path forward under a move that can't be signed yet (AccessSteps).
+var access: AccessSteps
 var _busy := false
 
 
@@ -44,7 +51,10 @@ func setup(q: Dictionary, p_state: TerritoryState, p_core: TerritoryCore, p_hud:
 	center.add_child(stack)
 	action = ActionPanel.new()
 	stack.add_child(action)
+	access = AccessSteps.embed(stack)
+	access.custom_minimum_size = Vector2(560, 0)
 	action.closed.connect(_on_closed)
+	action.closed.connect(func(): access.visible = false)
 	Wallet.tx_stage.connect(func(_l, stage, _i):
 		if stage == "failed": Cues.play(self, "fail")
 		elif stage == "confirmed": Cues.play(self, "confirm"))
@@ -61,6 +71,7 @@ func _on_closed() -> void:
 
 
 func _open_action(title: String) -> void:
+	access.visible = false
 	action.show_panel(title)
 	opened.emit()
 
@@ -103,6 +114,7 @@ func open_su() -> void:
 	var ib := _identity_blocker(true)
 	if ib != "":
 		action.set_body("Ω here: %s Hypobar per Su (Fornax held here ÷ Entropy, the same for everyone).\n\n%s" % [omega, ib])
+		access.update_for(ib, "su", {"qing": qing, "title": "Su at %s" % _tname()})
 		return
 	var ps: PlayerState = Session.player
 	var p: Dictionary = await Moves.su_preview(Session.wallet, ps.yue, qing)
@@ -115,6 +127,7 @@ func open_su() -> void:
 	var sb := _signer_blocker()
 	action.set_status(sb)
 	action.set_primary("Sign Su", sb == "", _do_su.bind(p))
+	access.update_for(sb, "su", {"qing": qing, "title": "Su at %s" % _tname()})
 
 
 func _do_su(p: Dictionary) -> void:
@@ -140,6 +153,7 @@ func _do_su(p: Dictionary) -> void:
 			res["block"], TokenFormat.group(BigInt.to_decimal(hb)), TokenFormat.group(BigInt.to_decimal(dh)),
 			TokenFormat.group(BigInt.to_decimal(eb)), TokenFormat.group(BigInt.to_decimal(de))], Color("#64e3a8"))
 		hud.ticker("YOUR SU · +%s Hypobar · block %d" % [TokenFormat.group(BigInt.to_decimal(dh)), res["block"]], Color("#64e3a8"))
+		su_measured.emit(v["hypo_before"], hb, de, int(res["block"]))
 	else:
 		action.set_status("Mined in block %d (status 1), but the bar re-read failed: —. It will show on the next refresh." % res["block"], Color("#ffd27a"))
 	core.cascade(0.7)
@@ -163,6 +177,7 @@ func open_beat() -> void:
 	var ib := _identity_blocker(true)
 	if ib != "":
 		action.set_body(ib)
+		access.update_for(ib, "beat", {"qing": qing}, {"front_door": func(): access._to_front_door("identity")})
 		return
 	var rd: Readiness = Session.readiness
 	if rd == null:
@@ -177,6 +192,7 @@ func open_beat() -> void:
 		lines.append("Probe: [CHEON.Su(Phobos), META.Beat(Phobos Waat)] from your wallet at block %d." % rd.block)
 		action.set_body("\n".join(lines))
 		action.set_status("No transaction offered: it would revert.", Color("#ffd27a"))
+		access.update_for(rd.reason, "beat", {"qing": qing})
 		return
 	var p: Dictionary = await Moves.beat_preview(Session.wallet, String(territory["waat"]))
 	if not action.is_open():
@@ -189,6 +205,7 @@ func open_beat() -> void:
 	var sb := _signer_blocker()
 	action.set_status(sb)
 	action.set_primary("Sign Beat", sb == "", _do_beat.bind(p))
+	access.update_for(sb, "beat", {"qing": qing})
 
 
 func _do_beat(p: Dictionary) -> void:
@@ -207,6 +224,7 @@ func _do_beat(p: Dictionary) -> void:
 	Acts.set_flag(Session.wallet, "beat")
 	hud.ticker("YOUR BEAT · %s · block %d" % [_tname(), res["block"]], Color("#64e3a8"))
 	action.set_status("The Heart beat: mined in block %d, status 1." % res["block"], Color("#64e3a8"))
+	beat_confirmed.emit(int(res["block"]))
 	state.refresh()
 	Session.refresh()
 

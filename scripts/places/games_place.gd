@@ -71,6 +71,7 @@ func setup_games(echo_spots: Array) -> void:
 	_cards_panel.setup("cards", book, qing, place, _table_blocker)
 	for p in [_pool_panel, _cards_panel]:
 		p.closed.connect(_on_panel_closed)
+		p.join_fn = func(): if chat_ctl: await chat_ctl._join()
 	_build_dive()
 	_build_seats()
 	Wallet.tx_stage.connect(_on_stage)
@@ -225,7 +226,7 @@ func _table_blocker() -> String:
 # --- Interaction ----------------------------------------------------------------
 
 func _any_open() -> bool:
-	return (chat_ctl and chat_ctl.is_open()) or (_pool_panel and _pool_panel.is_open()) or (_cards_panel and _cards_panel.is_open()) or (dive and dive.is_active()) or (seat and seat.is_active())
+	return (chat_ctl and chat_ctl.is_open()) or (_pool_panel and _pool_panel.is_open()) or (_cards_panel and _cards_panel.is_open()) or (dive and dive.is_active()) or (seat and seat.is_active()) or DoorSequence.active_in(self)
 
 
 func _process(delta: float) -> void:
@@ -259,7 +260,7 @@ func _process(delta: float) -> void:
 			best = i
 			best_d = d
 	_near_spot = best
-	prompt_label.text = ("%s  %s" % [ControlsHelp.key_of("interact"), String(_spots[best]["prompt"].call())]) if best >= 0 else ""
+	PromptFade.set_text(prompt_label, ("%s  %s" % [ControlsHelp.key_of("interact"), String(_spots[best]["prompt"].call())]) if best >= 0 else "")
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -465,7 +466,10 @@ func _refresh_play(note: String = "") -> void:
 	dive.pay_button.visible = _cab.playable() and not _running
 	# A credit is a plain AFFECTION.transfer from the wallet: no LAU involved, so only
 	# the wallet/chain checks apply (table moves, which are room lines, still need a LAU).
-	dive.pay_button.disabled = _busy or ChatController._signer_blocker() != ""
+	# Blocked: the button stays live and shows the steps to pay (AccessSteps) instead of a dead end.
+	dive.pay_button.disabled = _busy
+	if blocker != "":
+		dive.pay_button.text = "How to pay %s for a play →" % ArcadePay.fee_text()
 	dive.start_button.text = "Play (uses a credit) · %s" % ControlsHelp.key_of("arcade_start")
 	dive.start_button.visible = _cab.playable() and not _running
 	dive.start_button.disabled = _busy or n <= 0
@@ -499,6 +503,9 @@ func _read_balance() -> void:
 func _pay_credit() -> void:
 	if _busy:
 		return
+	if ChatController._signer_blocker() != "":
+		_show_access("arcade")
+		return
 	_busy = true
 	_pay_label = "Arcade credit at %s (%s)" % [String(territory.get("name", "")), ArcadePay.fee_text()]
 	_refresh_play("Paying…")
@@ -510,6 +517,17 @@ func _pay_credit() -> void:
 			(" · the QING now holds %s" % ArcadePay.fmt(bal)) if bal != null else ""])
 	else:
 		_refresh_play("Not paid (%s): %s" % [r.get("stage", "?"), r.get("message", "")])
+		var g := AccessSteps.goal_for_failure(r, "arcade")
+		if g != "":
+			_show_access(g)
+
+
+## The steps to pay or to post here, over the place (AccessSteps).
+func _show_access(goal: String) -> void:
+	var handlers := {}
+	if chat_ctl != null:
+		handlers["join"] = chat_ctl._join
+	AccessSteps.popup(self, goal, {"qing": qing, "room_name": String(territory.get("name", "")), "fee_wei": ArcadePay.FEE_WEI}, handlers)
 
 
 func _start_run() -> void:

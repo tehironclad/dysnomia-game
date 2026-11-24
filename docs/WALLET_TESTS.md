@@ -5,7 +5,8 @@ Signing needs a real browser wallet, so every write ships this checklist. Run it
 confirmation, not on the wallet's own "confirmed".
 
 Before starting:
-- The wallet must be on PulseChain (369). The relay page offers to switch it.
+- Run **Test my wallet** (below) first: if a step fails there, payments fail at the same step.
+- The wallet must be on PulseChain (369). The relay page offers to switch it, and every payment asks again.
 - Keep a little PLS for gas. A Su costs about 0.78M gas and a Beat about 2.3M.
 
 ## Phase 4: identity (front door → Enter the Void)
@@ -46,3 +47,43 @@ Before starting:
 ## Approval popups (regression check)
 
 - [ ] With the game fullscreen, rent a vehicle and buy an arcade credit: the wallet window comes to the front and the wallet extension (Rabby/MetaMask) shows the approval without Alt+Tab. After signing or rejecting, the game comes back to the front.
+
+## Test my wallet (Settings, F2) — find the failing step yourself
+
+The wallet chip at the top of the screen always shows the state: `◌ WALLET · not connected`,
+`● 0x18f6…3111 · PulseChain · wallet window linked`, or what is missing (window closed, wrong chain, no
+wallet extension in that browser). Click it to connect or to bring the wallet window back. Under it, every
+payment shows its stage, and a failure stays for 16 s as "✗ <what> — stopped at <stage>: <reason>". The
+console prints the same lines with `[Pay]` (run the game from a terminal, or read `godot.log`).
+
+1. Press **F2** → **Test my wallet…**. It runs at once (a wallet window may open); "Run the test" repeats it.
+2. Read the steps top to bottom. Fix the **first ✗** and run it again:
+
+| Step | ✗ means | Do |
+|---|---|---|
+| Local wallet relay | the game's local server didn't start | another program holds ports 38420+: change "Wallet relay port" in F2 |
+| Wallet window linked | no "Dysnomia Wallet Bridge" window is talking to the game | close every old Dysnomia wallet window, click the wallet chip; allow the window if a firewall asks |
+| Browser wallet in that window | the window opened in a browser without your wallet (e.g. Chrome while Rabby is in Brave) | F2 → "Wallet browser (.exe)": the path of the browser with your wallet, e.g. `C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe`; Apply; click the chip. With several wallets, pick yours with the "Use …" buttons in the window |
+| Account connected | the wallet hasn't approved the page, or shows another account | click Connect wallet in the window and approve; switch to the account the game shows |
+| Wallet on PulseChain (369) | the wallet is on another chain | a payment asks it to switch; or switch in the wallet now |
+| Ⓐ in this wallet | under 1 Ⓐ in the wallet itself | Ⓐ on your LAU is moved over (LAU.Withdraw) when you pay; or send Ⓐ to the wallet |
+| PLS for gas | not enough PLS for the transfer's gas | add PLS |
+| A 1 Ⓐ ticket simulates | `AFFECTION.transfer(QING, 1 Ⓐ + 1 wei)` from your wallet reverts | the reason is shown (decoded revert) |
+| Free signature round trip (optional box) | the wallet didn't sign, or the signature recovers to another address | approve the popup; if it never appears, the window step is the problem |
+
+3. All ✓ but a payment still fails? Its stage tells where: *the chain check* (nothing was sent: the
+   revert reason is shown), *the wallet window* (it didn't link within 45 s), *your wallet's approval*
+   (rejected, or no answer in 300 s), *the chain receipt* (sent but not found, or reverted, or from
+   another account), *checking the payment on the chain* (no AFFECTION Transfer(wallet → QING) in the
+   receipt). Send the `[Pay]` lines with the report.
+
+## Ⓐ payments (fair ticket, arcade credit, pad, sky deck, a round)
+
+| # | Do | Expect |
+|---|---|---|
+| 1 | Fullscreen game, wallet on another chain: buy a fair ticket | "asking the wallet to switch to PulseChain" → the wallet asks to switch → the wallet window comes to the front *before* the approval popup opens, so the popup is on top. After signing, the game comes back. The chip shows "✓ … confirmed in block N". |
+| 2 | Close the wallet window, then buy an arcade credit | "opening the wallet window…": it reopens, links, and the approval appears. The chip said "wallet window closed (click to reopen)" meanwhile; the wallet stays connected in the game. |
+| 3 | Open the wallet window twice (click the chip while one is open) | The linked one is raised; a second window says another one is linked and closes itself. |
+| 4 | Restart the game with the old wallet window still open | The old window reloads itself and links to the new game session. |
+| 5 | Reject the approval | "✗ … stopped at your wallet's approval: rejected in the wallet". Nothing is credited. |
+| 6 | While the approval is open, sleep/wake or wait 20 s | No popup is covered: the wallet window is raised again only while the game itself has the focus. |

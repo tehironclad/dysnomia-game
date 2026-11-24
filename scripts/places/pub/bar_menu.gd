@@ -194,6 +194,9 @@ func _seed_value() -> int:
 	return int(_seed.value)
 
 
+var _access: AccessSteps
+
+
 func _blocker() -> String:
 	var b := ChatController._signer_blocker()
 	if b != "":
@@ -218,6 +221,10 @@ func _refresh_preview() -> void:
 	var blocker := _blocker()
 	_pour.disabled = _busy or blocker != ""
 	_status.text = blocker
+	if _access == null:
+		_access = AccessSteps.embed(_status.get_parent(), _status.get_index() + 1)
+	_access.update_for(blocker, "drink" if is_round else ("su" if _sel.get("kind") == BarTab.KIND_SU else "sign"), {"qing": qing, "fee_wei": ArcadePay.FEE_WEI,
+		"title": "Buy the round" if is_round else "Order %s (a Su at this bar)" % String(_sel.get("name", "a drink"))})
 	_status.add_theme_color_override("font_color", WARN)
 	if is_round:
 		_preview.text = "Paid to %s's QING contract (its own balance). Wallet.send simulates the transfer from your wallet before you sign; the receipt must show AFFECTION's Transfer(you → this QING, ≥ %s)." % [place, ArcadePay.fee_text()]

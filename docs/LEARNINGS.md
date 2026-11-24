@@ -363,6 +363,14 @@ Rules for the site API:
   - ensure chain 369: switch, or add the chain on error 4902;
   - handle 4001 (user rejected);
   - never report 369 when the switch failed (the game's wallet page does).
+- **The wallet window** (2026-11-24, `tools/e2e_wallet.sh`): raise it *before* the page calls the wallet
+  (the page waits ≤ 4 s for focus), never while the wallet's popup is open (a raise covers the popup).
+  One linked window at a time; an old window (earlier token) reloads itself. A dropped link keeps the
+  address; the page queues answers until it relinks. `chain_changed` must reach `Wallet.chain_id`, and a
+  payment asks the wallet to switch. Brave Wallet can own `window.ethereum` while the player's wallet is an
+  EIP-6963 extension. Send `eth_sendTransaction` as `{from, to, data, chainId:"0x171"[, value]}` with
+  canonical hex quantities; let the wallet estimate gas. (Testing note: a Playwright `route.fulfill` page
+  counts as public, so Chrome's Local Network Access blocks its socket to 127.0.0.1; real pages are fine.)
 
 ---
 
@@ -632,13 +640,24 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
     `isin`, xorshift32 seeded by `MidwayGame.seed_from_tx(ticket)`). The only input is a log of presses
     `[tick, ax, ay]`, aims quantised to [-640, 640]. `MidwaySim.replay(game, seed, log)` = the score, or -1
     for a log the game couldn't have taken. The 3D only reads the sim. Changing a rule changes old scores:
-    bump `MidwaySim.VERSION` (lines carry `v1:`) and the recorded rounds in `tests/test_fair_minigames.gd`.
+    bump `MidwaySim.VERSION` (lines carry `v2:` now; v1 lines show as unverified) and the recorded rounds in
+    `tests/test_fair_minigames.gd`.
+  - **v2 rules (2026-11-24, "make it fun")**, all in the sim: a streak of good results multiplies (×1, ×2, ×3…,
+    capped per game; any other result ends it and scores ×1); every throw is harder than the last (faster
+    meters, stronger drift and sliding rings, more sway, rails that speed up per crystal, shorter pop-ups,
+    faster wheels); bonus targets (PERFECT swing 150, bullseye 150, the gold peg ×2, gold crystals 250,
+    Mersenne primes 3/7/31 250, the 500 jackpot); the last throw(s) (Motzkin: the last 8 s) are a FRENZY ×2;
+    `last_near` flags a near miss. Results stay up 32 ticks (was 50). Rounds: striker 5, entropy 5, regolith 6,
+    crystal 8, motzkin 20 shots, waat 5, saat 7. **Saat is now Higher or Lower** (axes 1: aim < 0 = lower)
+    with a deck from the ticket; it scores and posts like the others, and the fortune is still read.
+    `MidwaySim.max_score` is the rules' bound (every throw perfect at full streak and frenzy); prizes are tiers
+    of `MidwaySim.par` (the grand prize's score), not of the bound.
   - **Tickets say which stall** they bought: `AFFECTION.transfer(QING, 1 Ⓐ + k wei)`, k = `MidwaySim.code`
     (striker 1, entropy 2, regolith 3, crystal 4, motzkin 5, waat 6, saat 7); the screen still says 1 Ⓐ
     (`ArcadePay.transfer_to_qing(…, fee_wei)`, `verify_receipt` takes ≥ fee). Practice (no wallet) is labelled.
   - **Shared boards are room lines**: `🎪 <game> <score> <ticket tx> v1:<log>`; the log is per press the
     tick delta in base 36 then each aim + 640 as two base-36 digits, joined by "." (the longest possible, Motzkin's 15
-    shots, is 204 characters, 207 bytes; the room line limit is 280). After a paid round `fair_post` (P) posts it with
+    shots, is ~230 characters at v2's 20 shots; the room line limit is 280, checked by the tests). After a paid round `fair_post` (P) posts it with
     `TableBook.post` (one approval: CHOA.Chat, so it also adds Ω Hypobar to the QING). `FairBoard.read` scans
     the QING's room lines from `FairProgress.FROM_BLOCK` (28,136,000: the format can't be older) and keeps a
     line only if (a) the ticket's receipt has AFFECTION `Transfer(line's tx.from → this QING, 1 Ⓐ + this
@@ -652,7 +671,22 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
     preview, as before. Measured 2026-11-24: that two-topic filter over **the whole chain** (block 0 → head)
     answers in < 1 s when the pair has few transfers, but for a busy pair (hundreds of transfers a day) the
     node cuts the body off after ~10 s (HTTP 200, 23 bytes of JSON); scan from `FROM_BLOCK`, never block 0.
-  - Shots: `screenshot.gd -- --qing=<Grand Fair QING> --fair=<game>|rocket [--fair-phase=aim|play|result|board]
+  - **Game feel** (`minigame/fair_fx.gd`, `fair_sfx.gd`, `fair_crowd.gd`): MidwayPlay watches the sim (presses,
+    `last_tick`, the frenzy) and dresses each event: bursts, sparks, rising score pop-ups, a flash light, chase
+    bulbs round the back wall (still / idle / win / grand), squash-and-stretch, camera shake (`Camera3D.h/v_offset`)
+    and a hit-stop (the sim's ticks pause a beat: replay is unaffected). Sounds are synthesised into
+    AudioStreamWAV on first use (no sample files). Onlookers (AmbientNPC, walked by FairCrowd) gather as the
+    streak grows and dance on a good round; a prize of a moon or better (or a pennant with a streak of 3) gets a
+    3.4 s celebration (wide shot, confetti, the prize spinning over the counter). A how-to card shows the first
+    time per game on this computer (`user://fair_seen.cfg`). `MidwayAuto` is a skilled player for previews only.
+  - **Prizes** (`fair_prizes.gd`): crystal trophy / toy Upsilon rocket / plush moon / pennant, one merged mesh
+    each. Local keepsakes like ArcadeScores (`user://fair_prizes.cfg`, with the ticket tx); each stall's shelf
+    shows today's stock (1/2/4/3, a sold-out tier gives the next one down) and "yours". Practice wins show the
+    prize but keep nothing.
+  - **Rides board and alight with a short walk/step** (RideBase: `step_seconds` at DoorWalk's pace, a small hop
+    onto/off the seat, the Walk clip via `hold_clip`); `ride_finished` fires once the rider is down. A rider over
+    30 m from the exit (back from the voyage) is set down directly; `paused` still skips seating.
+  - Shots: `screenshot.gd -- --qing=<Grand Fair QING> --fair=<game>|rocket [--fair-phase=aim|play|hit|cheer|howto|result|board]
     [--fair-codes=1,2,3]` (practice, nothing paid or posted). `tools/probe_fair.gd [-- --wallet=0x…]` plays
     all seven through, replays each score and checks the rocket's lock from the chain.
 
@@ -848,3 +882,32 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
     balance(block) − balance(block−1) + gasUsed·effectiveGasPrice.
 - **Check it:** `tools/live_swaps.gd [-- --wallet=0x… --qing=0x… --all]`, `tools/live_yue_exchange.gd
   [-- --wallet=0x… --qing=0x…,0x…]` (read-only). Previews: `--view=swap|swap_in|swap_panel|yue|yue_panel`.
+
+---
+
+## 20. The diegetic loop, the Heart, Core detail (2026-11-24)
+
+- **Acts are derived, never invented.** `PlayLoop.acts(snapshot)` turns reads the game already makes into at most
+  six things to do *here*, each naming its call: Su at the pylons (Ω; "your tower grows" when `floors_for(mine + Ω)`
+  rises), Beat at the Heart (only when readiness is ready/fragile, else the diagnosis), the room (quiet = no line within
+  one DysnomiaTime day ≈ 11,223 blocks; a covered room you are not admitted to = Join), crowns (pass #k in ≤ 25 Su; hold
+  the lead), a neighbour beyond a field where `Session.bars` has nothing (Ω there from Fornax ÷ Entropy), dry wells
+  (balanceOf(QING) = 0: a fact, no call offered: a donation is owner-withdrawable, GWAT = false). Unread → null → "—".
+- **Goals:** next tier (`Development.next_threshold` − total, ⌈÷ Ω⌉ Su), your tower (floors and Su to the next floor,
+  found by an exact BigInt search over `floors_for`), streak (PlayerRecord's YUE mint logs), territories with bars
+  (avatar gear thresholds 3 and 10). Totals are floors (known players).
+- **Measured on 2026-11-24 for `0x18f6…3111`** (`tools/live_acts.gd`): RatKing Ω 875,634, tower 12 floors, next
+  floor in 340 Su, Beat ready, room quiet since block 27,787,864 (a "PulsePunk: Anyone home?" broadcast to many
+  rooms); Illinois Ω 26, #5 → pass #4 in 2 Su, Settlement in 281 Su; MrStu Ω 66, no bars yet (first Su builds a
+  1-floor tower), the west neighbour Noumenon has Ω 39,193. Most neighbours read Ω = 0.
+- **Celebrations show only re-read numbers:** Su = YUE.Bar at the receipt's block minus the preview's; a room line =
+  YUE.Bar at block − 1 → block; Beat = receipt status 1. Markers/tracker/steward text are personal UI; the territory's
+  own look still depends only on territory state.
+- **The Heart (owner: "the sphere and beam were cheesy")** is an armillary orrery: a faceted crystal with a light
+  inside, one gimbal ring per tier (Wild 1 … Capital 6) tilted by arg(c) + k·golden angle, turning with the energy
+  (Epibar total); it ticks on each new block read and beats (shock ring) on a confirmed Beat. The tier shaft is an
+  additive shader (`light_shaft.gdshader`: brightest mid-silhouette, fades with height and at its edges), 14 + 10·tier m,
+  280 m at Capital with a 48-light halo (one MultiMesh) instead of the gold torus.
+- **Core detail** (`CoreDressing`): metal-plate paving r 22 m with kerb, inlaid light lines and 36 bollards (MultiMesh;
+  gaps at the four roads), the Room's plinth band, cornice and door portal (Column_Astra, canopy, threshold, spot),
+  stepped bases on the pylons/monolith/World plinth, metal well rims, tower podiums. Label3Ds on the Core have outlines.

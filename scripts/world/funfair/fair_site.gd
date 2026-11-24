@@ -38,6 +38,8 @@ var _progress := {"codes": [], "state": "nowallet", "block": -1, "wallet": ""}
 var _boards_busy := false
 var _progress_busy := false
 var _preview := false
+## This territory's development as last read (territory_v2): {tier, total, block}; {} = not read.
+var dev_facts := {}
 var _height_fn: Callable   ## ground height at (x, z) relative to the Core (parent), minus the Core's y
 var _voyage: Node = null
 var _ground_mat: Material = null  ## the terrain's own material (colours by world XZ) so the terrace continues the land
@@ -146,6 +148,8 @@ func set_dev_tier(dev_tier: int) -> void:
 	if t > 0 and not _fair.game_spots.is_empty():
 		refresh_boards()
 		refresh_progress()
+		for g in _fair.game_spots:
+			g["stage"].refresh_shelf(_qing)  # the prize shelves: what's left today, and yours
 
 
 static func _compass(v: Vector2) -> String:
@@ -186,7 +190,9 @@ func _process(_delta: float) -> void:
 			best = dg
 			f = {"game": g["id"]}
 	var key := ""
-	if f.has("ride"):
+	if f.is_empty() and _tier == 0 and Vector2(p.x - global_position.x, p.z - global_position.z).length() < RADIUS:
+		key = "lot"
+	elif f.has("ride"):
 		key = "ride:" + String(f["ride"].ride_id)
 	elif f.has("game"):
 		key = "game:" + String(f["game"])
@@ -198,16 +204,22 @@ func _process(_delta: float) -> void:
 	var paid := Wallet.address != ""
 	var price := ("%s to this QING" % ArcadePay.fee_text()) if paid else "free practice (no wallet)"
 	if _focus != null and _rocket_locked(_focus):
-		_hud.show_prompt("%s  UPSILON ROCKET · %s" % [ControlsHelp.key_of("interact"), _progress_line()])
+		_hud.show_prompt("%s  UPSILON ROCKET · practice flight (free) · %s" % [ControlsHelp.key_of("interact"), _progress_line()])
 	elif _focus != null:
 		_hud.show_prompt("%s  RIDE %s · %s" % [ControlsHelp.key_of("interact"), String(_focus.item.get("name", "Ride")).to_upper(), price])
 	elif _focus_game != "":
 		_hud.show_prompt("%s  PLAY %s · %s" % [ControlsHelp.key_of("interact"), MidwayGame.title(_focus_game), price])
+	elif key == "lot":
+		_hud.show_prompt("%s  AFFECTION FAIR · site reserved: what opens it?" % ControlsHelp.key_of("interact"))
 	else:
 		_hud.hide_prompt()
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _focus_key == "lot" and event.is_action_pressed("interact"):
+		get_viewport().set_input_as_handled()
+		show_tier_steps()
+		return
 	if (_focus == null and _focus_game == "") or _riding != null or _paying or _game != null or not event.is_action_pressed("interact"):
 		return
 	get_viewport().set_input_as_handled()
@@ -218,9 +230,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	_focus_key = ""
 	if ride and _rocket_locked(ride):
 		# The rocket opens once the chain shows a ticket for every game here (checked again now)
+		# Locked: the steps to unlock it (AccessSteps), and a free practice flight, labelled
 		_hud.ticker("%s · each game's 1 Ⓐ ticket at this QING lights a lamp by the rocket" % _progress_line(), Color("#ffd27a"), 8.0)
-		_hud.show_prompt("UPSILON ROCKET · " + _progress_line())
 		refresh_progress()
+		var steps := AccessSteps.popup(self, "rocket", {"qing": _qing, "fee_wei": ArcadePay.FEE_WEI, "fair": _progress.duplicate()})
+		steps.add_footer_button("Fly a free practice flight", func(): _start(ride, "PRACTICE FLIGHT · nothing paid · " + _progress_line()))
 		return
 	if Wallet.address == "":
 		if ride:
@@ -239,6 +253,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	_hud.hide_prompt()
 	if not res.get("ok", false):
 		var msg := "Ticket not bought (%s): %s" % [res.get("stage", "?"), res.get("message", "cancelled")]
+		if AccessSteps.goal_for_failure(res, "fair_ticket") != "":
+			AccessSteps.popup(self, "fair_ticket", {"qing": _qing, "fee_wei": fee})
 		print("[Fair] ", msg)
 		_hud.ticker(msg, Color("#ff8fa0"), 14.0)
 		_hud.show_prompt(msg)
@@ -256,6 +272,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		refresh_progress()
 		_play(game, MidwayGame.seed_from_tx(String(res["hash"])), true,
 			"TICKET %s · block %s · this round is seeded by its hash" % [ArcadeScores.short(String(res["hash"])), ArcadeScores.grouped(int(res["block"]))], res)
+
+
+## The fair is built by development: the steps to the night market (Settlement), from
+## the territory's development as read (tier + Hypobar total + block; unread = checking…).
+func show_tier_steps() -> AccessSteps:
+	var t := {"state": "reading"}
+	if not dev_facts.is_empty():
+		t = {"state": "ok", "have": int(dev_facts["tier"]), "need": 2, "have_name": Development.tier_name(int(dev_facts["tier"])),
+			"need_name": Development.tier_name(2), "total": String(dev_facts["total"]), "block": int(dev_facts["block"]),
+			"what": "the fair's night market, carousel and midway games"}
+	return AccessSteps.popup(self, "building", {"title": "Open the Affection Fair here", "tier": t,
+		"subtitle": "Settlement needs a Hypobar total of %s here (known players). Town adds the wheel and drop tower; City the grand fair." % TokenFormat.group(Development.next_threshold(1))})
 
 
 ## A midway game in first person at its stall (MidwayPlay); the player stands still while it runs.
@@ -339,6 +367,7 @@ func _show_progress() -> void:
 
 
 ## Locked: the rocket, a wallet connected, and not every game played here (or not read yet).
+## A locked rocket still flies a free practice flight (labelled, nothing paid).
 func _rocket_locked(ride: RideBase) -> bool:
 	if ride == null or ride.ride_id != "rocket" or Wallet.address == "":
 		return false
@@ -354,7 +383,7 @@ func _progress_line() -> String:
 
 
 ## Previews (screenshot.gd --fair=<game>|rocket): first person at a stall, a scripted round of
-## practice (nothing is paid or posted), held at `phase`: aim | play | result; `board`: the stall's
+## practice (nothing is paid or posted), held at `phase`: aim | play | hit (a big hit, mid-effects) | cheer (the celebration) | howto | result; `board`: the stall's
 ## room board close up.
 func preview_game(id: String, phase: String, codes: Array = []) -> void:
 	_preview = true
@@ -375,8 +404,12 @@ func preview_game(id: String, phase: String, codes: Array = []) -> void:
 			if g["id"] == id and l is Label3D:
 				var cam := Camera3D.new()
 				add_child(cam)
-				var c: Vector3 = l.to_global(Vector3(0.6, -0.62, 0.0))
-				cam.global_position = c + l.global_transform.basis.z.normalized() * 1.9 + Vector3.UP * 0.1
+				# From where a player would read it: a few metres out, at eye height.
+				var c: Vector3 = l.to_global(Vector3(1.2, -0.9, 0.0))
+				var out: Vector3 = (l as Label3D).global_transform.basis.z.normalized()
+				var eye: Vector3 = c + out * 4.2
+				eye.y = _fair.global_position.y + 1.7 + maxf(0.0, c.y - _fair.global_position.y - 3.0) * 0.3
+				cam.global_position = eye
 				cam.look_at(c)
 				cam.fov = 50.0
 				cam.current = true
@@ -388,9 +421,16 @@ func preview_game(id: String, phase: String, codes: Array = []) -> void:
 	await get_tree().create_timer(1.3).timeout
 	g.begin_play()
 	g.hold = true
-	var plan: Dictionary = {"striker": [[96 + 46, 0, 0]], "entropy": [[30, -120, 0]], "regolith": [[20, 0, 0], [130, -300, 200]],
-		"crystal": [[10, 200, 0], [90, -200, 400]], "motzkin": [[260, 0, 0], [420, 300, 200]], "waat": [[20, 0, 0]], "saat": [[0, 0, 0], [40, 0, 0]]}
-	var stop := {"striker": 96 + 46 + 16 + 30, "entropy": 30 + 30, "regolith": 130 + 20, "crystal": 90 + 14, "motzkin": 424, "waat": 60, "saat": 70}
+	if phase != "howto":
+		g.skip_tutorial()
+	else:
+		return
+	if phase in ["hit", "cheer"]:
+		await _preview_auto(g, phase)
+		return
+	var plan: Dictionary = {"striker": [[90 + 44, 0, 0]], "entropy": [[30, -120, 0]], "regolith": [[20, 0, 0], [110, -300, 200]],
+		"crystal": [[10, 200, 0], [70, -200, 400]], "motzkin": [[260, 0, 0], [420, 300, 200]], "waat": [[20, 0, 0]], "saat": [[20, 300, 0], [70, -300, 0]]}
+	var stop := {"striker": 90 + 44 + 12 + 30, "entropy": 30 + 26, "regolith": 110 + 18, "crystal": 70 + 12, "motzkin": 424, "waat": 60, "saat": 70 + 10}
 	var presses: Array = plan.get(id, [])
 	var i := 0
 	var until: int = stop.get(id, 60)
@@ -398,7 +438,7 @@ func preview_game(id: String, phase: String, codes: Array = []) -> void:
 		until = MidwaySim.MAX_TICKS
 	elif phase == "aim":  # still aiming: the sight (and the meter) before the first press
 		var aims := {"striker": [40, 0, 0], "entropy": [40, 250, 0], "regolith": [40, -330, 190], "crystal": [40, 120, 300],
-			"motzkin": [300, -200, 150], "waat": [40, 0, 0], "saat": [10, 0, 0]}
+			"motzkin": [300, -200, 150], "waat": [40, 0, 0], "saat": [30, 300, 0]}
 		var a: Array = aims.get(id, [40, 0, 0])
 		presses = [[MidwaySim.MAX_TICKS, a[1], a[2]]]
 		until = int(a[0])
@@ -408,19 +448,59 @@ func preview_game(id: String, phase: String, codes: Array = []) -> void:
 			g.set_aim(Vector2(presses[i][1], presses[i][2]))
 			g.press()
 			i += 1
-		elif phase == "result" and id == "motzkin" and g.sim.accepts():
-			for k in g.sim.schedule.size():  # the preview shoots the primes it sees
-				var e: Array = g.sim.schedule[k]
-				if g.sim.target_up(k, g.sim.tick) and g.sim.tick - int(e[1]) > 12 and MidwaySim.is_prime(int(e[3])):
-					g.set_aim(Vector2(int(MidwaySim.SLOTS_X[int(e[0]) % 4]) * MidwaySim.AIM / 1800, (int(MidwaySim.SLOTS_Y[int(e[0]) / 4]) - 1825) * MidwaySim.AIM / 700))
-					g.press()
-					break
-		elif phase == "result" and id != "motzkin" and g.sim.accepts() and g.sim.phase_t > 20:
-			g.press()
+		elif phase == "result":
+			var c = MidwayAuto.choose(g.sim)
+			if c is Array:
+				g.set_aim(Vector2(c[0], c[1]))
+				g.press()
 		g.sim.step()
 	if presses.size() > 0:
 		g.set_aim(Vector2(presses[-1][1], presses[-1][2]))
 	g.hold = phase != "result"
+
+
+## Previews "hit" (a skilled round up to a big hit, its effects caught mid-air) and "cheer" (a
+## skilled round to the end: the celebration, held). Practice: nothing is paid, posted or kept.
+func _preview_auto(g: MidwayPlay, phase: String) -> void:
+	var want_hits := {"striker": 3, "entropy": 3, "regolith": 3, "crystal": 4, "motzkin": 5, "waat": 2, "saat": 3}
+	var target: int = want_hits.get(g.game, 3) if phase == "hit" else 1 << 30
+	# A dry run finds the tick of the target hit's result; the live round stops just before it
+	var stop_at := MidwaySim.MAX_TICKS
+	if phase == "hit":
+		var dry := MidwaySim.new(g.game, g.sim.seed_v)
+		var hits := 0
+		var seen := -1
+		while not dry.done and dry.tick < MidwaySim.MAX_TICKS:
+			var c0 = MidwayAuto.choose(dry)
+			if c0 is Array:
+				dry.press(int(c0[0]), int(c0[1]))
+			dry.step()
+			if dry.last_tick != seen and dry.last_tick >= 0:
+				seen = dry.last_tick
+				hits += 1 if dry.last_points > 0 else 0
+				if hits >= target:
+					stop_at = dry.last_tick
+					break
+	while not g.sim.done and g.sim.tick < stop_at:
+		var c = MidwayAuto.choose(g.sim)
+		if c is Array:
+			g.set_aim(Vector2(c[0], c[1]))
+			g.press()
+		g.sim.step()
+	g.mark_seen()
+	if phase == "hit":
+		await get_tree().create_timer(1.0).timeout  # just before the capture (screenshot.gd: 2.5 s, then --frames)
+		var c1 = MidwayAuto.choose(g.sim)
+		if c1 is Array:
+			g.set_aim(Vector2(c1[0], c1[1]))
+			g.press()
+		g.sim.step()
+		g.stage.render()
+		return
+	g.hold = true
+	if g.stage.crowd:
+		g.stage.crowd.gather(6, 7)
+		g.stage.crowd.settle()
 
 
 func _start(ride: RideBase, note: String) -> void:

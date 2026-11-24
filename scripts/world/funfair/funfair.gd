@@ -452,8 +452,9 @@ func _stall(pos: Vector3, facing: Vector3, kind: String, pair: Array) -> void:
 		var stage := MidwayStage.create(kind)
 		root.add_child(stage)
 		stage.build()
+		stage.dress()
 		game_spots.append({"id": kind, "pos": root.transform * Vector3(0, 0, d * 0.5 + 1.3), "face": root.transform.basis * Vector3.BACK,
-			"stage": stage, "board": _score_board(root, Vector3(w * 0.5 + 0.07, 1.65, 0.1), PI * 0.5)})
+			"stage": stage, "board": _stall_board(root, h, d)})
 	FairKit.solid_box(root, Vector3(w, h, d - 0.2), Vector3(0, h * 0.5, -0.1))
 	# Vendor behind the counter (spawned with the crowd); at a game, off to the side (the teller behind her table)
 	var vendor := Vector3(-0.7, 0.12, d * 0.5 - 0.95)
@@ -468,16 +469,38 @@ func _stall(pos: Vector3, facing: Vector3, kind: String, pair: Array) -> void:
 	FairKit.model(self, "wooden_crate_01", root.transform * Vector3(1.0, 0.0, -d * 0.5 - 0.55), root.rotation.y + _rng.randf_range(-0.3, 0.3))
 
 
-## A game's room board: a dark panel with a Label3D whose top-left sits at the panel's corner
-## (FairSite writes the verified top 10 into it).
-func _score_board(parent: Node3D, pos: Vector3, rot_y: float) -> Label3D:
+## A game stall's room board: a marquee on two posts over the stall's sign, facing the midway,
+## so it reads from the walkway (FairSite writes the verified top 10 into it).
+func _stall_board(root: Node3D, h: float, d: float) -> Label3D:
+	var post := FairKit.paint(Color(0.2, 0.21, 0.24), 0.45, 0.8)
+	var y := h + 2.15   # the board's centre: clear of the sign (top ≈ h + 1.02)
+	var z := d * 0.5 - 0.45
+	for sx in [-1.15, 1.15]:
+		FairKit.box(root, Vector3(0.08, y - h, 0.08), Vector3(sx, h + (y - h) * 0.5, z - 0.08), post)
+	return _score_board(root, Vector3(0, y, z), 0.0, 2.6, 1.95)
+
+
+## A game's room board: a lit panel with the text block centred on it (FairSite writes the
+## verified top 10 into it).
+const BOARD_COLS := 48.0
+## Sized so FairBoard.sign_text (16 lines of up to ~46 characters) fits the face: a left- and
+## top-aligned Label3D starts at its position, so the text starts a margin in from the top-left. The face is self-lit so it reads at night and at low quality.
+## (2026-11-24: the boards were 1.2 m on the outside of a side wall, in the 1.4 m gap between
+## stalls, with 5 cm text running off the panel.)
+func _score_board(parent: Node3D, pos: Vector3, rot_y: float, wide: float = 2.6, tall: float = 2.0) -> Label3D:
 	var turn := Basis(Vector3.UP, rot_y)
-	var p := FairKit.box(parent, Vector3(1.24, 1.42, 0.03), pos, FairKit.paint(Color(0.03, 0.035, 0.06), 0.7, 0.2))
+	var p := FairKit.box(parent, Vector3(wide, tall, 0.05), pos, FairKit.glow(Color(0.02, 0.025, 0.05), 1.0, 1.0))
 	p.rotation.y = rot_y
-	var frame := FairKit.box(parent, Vector3(1.3, 0.04, 0.05), pos + turn * Vector3(0, 0.73, 0.0), FairKit.glow(Color(1.0, 0.8, 0.4), 2.5, 1.0))
-	frame.rotation.y = rot_y
-	var l := FairKit.label(parent, "ROOM BOARD\n—", pos + turn * Vector3(-0.58, 0.66, 0.025), 30, Color(0.85, 0.92, 1.0), rot_y, Color(0.01, 0.01, 0.02), 0.0016)
+	var trim := FairKit.glow(Color(1.0, 0.8, 0.4), 2.5, 1.0)
+	for e in [-1.0, 1.0]:
+		var bar := FairKit.box(parent, Vector3(wide + 0.08, 0.05, 0.07), pos + turn * Vector3(0, e * (tall * 0.5 + 0.02), 0.0), trim)
+		bar.rotation.y = rot_y
+		var side := FairKit.box(parent, Vector3(0.05, tall, 0.07), pos + turn * Vector3(e * (wide * 0.5 + 0.02), 0, 0.0), trim)
+		side.rotation.y = rot_y
+	var px := wide / (BOARD_COLS * 0.6 * 48.0)  # BOARD_COLS mono characters across
+	var l := FairKit.label(parent, "ROOM BOARD\n—", pos + turn * Vector3(-wide * 0.5 + 0.08, tall * 0.5 - 0.1, 0.04), 48, Color(0.9, 0.95, 1.0), rot_y, Color(0.0, 0.0, 0.02, 0.95), px)
 	l.font = DeepFieldTheme.mono_font()
+	l.outline_size = 8
 	l.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	return l
@@ -897,15 +920,16 @@ func _high_striker(pos: Vector3, facing: Vector3) -> void:
 	var stage := MidwayStage.create("striker")
 	root.add_child(stage)
 	stage.build()
+	stage.dress()
 	var bp := Node3D.new()
 	bp.position = Vector3(1.75, 0, 0.7)
 	bp.rotation.y = -0.35
 	root.add_child(bp)
-	for sx in [-0.62, 0.62]:
-		FairKit.box(bp, Vector3(0.07, 2.4, 0.07), Vector3(sx, 1.2, -0.05), FairKit.paint(Color(0.2, 0.21, 0.24), 0.45, 0.8))
-	FairKit.solid_box(bp, Vector3(1.3, 2.4, 0.2), Vector3(0, 1.2, -0.05))
+	for sx in [-1.0, 1.0]:
+		FairKit.box(bp, Vector3(0.07, 2.6, 0.07), Vector3(sx, 1.3, -0.07), FairKit.paint(Color(0.2, 0.21, 0.24), 0.45, 0.8))
+	FairKit.solid_box(bp, Vector3(2.0, 2.6, 0.2), Vector3(0, 1.3, -0.05))
 	game_spots.append({"id": "striker", "pos": root.transform * Vector3(0, 0, 1.9), "face": root.transform.basis * Vector3.BACK,
-		"stage": stage, "board": _score_board(bp, Vector3(0, 1.55, 0.0), 0.0)})
+		"stage": stage, "board": _score_board(bp, Vector3(0, 1.62, 0.0), 0.0, 1.9, 1.5)})
 
 
 # ─── Launch bleachers ──────────────────────────────────────────────────

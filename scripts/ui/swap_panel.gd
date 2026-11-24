@@ -31,6 +31,9 @@ var _quote: Dictionary = {}
 var _ask := 0
 
 
+## The steps to sign here when the wallet is not ready (AccessSteps).
+var _access: AccessSteps
+
 func setup(p_qing: String, p_place: String, asset: String) -> void:
 	qing = p_qing.to_lower()
 	place = p_place
@@ -313,6 +316,9 @@ func quote() -> void:
 	_approve_b.disabled = Wallet.address == "" or busy
 	_swap_b.disabled = Wallet.address == "" or need_approve or busy or not board["routers_ok"]
 	_swap_b.text = "Swap" if Wallet.address != "" else "Swap (connect a wallet to sign)"
+	if _access == null:
+		_access = AccessSteps.embed(result.get_parent(), result.get_index() + 1)
+	_access.update_for(ChatController._signer_blocker(), "swap", {"title": "Swap on PulseX"})
 
 
 func _sym_of(a: String) -> String:

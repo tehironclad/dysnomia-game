@@ -126,8 +126,9 @@ static func _sphere(parent: Node3D, r: float, m: Material, at: Vector3, sc: Vect
 	var s := SphereMesh.new()
 	s.radius = r
 	s.height = r * 2.0
-	s.radial_segments = 24
-	s.rings = 12
+	# Fewer segments for the small parts (eyes, smiles, studs): they bake into one mesh.
+	s.radial_segments = 24 if r >= 0.09 else (14 if r >= 0.035 else 8)
+	s.rings = s.radial_segments / 2
 	var mi := MeshInstance3D.new()
 	mi.mesh = s
 	mi.material_override = m
@@ -181,9 +182,21 @@ static func _whiskers(p: Node3D, y: float, z: float, span: float) -> void:
 			_box(p, Vector3(span, 0.004, 0.004), w, Vector3(sx * span * 0.55, y + (i - 1) * 0.018, z), Vector3(0, sx * -8.0, sx * (i - 1) * 9.0))
 
 
-## Builds a head of `kind` under a new Node3D, the face along +Z, the neck at
-## the origin. `tint` nudges the fur/skin colour per identity.
+## A head of `kind`, the face along +Z, the neck at the origin, baked into ONE
+## mesh (one surface, one material shared by every head; perf 2026-11-24: a head
+## was ~15 primitive meshes). Baked meshes are cached per kind and tint, so every
+## rat head is the same mesh resource. `tint` nudges the fur/skin colour.
 static func build(kind: String, tint: Color = Color(0.5, 0.5, 0.5)) -> Node3D:
+	var key := "%s|%s" % [kind, tint.to_html()]
+	if not _baked.has(key):
+		var parts := build_parts(kind, tint)
+		_baked[key] = bake(parts)
+		parts.free()
+	return _baked_instance("Head_" + kind, _baked[key])
+
+
+## The head as separate primitive parts (what build() bakes; tests read it).
+static func build_parts(kind: String, tint: Color = Color(0.5, 0.5, 0.5)) -> Node3D:
 	var p := Node3D.new()
 	p.name = "Head_" + kind
 	match kind:
@@ -445,8 +458,18 @@ static func _bird(p: Node3D, tint: Color) -> void:
 	_eyes(p, 0.29, 0.09, 0.14, 0.035, Color(0.6, 0.35, 0.02))
 
 
-## An accessory sitting on a head of height `top` (metres above the neck).
+## An accessory sitting on a head of height `top` (metres above the neck), baked
+## like the heads (one mesh, cached per kind and height).
 static func accessory(kind: String, top: float = 0.46) -> Node3D:
+	var key := "acc|%s|%.3f" % [kind, top]
+	if not _baked.has(key):
+		var parts := accessory_parts(kind, top)
+		_baked[key] = bake(parts)
+		parts.free()
+	return _baked_instance("Acc_" + kind, _baked[key])
+
+
+static func accessory_parts(kind: String, top: float = 0.46) -> Node3D:
 	var p := Node3D.new()
 	p.name = "Acc_" + kind
 	match kind:
@@ -477,3 +500,99 @@ static func accessory(kind: String, top: float = 0.46) -> Node3D:
 			cone.scale = Vector3.ONE
 			_sphere(p, 0.02, _mat(Color(1.0, 0.9, 0.4), 0.2, 0.0, 2.5), Vector3(0, top + 0.12, 0.08))
 	return p
+
+
+# --- Baking ------------------------------------------------------------------------
+
+static var _baked := {}
+static var _shared: Array = [null, null]  # [normal, grey] head materials
+
+const HEAD_SHADER := "res://assets/shaders/avatar_head.gdshader"
+
+
+## The material every baked head and accessory wears (grey: an offline avatar).
+static func head_material(grey: bool = false) -> ShaderMaterial:
+	var i := 1 if grey else 0
+	if _shared[i] == null:
+		var m := ShaderMaterial.new()
+		m.shader = load(HEAD_SHADER)
+		m.set_shader_parameter("grey", 1.0 if grey else 0.0)
+		_shared[i] = m
+	return _shared[i]
+
+
+static func _baked_instance(nm: String, mesh: Mesh) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.name = nm
+	mi.mesh = mesh
+	mi.material_override = head_material()
+	return mi
+
+
+## Bakes every MeshInstance3D under `root` (transforms relative to `root`) into one
+## triangle surface: colour → vertex colour (linear), roughness/metallic → UV,
+## emission energy → UV2.x (read by avatar_head.gdshader). Adds LODs where the
+## engine can make them.
+static func bake(root: Node3D) -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var cols := PackedColorArray()
+	var uv := PackedVector2Array()
+	var uv2 := PackedVector2Array()
+	var idx := PackedInt32Array()
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if m.mesh == null:
+			continue
+		var xf := _relative(m, root)
+		var nb := xf.basis.inverse().transposed()
+		var sm := m.material_override as StandardMaterial3D
+		var col := Color(0.8, 0.8, 0.8)
+		var pbr := Vector2(0.75, 0.0)
+		var emit := 0.0
+		if sm:
+			col = sm.albedo_color
+			pbr = Vector2(sm.roughness, sm.metallic)
+			if sm.emission_enabled:
+				emit = sm.emission_energy_multiplier
+		var lin := col.srgb_to_linear()
+		for si in m.mesh.get_surface_count():
+			var a := m.mesh.surface_get_arrays(si)
+			var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+			var n: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+			var base := verts.size()
+			for k in v.size():
+				verts.append(xf * v[k])
+				norms.append((nb * n[k]).normalized() if k < n.size() else Vector3.UP)
+				cols.append(lin)
+				uv.append(pbr)
+				uv2.append(Vector2(emit, 0.0))
+			var ii = a[Mesh.ARRAY_INDEX]
+			if ii == null or (ii as PackedInt32Array).is_empty():
+				for k in v.size():
+					idx.append(base + k)
+			else:
+				for k in (ii as PackedInt32Array):
+					idx.append(base + k)
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = norms
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_TEX_UV] = uv
+	arr[Mesh.ARRAY_TEX_UV2] = uv2
+	arr[Mesh.ARRAY_INDEX] = idx
+	var im := ImporterMesh.new()
+	im.add_surface(Mesh.PRIMITIVE_TRIANGLES, arr)
+	im.generate_lods(25.0, 60.0, [])
+	return im.get_mesh()
+
+
+static func _relative(n: Node3D, root: Node3D) -> Transform3D:
+	var xf := n.transform
+	var p := n.get_parent()
+	while p and p != root:
+		if p is Node3D:
+			xf = (p as Node3D).transform * xf
+		p = p.get_parent()
+	return xf

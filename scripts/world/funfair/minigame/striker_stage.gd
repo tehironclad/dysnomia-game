@@ -16,6 +16,7 @@ var _bell: MeshInstance3D
 var _bell_idle: Material
 var _bell_lit: Material
 var _look_y := 3.0
+var _last_phase := ""
 
 
 func build() -> void:
@@ -48,6 +49,7 @@ func build() -> void:
 func _begin() -> void:
 	_mallet.visible = true
 	_look_y = 3.0
+	_last_phase = ""
 
 
 func _idle() -> void:
@@ -77,6 +79,18 @@ func render() -> void:
 		return
 	var y := TRACK_Y0 + (TRACK_Y1 - TRACK_Y0) * float(sim.puck_y) / MidwaySim.BELL
 	_puck.position.y = y
+	# The mallet meets the pad: a thud, sparks, the camera jolts (harder for a harder swing)
+	if sim.phase == "fly" and _last_phase == "swing":
+		var p := sim.power / 1000.0
+		sound("thud", 0.9 + 0.2 * p)
+		kick(0.03 + 0.09 * p, 0.05 + 0.07 * p)
+		fx.sparks(Vector3(0, 0.75, 0.05), Color(1.0, 0.75, 0.35), 0.6 + p, Vector3(0, 1, 0.4))
+		FairFx.squash(_puck, 0.45 * p, Vector3.UP, _puck.scale)
+	_last_phase = sim.phase
+	if sim.phase == "fly":
+		FairFx.stretch(_puck, clampf(absf(sim.puck_v) / 500.0, 0.0, 0.7))
+	elif _puck.scale.y > 1.0:
+		_puck.scale = Vector3.ONE
 	# The mallet: raised and bobbing with the meter, then down onto the pad
 	var th := 0.5 + 0.3 * sim.meter / 1000.0
 	if sim.phase == "swing":
@@ -92,3 +106,57 @@ func render() -> void:
 	_bell_light.visible = lit
 	if lit:
 		_bell_light.light_energy = 6.0 * (0.6 + 0.4 * sin(sim.tick * 0.9))
+
+
+func dress() -> void:
+	super.dress()
+	# Onlookers stand off to the sides: the camera steps back to follow the puck up the pole
+	crowd.spots = [Vector3(-2.6, 0, 2.0), Vector3(2.6, 0, 2.2), Vector3(-3.2, 0, 3.0), Vector3(3.3, 0, 3.2),
+		Vector3(-2.3, 0, 3.9), Vector3(2.5, 0, 4.1), Vector3(-3.9, 0, 1.6), Vector3(3.9, 0, 1.8)]
+
+
+func frame_rect() -> Rect2:
+	return Rect2(Vector2(0, 4.05), Vector2(0.8, 6.7))   # chase bulbs up both sides of the track
+
+
+func frame_z() -> float:
+	return -0.02
+
+
+func lamp_xs() -> Array:
+	return []
+
+
+func shelf_xform() -> Transform3D:
+	return Transform3D(Basis(Vector3.UP, 0.6), Vector3(-1.75, 0.0, 0.7))
+
+
+func spot_at() -> Vector3:
+	return Vector3(0, 3.5, -0.2)
+
+
+func cheer_eye() -> Transform3D:
+	return look(Vector3(1.1, 2.0, 5.6), Vector3(0.0, 2.7, 0.2))
+
+
+func impact_pos() -> Vector3:
+	if sim and sim.rang:
+		return Vector3(0, 7.55, 0.15)
+	var py := float(sim.peak if sim else 0) / MidwaySim.BELL
+	return Vector3(0, TRACK_Y0 + (TRACK_Y1 - TRACK_Y0) * py, 0.1)
+
+
+func press_sound() -> String:
+	return "whoosh"
+
+
+func result_sound() -> String:
+	return "bell" if sim.rang else ""
+
+
+func on_result() -> void:
+	if sim.rang:
+		fx.sparks(Vector3(0, 7.6, 0.0), Color(1.0, 0.9, 0.5), 2.0, Vector3.UP)
+		fx.burst(Vector3(0, 7.6, 0.1), Color(1.0, 0.85, 0.35), 2.0)
+		FairFx.squash(_bell, 0.3, Vector3.UP)
+		kick(0.1, 0.12)

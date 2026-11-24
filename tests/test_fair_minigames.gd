@@ -12,13 +12,14 @@ const TICKET := "0x9f3c2b1a000000000000000000000000000000000000000000000000c0ffe
 ## Recorded rounds: [game, seed, compact log, score]. If a rule changes, these fail: bump
 ## MidwaySim.VERSION (old room lines then say which rules they were played under).
 const RECORDED := [
-	["striker", 0x00c0ffee, "1b.4c.4c", 291],
-	["entropy", 0x00c0ffee, "bzk.3it3.3b00", 100],
-	["regolith", 0x00c0ffee, "43hshs.4g5ysg.2ytm74.6phs74.6ltmsg", 500],
-	["crystal", 0x00c0ffee, "5hd9g.28agq4.2c9f9g.28idq4.2ci79g.289mq4.2ca99g.2897q4", 800],
-	["motzkin", 0x00c0ffee, "174gra.4y4g8a.1xm8ra.30dcra.3tv4ra.1jdcra.2zdcra.xv48a.3uv48a.zv4ra.30v48a.v4gra.18m88a.4tv4ra.wv48a", 950],
-	["waat", 0x00c0ffee, "k.49.4n", 290],
-	["waat", 0x00c0ffee, "", 770],  # never braked: it brakes itself after 15 s each spin
+	["striker", 0x00c0ffee, "18.4t.4k.4j.4e", 585],
+	["entropy", 0x00c0ffee, "pos.2nzk.2f00.2hxh.2n00", 625],
+	["regolith", 0x00c0ffee, "41hshs.4w5ysg.61tm74.4uhs74.2vtmsg.7xhshs", 1800],
+	["crystal", 0x00c0ffee, "5gt9g.1o4kq4.1s759g.1ohcq4.1sjd9g.1o86q4.1sk39g.1or9q4", 3600],
+	["motzkin", 0x00c0ffee, "114gra.4h4g8a.1pm8ra.2bdcra.1pm8ra.1lv4ra.1ndcra.47v4ra.1kdc8a.kv48a.rv4ra.29v48a.t4gra.um88a.39v4ra.hv48a.1y4g8a.rv4ra.lv48a.4o4g8a", 9750],
+	["waat", 0x00c0ffee, "k.3r.43.4q.51", 2295],
+	["saat", 0x00c0ffee, "b9g.1u9g.1uq4.1uq4.1uq4.1uq4.1uq4", 1500],
+	["waat", 0x00c0ffee, "", 230],  # never braked: it brakes itself after 15 s each spin
 	["striker", 0x00c0ffee, "", 0],  # never swung
 ]
 
@@ -46,7 +47,8 @@ func _bot(game: String) -> Callable:
 				var want := (d - 400) * 1000 / 1600
 				if s.phase != "ready" or absi(s.meter - want) > 25:
 					return null
-				var ax := (s.target.x - s.wind * d / 1000) * 1000 * MidwaySim.AIM / (500 * d)
+				var tx := s.target_x(s.tick + MidwaySim.TOSS_FLY + 1)  # lead the sliding rings
+				var ax := (tx - s.wind * d / 1000) * 1000 * MidwaySim.AIM / (500 * d)
 				return [ax, 0]
 		"regolith":
 			return func(s: MidwaySim):
@@ -63,7 +65,7 @@ func _bot(game: String) -> Callable:
 				for i in MidwaySim.RAIL_N:
 					if (int(s.knocked[row]) >> i) & 1:
 						continue
-					var x := s.crystal_x(row, i, s.tick + 1 + MidwaySim.SHY_FLY[row])
+					var x := s.crystal_x(row, i, s.tick + MidwaySim.SHY_FLY[row])
 					if absi(x) < 1500:
 						return [x * MidwaySim.AIM / 1700, 300 if row == 1 else -300]
 				return null
@@ -80,7 +82,7 @@ func _bot(game: String) -> Callable:
 		"waat":
 			return func(s: MidwaySim): return [0, 0] if s.phase == "ready" and s.phase_t >= 20 + 7 * s.round_i else null
 		"saat":
-			return func(s: MidwaySim): return [0, 0] if s.phase_t > 10 else null
+			return func(s: MidwaySim): return ([-300 if int(s.cards[s.round_i]) > 7 else 300, 0]) if s.phase == "ready" and s.phase_t > 10 else null
 	return func(_s): return null
 
 
@@ -100,8 +102,6 @@ func test_bot_rounds_replay_to_the_same_score() -> void:
 func test_bots_score_something() -> void:
 	# Skill pays: every scored game gives the bot points over a few seeds
 	for game in GAMES:
-		if game == "saat":
-			continue
 		var total := 0
 		for seed_v in [3, 99, 2024, 0x5eed]:
 			total += _play(game, seed_v, _bot(game)).score
@@ -133,7 +133,7 @@ func test_scores_are_bounded_under_random_input() -> void:
 func test_bad_logs_do_not_replay() -> void:
 	var s := _play("striker", 5, _bot("striker"))
 	var log: Array = s.events.duplicate(true)
-	check(log.size() == 3)
+	check(log.size() == MidwaySim.rounds("striker"))
 	var early := log.duplicate(true)
 	early[1][0] = int(early[0][0]) + 3  # the second swing during the first one's flight
 	eq(MidwaySim.replay("striker", 5, early), -1, "a press the game wouldn't take")
@@ -174,22 +174,22 @@ func test_integer_helpers() -> void:
 
 
 func test_room_line_fits_and_parses() -> void:
-	# The longest line: Motzkin, 15 shots, big tick gaps, full aims
+	# The longest line: Motzkin, every shot, big tick gaps, full aims, the highest score
 	var log: Array = []
 	var t := 0
-	for i in 15:
+	for i in MidwaySim.rounds("motzkin"):
 		t += 1295
 		log.append([t, -MidwaySim.AIM + i, MidwaySim.AIM - i])
-	var text := FairBoard.line_text("motzkin", 1500, TICKET, log)
+	var text := FairBoard.line_text("motzkin", MidwaySim.max_score("motzkin"), TICKET, log)
 	check(text.length() <= FairBoard.MAX_LEN, "the longest score line is %d characters (≤ %d)" % [text.length(), FairBoard.MAX_LEN])
 	check(text.to_utf8_buffer().size() <= 300, "and %d bytes" % text.to_utf8_buffer().size())
 	var p := FairBoard.parse(text)
 	eq(p["game"], "motzkin")
-	eq(p["score"], 1500)
+	eq(p["score"], MidwaySim.max_score("motzkin"))
 	eq(p["ticket"], TICKET)
 	eq(p["log"], log)
 	check(FairBoard.parse("🎱 challenge anyone").is_empty(), "a pool line is not a score line")
-	check(FairBoard.parse("🎪 saat 0 %s v1:" % TICKET).is_empty(), "the teller posts no score")
+	eq(FairBoard.parse("🎪 saat 150 %s v2:k" % TICKET).get("game", ""), "saat", "the teller's Higher or Lower posts a score (v2)")
 	check(TableBook.parse(text).is_empty(), "the pool/cards book ignores score lines")
 
 
@@ -258,3 +258,18 @@ func test_progress_codes() -> void:
 	var t := FairProgress.topics(PLAYER, QING)
 	eq(t[1], "0x" + "1".repeat(40).lpad(64, "0"))
 	eq(String(t[2]).length(), 66)
+
+
+func test_streaks_and_the_frenzy_multiply() -> void:
+	# Five perfect swings: 150 × (1 + 2 + 3 + 3) and the frenzy's last swing at ×3 × 2 = the bound
+	var s := _play("striker", 11, func(m: MidwaySim): return [0, 0] if m.phase == "ready" and m.meter >= 995 else null)
+	eq(s.best_streak, 5, "five bells in a row")
+	eq(s.score, MidwaySim.max_score("striker"), "perfect play reaches the bound")
+	check(s.last_mult == 6 and s.last_bonus, "the frenzy swing scored ×6 as a bonus")
+	# A miss breaks the streak and the next good result starts again at ×1
+	var w := _play("striker", 11, func(m: MidwaySim): return [0, 0] if m.phase == "ready" and m.meter >= (995 if m.round_i != 2 else 400) else null)
+	eq(w.best_streak, 2)
+	check(w.score < s.score, "a broken streak costs (%d < %d)" % [w.score, s.score])
+	# Near misses are flagged, not scored extra
+	var n := _play("striker", 11, func(m: MidwaySim): return [0, 0] if m.phase == "ready" and m.meter >= 905 and m.meter < 955 else null)
+	check(n.last_near and n.last_text.begins_with("SO CLOSE"), "a puck just short of the bell is a near miss: %s" % n.last_text)

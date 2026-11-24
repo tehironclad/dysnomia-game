@@ -31,6 +31,7 @@ func _ready() -> void:
 	_collisions()
 	exit_at = Vector3(0, 0, HALF - 0.8)
 	setup_player(Vector3(0, 0.1, HALF - 4.5), 0.0)
+	add_door("slide", 3.6, 3.4, Vector3(0, 0, HALF - 0.05))
 	exit_radius = 2.0
 	setup_hud("THE ROOM · %s" % String(territory.get("name", "")).to_upper())
 	info_label.text = "Lines on the board are this QING's own LogEvent logs, read from the chain. Reading the door…"

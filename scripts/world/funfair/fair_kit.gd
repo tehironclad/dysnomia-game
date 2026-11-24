@@ -142,6 +142,7 @@ static func apply_night(n: float) -> void:
 		var mm: StandardMaterial3D = m
 		mm.emission_energy_multiplier = lerpf(mm.get_meta("day_energy"), mm.get_meta("night_energy"), n)
 	bulb_mat().set_shader_parameter("energy", lerpf(1.0, 1.9, n))
+	shader_mat("fair_chase").set_shader_parameter("night", n)
 	pool_mat().set_shader_parameter("energy", n * 0.6)
 	var aw := shader_mat("fair_awning")
 	aw.set_shader_parameter("night", n)

@@ -42,6 +42,11 @@ const EDGE_BLEND_M := 40.0  ## land eases to 0 m over the border's outer metres
 const CACHE_DIR := "user://cache/terrain"
 const VERSION := 4  ## bump when the mapping changes (invalidates caches). 3: SIZE_M 512 → 724; 4: the Core plain 120/190 m
 
+## Progress of computes in flight, for a loading screen (Warp): cache path → 0..1. Written by
+## the compute's own threads under the lock; read with progress_of(). No effect on the result.
+static var _plock := Mutex.new()
+static var _progress := {}
+
 var n := 257  ## samples per side
 var heights := PackedFloat32Array()  ## row-major, n*n, metres
 var inside := PackedByteArray()  ## 1 where the sample is in the filled set
@@ -249,20 +254,22 @@ static func compute(p: Dictionary, addr: String, samples: int = 257) -> JuliaHei
 	var sv := PackedFloat32Array()  # inside: sqrt(trap); outside: de in metres
 	var av := PackedFloat32Array()  # outside: metres to the nearest canyon ray
 	var interior_s := PackedFloat32Array()
+	var key := cache_path(addr, samples)
+	_set_progress(key, 0.0)
 	var parts := clampi(OS.get_processor_count() - 1, 1, 6) if count >= 65536 else 1
 	var bounds: Array = []
 	for t in parts:
 		bounds.append([samples * t / parts, samples * (t + 1) / parts])
 	var results: Array = []
 	if parts == 1:
-		results.append(_escape_rows(p, rp, samples, 0, samples))
+		results.append(_escape_rows(p, rp, samples, 0, samples, key))
 	else:
 		var threads: Array = []
 		for b in bounds:
 			var th := Thread.new()
 			# Own copies: shared Dictionaries/Arrays make every read an atomic
 			# refcount on the same cache line, and the threads run in lockstep.
-			th.start(_escape_rows.bind(p.duplicate(true), rp.duplicate(true), samples, b[0], b[1]))
+			th.start(_escape_rows.bind(p.duplicate(true), rp.duplicate(true), samples, b[0], b[1], key))
 			threads.append(th)
 		for th in threads:
 			results.append(th.wait_to_finish())
@@ -276,7 +283,9 @@ static func compute(p: Dictionary, addr: String, samples: int = 257) -> JuliaHei
 	if interior_s.size() > 8:
 		interior_s.sort()
 		s_max = maxf(1e-6, interior_s[int((interior_s.size() - 1) * 0.98)])
+	_set_progress(key, PASS1_SHARE)
 	var coast := inland_distance(ins, samples, spacing)
+	_set_progress(key, PASS1_SHARE + 0.05)
 	# Pass 2: heights.
 	var hs := PackedFloat32Array()
 	hs.resize(count)
@@ -294,14 +303,41 @@ static func compute(p: Dictionary, addr: String, samples: int = 257) -> JuliaHei
 				hs[k] = lerpf(flank(sv[k], rp), exterior_height(sv[k], av[k], rp), plain)
 	hf.heights = hs
 	hf.inside = ins
+	_set_progress(key, PASS1_SHARE + 0.1)
 	hf._smooth(2)
 	hf._flatten_core()
 	hf._ease_border()
+	_plock.lock()
+	_progress.erase(key)  # done: nothing running (the caller caches it)
+	_plock.unlock()
 	return hf
 
 
+const PASS1_SHARE := 0.86  ## the escape pass is most of a compute's time
+
+
+## A running compute's progress (0..1), or -1 when none is running for this territory and size.
+static func progress_of(addr: String, samples: int) -> float:
+	_plock.lock()
+	var v: float = _progress.get(cache_path(addr, samples), -1.0)
+	_plock.unlock()
+	return v
+
+
+static func _set_progress(key: String, v: float) -> void:
+	_plock.lock()
+	_progress[key] = v
+	_plock.unlock()
+
+
+static func _add_progress(key: String, dv: float) -> void:
+	_plock.lock()
+	_progress[key] = minf(PASS1_SHARE, float(_progress.get(key, 0.0)) + dv)
+	_plock.unlock()
+
+
 ## Pass 1 of compute() for rows [r0, r1): [inside, s or de (m), ray offset (m), interior s].
-static func _escape_rows(p: Dictionary, rp: Dictionary, samples: int, r0: int, r1: int) -> Array:
+static func _escape_rows(p: Dictionary, rp: Dictionary, samples: int, r0: int, r1: int, key: String = "") -> Array:
 	var spacing := sample_spacing(samples)
 	var half := SIZE_M * 0.5
 	var mpu := half / float(p["extent"])  # metres per complex unit
@@ -316,6 +352,8 @@ static func _escape_rows(p: Dictionary, rp: Dictionary, samples: int, r0: int, r
 	sv.resize(cnt)
 	av.resize(cnt)
 	for row in range(r0, r1):
+		if key != "" and (row - r0) % 16 == 15:
+			_add_progress(key, PASS1_SHARE * 16.0 / samples)
 		var zw := -half + row * spacing
 		for col in samples:
 			var z := world_to_z(p, -half + col * spacing, zw)

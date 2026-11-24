@@ -261,10 +261,12 @@ func _send(batch: Array) -> void:
 	var ib: String = ChatController._identity_blocker()
 	if ib != "":
 		outbox.fail(batch, ib, "identity")
+		show_access(qing)
 		return
 	var sb: String = ChatController._signer_blocker()
 	if sb != "":
 		outbox.fail(batch, sb, "signer")
+		show_access(qing)
 		return
 	outbox.set_stage(batch, "checking the door…")
 	var room: RoomState = await RoomState.read(qing, Session.player)
@@ -275,6 +277,7 @@ func _send(batch: Array) -> void:
 	var rb := room.chat_blocker()
 	if rb != "":
 		outbox.fail(batch, rb, "join" if room.lau != "" and not room.banned and not room.admitted else "identity")
+		show_access(qing, room)
 		return
 	var texts: Array = batch.map(func(e): return e["text"])
 	var tx := ChatOutbox.encode_batch(qing, texts, place)
@@ -307,6 +310,18 @@ func _send(batch: Array) -> void:
 		outbox.confirm(batch, block, res["hash"], "on chain · block %d%s" % [block, delta])
 	posted.emit(mine, res)
 	Acts.set_flag(Session.wallet, "door")
+
+
+## The steps to post in this room (AccessSteps over the current scene): shown when a
+## post is refused for want of a wallet, the window, the chain, a LAU or the cover.
+func show_access(qing: String, room: RoomState = null) -> void:
+	var host := get_tree().current_scene
+	if host == null:
+		return
+	var ctx := {"qing": qing, "room_name": String(Registry.get_territory(qing).get("name", ""))}
+	if room != null:
+		ctx["room"] = room
+	AccessSteps.popup(host, "room_post", ctx, {"join": func(): await join()})
 
 
 ## "· +N Hypobar here" measured from YUE.Bar(QING) at block − 1 and block.

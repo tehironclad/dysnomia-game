@@ -40,6 +40,9 @@ var _prompt := ""
 var _paying := false
 var _speedo: Label
 var _arm_len := 3.5
+var _alighting := false  ## stepping out (a short animation; input waits)
+const ALIGHT_S := 0.5
+const CAM_EASE_S := 0.5  ## the chase camera eases out to the vehicle's distance and back
 var _site: Dictionary = {}
 
 
@@ -361,7 +364,7 @@ func _prompt_text() -> String:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _player == null:
+	if _player == null or _alighting:
 		return
 	if driving:
 		if event.is_action_pressed("vehicle_enter"):
@@ -391,6 +394,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			mount(_focus)
 		else:
 			_hud.ticker("%s is %s: %s" % [VehicleSpecs.display_name(_focus), VehicleUnlocks.status_word(st.get("state", 2)).to_lower(), st.get("why", "…")], Color("#ff8fa0"), 8.0)
+			_show_unlock_steps(_focus)
 	elif event.is_action_pressed("interact") and not _focus.begins_with("bay:"):
 		var st2: Dictionary = status.get(_focus, {})
 		if st2.get("state", VehicleUnlocks.State.UNKNOWN) != VehicleUnlocks.State.OPEN:
@@ -416,13 +420,18 @@ func mount(kind: String) -> void:
 	var arm := _player.get_node_or_null("CameraRig/SpringArm3D") as SpringArm3D
 	if arm:
 		_arm_len = arm.spring_length
-		arm.spring_length = float(v.spec["chase"])
 		arm.add_excluded_object(v.get_rid())
-		arm.position.y = float(v.spec["chase_h"])
+		var tw := arm.create_tween().set_parallel().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tw.tween_property(arm, "spring_length", float(v.spec["chase"]), CAM_EASE_S)
+		tw.tween_property(arm, "position:y", float(v.spec["chase_h"]), CAM_EASE_S)
 	var rig := _player.get_node_or_null("CameraRig")
 	if rig and "_pitch" in rig:
-		rig.set("_pitch", -0.3)  # look down the road a little
-		rig.set("_yaw", v.rotation.y)
+		# Swing in behind the vehicle, looking down the road a little (no snap).
+		var tr := rig.create_tween().set_parallel().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tr.tween_property(rig, "_pitch", -0.3, CAM_EASE_S)
+		var y0: float = rig.get("_yaw")
+		var y1 := y0 + wrapf(v.rotation.y - y0, -PI, PI)
+		tr.tween_property(rig, "_yaw", y1, CAM_EASE_S)
 	v.mount(_player)
 	_hud.hide_prompt()
 	_prompt = ""
@@ -453,20 +462,34 @@ func dismount() -> void:
 	var v := driving
 	driving = null
 	var exit := v.exit_point()
+	var from := _player.global_position
 	v.unmount()
-	_player.global_position = exit
 	_player.global_rotation = Vector3(0, v.rotation.y, 0)
 	_player.velocity = Vector3.ZERO
-	_player.set_physics_process(true)
-	_player.set_process_unhandled_input(true)
 	var model := _player.get_node_or_null("PlayerModel") as Node3D
 	if model:
 		if model.has_method("set_seated"):
 			model.set_seated("")
 		model.transform = Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
+		if "hold_clip" in model:  # getting up and out of the seat
+			model.set("hold_clip", "Sitting_Exit")
+			model.set("hold_speed", 2.0)
+	# Step down beside the seat (a short swing, not a teleport), then walk on.
+	_alighting = true
+	var tw := _player.create_tween()
+	tw.tween_method(func(e: float) -> void:
+		var k := e * e * (3.0 - 2.0 * e)
+		_player.global_position = from.lerp(exit, k) + Vector3.UP * sin(k * PI) * 0.25, 0.0, 1.0, ALIGHT_S)
+	tw.tween_callback(func() -> void:
+		_alighting = false
+		if model and "hold_clip" in model:
+			model.set("hold_clip", "")
+		if driving == null:
+			_player.set_physics_process(true)
+			_player.set_process_unhandled_input(true))
 	var arm := _player.get_node_or_null("CameraRig/SpringArm3D") as SpringArm3D
 	if arm:
-		arm.spring_length = _arm_len
+		arm.create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT).tween_property(arm, "spring_length", _arm_len, CAM_EASE_S)
 		arm.remove_excluded_object(v.get_rid())
 	if _speedo:
 		_speedo.visible = false
@@ -475,12 +498,26 @@ func dismount() -> void:
 	driving_changed.emit(false)
 
 
+## What opens this vehicle, as steps (AccessSteps): its rule, read from your chain
+## state (… while unread, — if the read failed), with the rental as the other way in.
+func _show_unlock_steps(kind: String) -> void:
+	var st: Dictionary = status.get(kind, {"state": VehicleUnlocks.State.UNKNOWN, "why": "…"})
+	var why := String(st.get("why", "…"))
+	var stv := "done" if st["state"] == VehicleUnlocks.State.OPEN else ("todo" if st["state"] == VehicleUnlocks.State.LOCKED else ("checking" if why.begins_with("…") else "unknown"))
+	var steps := AccessSteps.popup(self, "vehicle", {"title": "Drive the %s" % VehicleSpecs.display_name(kind), "qing": _qing,
+		"subtitle": "Or rent it for this session: %s to this QING, receipt-verified." % ArcadePay.fee_text(),
+		"extra": [{"id": kind, "title": String(VehicleUnlocks.RULES[kind]).capitalize(), "status": stv, "detail": why,
+			"explain": "Vehicles open from your own chain state; nothing is guessed. Su here or anywhere grows your bars."}]})
+	steps.add_footer_button("Rent it (%s)" % ArcadePay.fee_text(), func(): _rent(kind))
+
+
 func _rent(kind: String) -> void:
 	if _paying:
 		return
 	var nm := VehicleSpecs.display_name(kind)
 	if Wallet.address == "":
 		_hud.ticker("Renting the %s needs a connected wallet (%s to this QING)." % [nm, ArcadePay.fee_text()], Color("#ff8fa0"), 8.0)
+		AccessSteps.popup(self, "arcade", {"title": "Rent the %s (%s)" % [nm, ArcadePay.fee_text()], "qing": _qing, "fee_wei": ArcadePay.FEE_WEI})
 		return
 	_paying = true
 	_hud.ticker("Rental: approve %s to this QING in your wallet…" % ArcadePay.fee_text(), DeepFieldTheme.ICE, 20.0)
@@ -489,6 +526,8 @@ func _rent(kind: String) -> void:
 	if not res.get("ok", false):
 		Cues.play(self, "fail")
 		_hud.ticker("Not rented: %s" % res.get("message", "cancelled"), Color("#ff8fa0"), 10.0)
+		if AccessSteps.goal_for_failure(res, "arcade") != "":
+			AccessSteps.popup(self, "arcade", {"title": "Rent the %s (%s)" % [nm, ArcadePay.fee_text()], "qing": _qing, "fee_wei": ArcadePay.FEE_WEI})
 		return
 	# The payment was this rental, not an arcade play: spend the credit it recorded.
 	ArcadePay.use_credit(Wallet.address, _qing)

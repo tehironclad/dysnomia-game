@@ -3,15 +3,20 @@ extends Node3D
 ## What a territory has built, by tier (Development, from its Hypobar total;
 ## the same for every viewer). Structures are added tier by tier and never
 ## removed in a visit, as bars never shrink:
-##   Outpost     a light beacon on the Room's roof
+##   Outpost     a soft shaft of light rising from the Heart (taller each tier)
 ##   Settlement  two landing pads with lights and supplies (kit pieces)
 ##   Town        (city lights along the Julia coast: the terrain shader)
 ##   City        (an aurora: the sky shader)
-##   Capital     a light spire from the Heart into the sky, with an orbiting ring
+##   Capital     the shaft reaches the sky, and a halo of lights orbits above it
+## (Redesigned 2026-11-24: an additive light-shaft shader that fades with height
+## and at its edges, not a solid beam; the Heart itself is HeartOrrery.)
 
 var tier := -1
+const SHAFT_SHADER := preload("res://assets/shaders/light_shaft.gdshader")
+const SHAFT_FROM := 12.6  # just above the Heart (core-local)
+
 var _beacon: MeshInstance3D
-var _beacon_mat: StandardMaterial3D
+var _beacon_mat: ShaderMaterial
 var _spire_ring: Node3D
 var _tint := Color("#7fd3ff")
 var _t := 0.0
@@ -35,7 +40,7 @@ func set_tier(t: int, energy: float) -> void:
 	if t >= 2:
 		_build_pads()
 	if t >= 5:
-		_build_spire()
+		_build_halo()
 	_set_energy(energy)
 
 
@@ -53,19 +58,34 @@ func _glow(c: Color, e: float, alpha: float = 1.0) -> StandardMaterial3D:
 	return m
 
 
+## Shaft height by tier: Outpost 24 m … City 54 m; a Capital's reaches the sky.
+static func shaft_height(t: int) -> float:
+	return 280.0 if t >= 5 else 14.0 + 10.0 * t
+
+
 func _build_beacon() -> void:
+	var h := shaft_height(tier)
 	_beacon = MeshInstance3D.new()
+	_beacon.name = "Shaft"
 	var c := CylinderMesh.new()
-	c.top_radius = 0.15
-	c.bottom_radius = 0.45
-	c.height = 1.0
+	c.top_radius = 1.8 + h * 0.004
+	c.bottom_radius = 0.9
+	c.height = h
+	c.radial_segments = 24
+	c.rings = 1
+	c.cap_top = false
+	c.cap_bottom = false
 	_beacon.mesh = c
-	_beacon_mat = _glow(_tint, 2.0, 0.35)
+	_beacon_mat = ShaderMaterial.new()
+	_beacon_mat.shader = SHAFT_SHADER
+	var col := _tint.lerp(Color.WHITE, 0.3)
+	_beacon_mat.set_shader_parameter("color", Vector3(col.r, col.g, col.b))
+	_beacon_mat.set_shader_parameter("height", h)
+	_beacon_mat.set_shader_parameter("fade_power", 1.2 if tier >= 5 else 1.8)
 	_beacon.material_override = _beacon_mat
+	_beacon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_beacon.position = Vector3(0.0, SHAFT_FROM + h * 0.5, 0.0)
 	add_child(_beacon)
-	var h := 14.0 + 10.0 * tier
-	_beacon.scale = Vector3(1.0, h, 1.0)
-	_beacon.position = Vector3(0.0, 5.0 + h * 0.5, 0.0)
 
 
 func _build_pads() -> void:
@@ -108,43 +128,47 @@ func _build_pads() -> void:
 		add_child(light)
 
 
-func _build_spire() -> void:
-	var spire := MeshInstance3D.new()
-	var c := CylinderMesh.new()
-	c.top_radius = 0.2
-	c.bottom_radius = 1.2
-	c.height = 300.0
-	spire.mesh = c
-	spire.material_override = _glow(_tint.lerp(Color.WHITE, 0.4), 3.0, 0.5)
-	spire.position = Vector3(0, 12.0 + 150.0, 0)
-	add_child(spire)
+## Capital: a halo of 48 small lights on a tilted orbit high above the Heart
+## (one MultiMesh, one draw call), turning slowly.
+func _build_halo() -> void:
 	_spire_ring = Node3D.new()
-	_spire_ring.position = Vector3(0, 40.0, 0)
+	_spire_ring.name = "Halo"
+	_spire_ring.position = Vector3(0, 46.0, 0)
 	add_child(_spire_ring)
-	var t := TorusMesh.new()
-	t.inner_radius = 18.0
-	t.outer_radius = 18.6
-	t.rings = 96
-	var ring := MeshInstance3D.new()
-	ring.mesh = t
-	ring.material_override = _glow(Color("#ffd27a"), 2.2)
-	_spire_ring.add_child(ring)
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	var dot := SphereMesh.new()
+	dot.radius = 0.32
+	dot.height = 0.64
+	dot.radial_segments = 8
+	dot.rings = 4
+	mm.mesh = dot
+	var n := 48
+	mm.instance_count = n
+	for i in n:
+		var a := TAU * i / n
+		var s := 1.0 if i % 4 == 0 else 0.55
+		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * s), Vector3(cos(a) * 16.0, 0.0, sin(a) * 16.0)))
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	mi.material_override = _glow(_tint.lerp(Color.WHITE, 0.55), 2.6)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_spire_ring.add_child(mi)
 	var lamp := OmniLight3D.new()
 	lamp.light_color = _tint
-	lamp.light_energy = 3.0
-	lamp.omni_range = 60.0
-	lamp.position = Vector3(0, 30.0, 0)
+	lamp.light_energy = 2.0
+	lamp.omni_range = 50.0
+	lamp.position = Vector3(0, 26.0, 0)
 	add_child(lamp)
 
 
 func _set_energy(e: float) -> void:
 	if _beacon_mat:
-		_beacon_mat.emission_energy_multiplier = 1.2 + 2.5 * e
+		_beacon_mat.set_shader_parameter("intensity", 0.14 + 0.3 * e)
+		_beacon_mat.set_shader_parameter("band_rate", 0.15 + 0.6 * e)
 
 
 func _process(delta: float) -> void:
 	_t += delta
 	if _spire_ring:
-		_spire_ring.rotation = Vector3(0.25 * sin(_t * 0.1), _t * 0.15, 0.2)
-	if _beacon:
-		_beacon_mat.albedo_color.a = 0.28 + 0.08 * sin(_t * 1.7)
+		_spire_ring.rotation = Vector3(0.22, _t * 0.06, 0.12 * sin(_t * 0.05))

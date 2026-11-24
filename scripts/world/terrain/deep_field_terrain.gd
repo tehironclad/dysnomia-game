@@ -14,6 +14,8 @@ var heightfield: JuliaHeightfield
 var params: Dictionary = {}
 var material: ShaderMaterial
 var _mesh_instance: MeshInstance3D
+var _shadow_instance: MeshInstance3D
+const SHADOW_SINK_M := 0.45
 var _body: StaticBody3D
 
 
@@ -42,7 +44,7 @@ func build_distant(q: Dictionary, hf: JuliaHeightfield, centre: Vector3, iterati
 	material.set_shader_parameter("centre", Vector2(centre.x, centre.z))
 	material.set_shader_parameter("max_iter", iterations)
 	material.set_shader_parameter("detail_strength", 0.5)
-	_build_mesh()
+	_build_mesh(false)
 	_mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
@@ -106,10 +108,35 @@ func set_activity(glow: float, lit_bands: float) -> void:
 		material.set_shader_parameter("lit_bands", lit_bands)
 
 
-func _build_mesh() -> void:
+func _build_mesh(shadow_proxy: bool = true) -> void:
+	var mesh := _grid_mesh(mesh_step)
+	mesh.surface_set_material(0, material)
+	if _mesh_instance:
+		_mesh_instance.queue_free()
+	if _shadow_instance:
+		_shadow_instance.queue_free()
+		_shadow_instance = null
+	_mesh_instance = MeshInstance3D.new()
+	_mesh_instance.name = "GroundMesh"
+	_mesh_instance.mesh = mesh
+	add_child(_mesh_instance)
+	# The ground's shadow caster is a half-resolution copy (perf 2026-11-24): the sun draws a
+	# caster once per cascade, and the full ground (0.26 M triangles) was ~1 M of each frame's
+	# shadow primitives. Hills and terraces still shade; only the shadow maps see the proxy.
+	if shadow_proxy:
+		_mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_shadow_instance = MeshInstance3D.new()
+		_shadow_instance.name = "GroundShadow"
+		_shadow_instance.mesh = _grid_mesh(mesh_step * 2)
+		_shadow_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		# Sunk a little so its coarser facets never poke above the drawn ground (acne blotches).
+		_shadow_instance.position.y = -SHADOW_SINK_M
+		add_child(_shadow_instance)
+
+
+func _grid_mesh(step: int) -> ArrayMesh:
 	var hf := heightfield
 	var n := hf.n
-	var step := mesh_step
 	var m := (n - 1) / step + 1  # vertices per side
 	var sp := JuliaHeightfield.sample_spacing(n) * step
 	var half := JuliaHeightfield.SIZE_M * 0.5
@@ -156,13 +183,7 @@ func _build_mesh() -> void:
 	arrays[Mesh.ARRAY_INDEX] = idx
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	mesh.surface_set_material(0, material)
-	if _mesh_instance:
-		_mesh_instance.queue_free()
-	_mesh_instance = MeshInstance3D.new()
-	_mesh_instance.name = "GroundMesh"
-	_mesh_instance.mesh = mesh
-	add_child(_mesh_instance)
+	return mesh
 
 
 func _build_collider() -> void:

@@ -35,6 +35,7 @@ var score: TerritoryScore
 var border: BorderRing
 var roads: TerritoryRoads  # the Core's ring road and roads to every place (scripts/world/roads/)
 var chat_life: ChatLife  # room chat in the world: bubbles, echoes, glow, tower markers
+var act_loop: ActLoop  # the diegetic loop: act markers, the Steward, the HUD tracker (scripts/world/play/)
 var _settings: PanelContainer
 var _monitor: Control
 var _near := ""
@@ -96,6 +97,7 @@ func _ready() -> void:
 	monolith.build()
 	monolith.position = Vector3(MONOLITH_AT.x, terrain.get_height_at(MONOLITH_AT.x, MONOLITH_AT.y) - 0.2, MONOLITH_AT.y)
 	monolith.look_at(Vector3(0.0, monolith.position.y, 0.0), Vector3.UP, true)
+	CoreDressing.base_under(monolith, 2.4, 0.5, DeepFieldTheme.ICE)
 	phenomena = Phenomena.new()
 	phenomena.name = "Phenomena"
 	add_child(phenomena)
@@ -110,6 +112,7 @@ func _ready() -> void:
 	arcade.build(String(territory["address"]), DeepField.to_color(terrain.params["color"]))
 	arcade.position = Vector3(ArcadeFront.AT.x, terrain.get_height_at(core.global_position.x + ArcadeFront.AT.x, core.global_position.z + ArcadeFront.AT.y) - core_y - 0.3, ArcadeFront.AT.y)
 	arcade.look_at(core.global_position + Vector3(0.0, arcade.global_position.y - core.global_position.y, 0.0), Vector3.UP, true)
+	CoreDressing.dress_arcade(arcade, DeepField.to_color(terrain.params["color"]))
 	# The Affection Fair: rides paid in Ⓐ to this QING, sized by Development
 	fair = FairSite.new()
 	fair.name = "AffectionFair"
@@ -192,6 +195,10 @@ func _ready() -> void:
 	if view == "":
 		border.place_arrival()
 	# --- end Borders
+	if view == "":
+		var back := Travel.take_door(false)  # back out of a place: out of the same building's door
+		if back != "":
+			_arrive_from(back)
 	roads = TerritoryRoads.new()
 	roads.name = "Roads"
 	add_child(roads)
@@ -203,6 +210,25 @@ func _ready() -> void:
 		add_child(presence)
 		presence.setup(String(territory["address"]), player, hud)
 	# --- end Online
+	# --- Acts (scripts/world/play/): markers at the buildings, the Steward, the tracker.
+	act_loop = ActLoop.new()
+	act_loop.name = "ActLoop"
+	core.add_child(act_loop)
+	act_loop.setup(territory, state, core, hud, actions, border, columns, player,
+		func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y, view != "")
+	# --- end Acts
+	# Props end where they'd cover a few pixels (the fair, garage, halls from afar); state-sized
+	# geometry (the skyline towers, development) is never culled by size.
+	var cull := DetailCull.new()
+	cull.name = "DetailCull"
+	add_child(cull)
+	cull.skip(columns)
+	cull.skip(development)
+	cull.watch(core)
+	var legible := LegibleLabels.new()  # billboard labels keep a readable size from afar
+	legible.name = "LegibleLabels"
+	add_child(legible)
+	legible.watch(core)
 	view_mode = view
 	if view == "":
 		# Play: the player's camera. (With no current camera, Godot would pick
@@ -244,6 +270,10 @@ func _frame(view: String) -> void:
 		camera.fov = 62.0
 	elif view.begins_with("border") and border:  # --view=border_n|e|s|w: across a force field
 		border.frame_camera(camera, view.substr(7) if view.length() > 7 else "n")
+	elif view == "steward" and act_loop:  # the Steward and the act markers at the Core
+		camera.position = Vector3(10.5, core_h + 2.2, 19.5)
+		camera.look_at(Vector3(1.0, core_h + 2.6, 6.0))
+		camera.fov = 62.0
 	elif view == "chat" and chat_life:  # the Room's front: echoes, bubbles, glow
 		chat_life.frame(camera)
 	elif view == "relief":  # from the highest ground, back over the terraces
@@ -263,8 +293,14 @@ func _frame(view: String) -> void:
 		camera.fov = 55.0
 
 
+var _ticked_block := -1
+
+
 ## Shared territory state → the world (same for every viewer).
 func _on_state_changed() -> void:
+	if state.block > 0 and state.block != _ticked_block:
+		_ticked_block = state.block
+		core.block_tick()  # the Heart ticks with each new block read here
 	core.set_well("fornax", state.fornax)
 	core.set_well("eris", state.eris)
 	core.set_well("tethys", state.tethys)
@@ -317,7 +353,9 @@ func _set_development(tier: int, hypo: PackedInt64Array, energy: float, board: A
 	dev_tier = tier
 	columns.set_energy(energy)
 	development.set_tier(dev_tier, energy)
+	core.set_development(dev_tier, energy)  # the Heart's rings (HeartOrrery)
 	if fair:
+		fair.dev_facts = {"tier": tier, "total": TokenFormat.group(BigInt.to_decimal(hypo)), "block": block}
 		fair.set_dev_tier(dev_tier)
 	if landmark:
 		landmark.set_development(dev_tier, hypo, energy, board, block)
@@ -416,13 +454,79 @@ static func zone_at(local: Vector3, monolith_local: Vector3) -> String:
 	return ""
 
 
+# --- Doors: walking in and out of the Room, the Void and the arcade (DoorSequence) ---
+
+## Not while driving, riding or seated (the body is held by something else).
+func _can_use_doors() -> bool:
+	return player.is_physics_processing() and player.process_mode != Node.PROCESS_MODE_DISABLED \
+		and (garage == null or garage.driving == null) and not DoorSequence.active_in(self)
+
+
+## A territory door: `at` the middle of its threshold (world, on the ground),
+## `out` the horizontal way out of the building, `depth` how far in a walk
+## can go (0 = a solid face), `door` its PassDoor (or a light curtain made for
+## this pass: `owns`).
+func _door_spot(kind: String) -> Dictionary:
+	var at := Vector3.ZERO
+	var out := Vector3.BACK
+	var depth := 0.0
+	var d: PassDoor = null
+	var owns := true
+	match kind:
+		"room":
+			at = core.to_global(Vector3(0.0, 0.0, TerritoryCore.ROOM_RADIUS))
+			out = core.global_transform.basis.z
+			depth = 1.2
+			d = PassDoor.make("curtain", 3.3, 2.8, DeepField.to_color(terrain.params["color"]).lerp(DeepFieldTheme.ICE, 0.5))
+			d.reach = 0.0
+			core.add_child(d)
+			d.position = Vector3(0.0, 0.0, TerritoryCore.ROOM_RADIUS * cos(deg_to_rad(16.0)) + 0.05)
+		"void":
+			at = monolith.to_global(Vector3(0.0, 0.2, 0.3))
+			out = monolith.global_transform.basis.z
+			d = PassDoor.make("curtain", 2.2, 5.6, DeepFieldTheme.ICE)
+			d.reach = 0.0
+			monolith.add_child(d)
+			d.position = Vector3(0.0, 0.2, 0.3)
+		"arcade":
+			at = arcade.to_global(Vector3(0.0, 0.3, 0.12))
+			out = arcade.global_transform.basis.z
+			d = arcade.door
+			owns = false
+	out = Vector3(out.x, 0.0, out.z).normalized()
+	at.y = terrain.get_height_at(at.x, at.z)
+	return {"at": at, "out": out, "depth": depth, "door": d, "owns": owns}
+
+
+func _enter_door(kind: String) -> void:
+	var s := _door_spot(kind)
+	var to: Vector3 = s["at"] - s["out"] * float(s["depth"]) + s["out"] * (0.35 if float(s["depth"]) == 0.0 else 0.0)
+	DoorSequence.enter(self, player, to, s["door"], func(): Travel.through_door(get_tree(), kind), bool(s["owns"]))
+
+
+## Back from a place: start on its threshold, walk out facing away from it.
+func _arrive_from(kind: String) -> void:
+	var s := _door_spot(kind)
+	var at: Vector3 = s["at"]
+	var out: Vector3 = s["out"]
+	var from := at + out * (0.7 if float(s["depth"]) == 0.0 else -0.6)
+	var to := at + out * 4.0
+	from.y = terrain.get_height_at(from.x, from.z) + 0.15
+	to.y = terrain.get_height_at(to.x, to.z)
+	if s["door"]:
+		(s["door"] as PassDoor).open = 1.0
+	# The camera starts off to the side, looking at the doorway, and swings in behind.
+	DoorSequence.arrive(self, player, from, to, s["door"], bool(s["owns"]), 2.2)
+
+
 ## The arcade's door (relative to the Core): its front faces the Core.
 static func arcade_door() -> Vector2:
 	return ArcadeFront.AT - ArcadeFront.AT.normalized() * 4.2
 
 
 func _process(_delta: float) -> void:
-	if view_mode != "" or actions == null or actions.is_open():
+	if view_mode != "" or actions == null or actions.is_open() or not _can_use_doors():
+		_near = ""  # re-offered (and re-shown) once the player is free again
 		return
 	var z := zone_at(player.global_position - core.global_position, monolith.global_position - core.global_position)
 	if z != _near:
@@ -437,16 +541,16 @@ func _process(_delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if actions != null and actions.is_open():
 		return
-	if event.is_action_pressed("interact") and _near != "":
+	if DoorSequence.active_in(self):
+		return
+	if event.is_action_pressed("interact") and _near != "" and _can_use_doors():
 		get_viewport().set_input_as_handled()
 		hud.hide_prompt()
 		match _near:
 			"su": actions.open_su()
-			"room": Travel.hall(get_tree())
+			"room", "void", "arcade": _enter_door(_near)
 			"beat": actions.open_beat()
-			"void": Travel.void_place(get_tree())
 			"world": actions.open_world()
-			"arcade": Travel.pub(get_tree()) if arcade and arcade.is_pub else Travel.arcade(get_tree())
 		_near = ""
 		return
 	if event.is_action_pressed("open_field"):
