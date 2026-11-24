@@ -23,6 +23,8 @@ var chat: ChatPanel
 var room: RoomState
 var _door_btn: Button
 var feed: RoomFeed
+## The path forward when posting is blocked (AccessSteps: wallet → window → chain → LAU → Join).
+var access: AccessSteps
 var _busy := false
 
 
@@ -46,6 +48,7 @@ func setup(p_mode: String, q: Dictionary = {}) -> void:
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 		closed.emit())
 	chat.post_requested.connect(_post)
+	access = AccessSteps.embed(chat.get_child(0), chat._reason.get_index() + 1)
 	Wallet.tx_stage.connect(func(_l, stage, _i):
 		if stage == "failed": Cues.play(self, "fail")
 		elif stage == "confirmed": Cues.play(self, "confirm"))
@@ -91,7 +94,9 @@ func open() -> void:
 	chat.set_lines(lines, "")
 	if mode == "void":
 		var ib := _identity_blocker()
-		chat.set_blocker(ib if ib != "" else _signer_blocker())
+		var vb := ib if ib != "" else _signer_blocker()
+		chat.set_blocker(vb)
+		access.update_for(vb, "void_post", {"title": "Post a line in the Void"})
 	else:
 		_refresh_door()
 	opened.emit()
@@ -132,11 +137,15 @@ func _refresh_door() -> void:
 	chat.set_subtitle(room.describe())
 	if not room.ok:
 		chat.set_blocker("The door could not be read: —")
+		access.update_for("—", "room_post", {"qing": qing, "room": room, "room_name": String(territory.get("name", ""))}, {"join": _join})
 		return
 	var blocker := room.chat_blocker() if ps != null else "Connect a wallet at the front door to speak here."
 	if blocker == "":
 		blocker = _signer_blocker()
+	if blocker == "" and Session.player == null and Session.wallet != "":
+		blocker = _identity_blocker()
 	chat.set_blocker(blocker)
+	access.update_for(blocker, "room_post", {"qing": qing, "room": room, "room_name": String(territory.get("name", ""))}, {"join": _join})
 	var steps := room.join_steps()
 	_door_btn.visible = not steps.is_empty() and room.has_cover()
 	if _door_btn.visible:

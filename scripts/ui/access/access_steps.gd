@@ -52,6 +52,8 @@ var _summary: Label
 var _status: Label
 var _again: Button
 var _close: Button
+var _foot: HBoxContainer
+var _extra_btns: Array = []
 var _busy := false
 var _was_ready := false
 var _poll: Timer
@@ -117,6 +119,7 @@ func _init() -> void:
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 10)
 	col.add_child(foot)
+	_foot = foot
 	_again = Button.new()
 	_again.text = "Check again"
 	_again.tooltip_text = "Read the wallet, your identity and this place's door again from the chain."
@@ -159,6 +162,56 @@ func show_goal(p_goal: String, p_ctx: Dictionary = {}, p_handlers: Dictionary = 
 	_sub.visible = _sub.text != ""
 	visible = true
 	refresh()
+
+
+## A footer button beside "Check again" (e.g. "Fly a free practice flight").
+func add_footer_button(text: String, c: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.pressed.connect(func():
+		c.call()
+		if popup_mode:
+			close())
+	_foot.add_child(b)
+	_foot.move_child(b, 1)
+	_extra_btns.append(b)
+	return b
+
+
+## An embedded, compact instance (hidden until update_for shows it).
+static func embed(parent: Node, index: int = -1) -> AccessSteps:
+	var a := AccessSteps.new()
+	a.compact = true
+	a.visible = false
+	a.custom_minimum_size = Vector2(520, 0)
+	parent.add_child(a)
+	if index >= 0:
+		parent.move_child(a, index)
+	return a
+
+
+## Shows the steps toward `p_goal` when there is a blocker ("" hides the panel).
+func update_for(blocker: String, p_goal: String, p_ctx: Dictionary = {}, p_handlers: Dictionary = {}) -> void:
+	if blocker == "":
+		visible = false
+		return
+	if not visible or p_goal != goal:
+		show_goal(p_goal, p_ctx, p_handlers)
+	else:
+		for k in p_ctx:
+			ctx[k] = p_ctx[k]
+		for k in p_handlers:
+			handlers[k] = p_handlers[k]
+		refresh()
+
+
+## The goal a failed write points to: Wallet.send's precondition/sign stages are the
+## wallet's; ArcadePay's "funds" is the Ⓐ step. "" = not an access problem.
+static func goal_for_failure(res: Dictionary, goal_if_access: String) -> String:
+	var st := String(res.get("stage", ""))
+	if st.begins_with("precondition") or st.begins_with("funds") or st == "sign" and String(res.get("message", "")).contains("not linked"):
+		return goal_if_access
+	return ""
 
 
 func set_handler(action: String, c: Callable) -> void:
