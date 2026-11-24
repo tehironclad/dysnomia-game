@@ -141,8 +141,8 @@ static func apply_night(n: float) -> void:
 	for m in _glow_list():
 		var mm: StandardMaterial3D = m
 		mm.emission_energy_multiplier = lerpf(mm.get_meta("day_energy"), mm.get_meta("night_energy"), n)
-	bulb_mat().set_shader_parameter("energy", lerpf(1.6, 3.2, n))
-	pool_mat().set_shader_parameter("energy", n * 0.9)
+	bulb_mat().set_shader_parameter("energy", lerpf(1.0, 1.9, n))
+	pool_mat().set_shader_parameter("energy", n * 0.6)
 	var aw := shader_mat("fair_awning")
 	aw.set_shader_parameter("night", n)
 	shader_mat("fair_firework").set_shader_parameter("energy", n * 3.0)
@@ -480,7 +480,8 @@ class Batch:
 	var models: Dictionary = {}  # model id -> Array[Transform3D]
 
 	func bulb(p: Vector3, c: Color, phase: float = 0.0, r: float = 0.07) -> void:
-		bulbs.append([p, c, phase, r])
+		# Real festoon bulbs are small: radii are authored generously and drawn at 55 %
+		bulbs.append([p, c, phase, r * 0.55])
 
 	func bulb_line(pts: PackedVector3Array, palette: Array, chase: float = 0.0, r: float = 0.07, offset: int = 0) -> void:
 		for i in pts.size():
@@ -503,7 +504,7 @@ class Batch:
 		wire(pts)
 		var hang := PackedVector3Array()
 		for i in range(1, pts.size() - 1):
-			hang.append(pts[i] + Vector3.DOWN * 0.09)
+			hang.append(pts[i] + Vector3.DOWN * 0.06)
 		bulb_line(hang, palette, chase)
 
 	func bunting(a: Vector3, b: Vector3, sag: float, palette: Array, spacing: float = 0.55) -> void:

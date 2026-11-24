@@ -8,7 +8,7 @@ extends SceneTree
 ## (as main would place it, spawn lies toward local +X/−Z), then captures each shot of the
 ## preset: time of day, camera, and optionally a ride started with a dummy teddy rider and
 ## fast-forwarded to time t (camera can follow the rider).
-## Presets: all (default), r2, tiers, night, noon, rides, rocket, wheel, drop, carousel.
+## Presets: all (default), r2, r3, tiers, night, noon, rides, rocket, wheel, drop, carousel.
 ## A shot may set "tier" (0..3, default 3); the fair is rebuilt when it changes.
 ## Env: PREVIEW_ONLY=substr renders only matching shots; PREVIEW_FULL=1 keeps SDFGI/SSIL/volumetric fog (slow on lavapipe).
 
@@ -99,6 +99,16 @@ func _preset(p: String) -> Array:
 		{"name": "r2_fair_liftoff", "tod": 0.02, "ride": "rocket", "t": 12.2, "lead": 3.2, "cam_ride": Vector3(-16, 4, 34), "look_ride": Vector3(0, 15, 0)},
 		{"name": "r2_fair_carousel", "tod": 0.02, "ride": "carousel", "t": 12.0, "lead": 1.0, "cam_ride": Vector3(-8.5, 2.4, 9.5), "look_ride": Vector3(0, 2.0, 0)},
 	]
+	s["r3"] = []
+	for sh in s["r2"]:
+		var c: Dictionary = sh.duplicate()
+		c["name"] = String(c["name"]).replace("r2_", "r3_")
+		if c["name"] == "r3_fair_noon_aerial":
+			c["cam"] = Vector3(-33, 27, -30)   # inside the locals' 70 m cull range
+		s["r3"].append(c)
+	# Carousel before liftoff so world-space launch smoke from the previous shot can't linger
+	var li: int = s["r3"].size() - 2
+	var tmp = s["r3"][li]; s["r3"][li] = s["r3"][li + 1]; s["r3"][li + 1] = tmp
 	if p == "all":
 		return s["tiers"] + s["night"] + s["noon"] + s["rocket"] + s["wheel"] + s["drop"] + s["carousel"]
 	if p == "rides":

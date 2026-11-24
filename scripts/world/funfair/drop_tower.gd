@@ -112,11 +112,19 @@ func _build() -> void:
 	FairKit.mesh(_car, FairKit.torus_mesh(COL_R + 0.3, RING_R + 0.35, 48, 8), Vector3(0, -0.15, 0), FairKit.paint(Color(0.85, 0.1, 0.2), 0.35, 0.5, 0.6))
 	FairKit.mesh(_car, FairKit.torus_mesh(RING_R + 0.3, RING_R + 0.42, 48, 6), Vector3(0, -0.12, 0), FairKit.glow(Color(1.0, 0.3, 0.45), 3.0, 0.8), Vector3.ZERO, false)
 	FairKit.mesh(_car, FairKit.cyl_mesh(COL_R + 0.45, COL_R + 0.45, 2.4, 24), Vector3(0, 0.7, 0), FairKit.paint(Color(0.2, 0.21, 0.24), 0.4, 0.8))
-	var seat_m := FairKit.paint(Color(0.1, 0.1, 0.12), 0.65, 0.1)
-	var harness_m := FairKit.paint(Color(0.98, 0.78, 0.1), 0.4, 0.2, 0.5)
+	# Moulded plastic bucket seats on a brushed-metal frame, over-the-shoulder harnesses
+	var seat_m := FairKit.paint(Color(0.07, 0.16, 0.3), 0.28, 0.1, 0.8)       # glossy blue plastic shell
+	var cushion_m := FairKit.paint(Color(0.12, 0.12, 0.14), 0.85, 0.0)        # padded vinyl
+	var frame_m := FairKit.pbr("metal_plate_02", Color(0.75, 0.77, 0.8), 1.5, 1.0)
+	var harness_m := FairKit.paint(Color(0.16, 0.16, 0.18), 0.6, 0.15)       # padded harness
+	var accent_m := FairKit.paint(Color(0.95, 0.7, 0.1), 0.4, 0.3, 0.5)       # small yellow grab handle
 	# Bucket seat: side profile (outward, up) extruded 0.62 m wide
 	var seat_mesh := FairKit.extrude(PackedVector2Array([Vector2(-0.38, 0.0), Vector2(0.32, 0.0), Vector2(0.38, 0.14),
 		Vector2(-0.16, 0.16), Vector2(-0.2, 1.28), Vector2(-0.3, 1.4), Vector2(-0.42, 1.3)]), 0.62)
+	# Shoulder bar: side profile arcing from the hinge over the shoulder to the chest
+	var bar_mesh := FairKit.extrude(PackedVector2Array([Vector2(0.0, 0.05), Vector2(0.3, 0.03), Vector2(0.5, -0.1),
+		Vector2(0.62, -0.38), Vector2(0.64, -0.56), Vector2(0.56, -0.56), Vector2(0.54, -0.4), Vector2(0.43, -0.16),
+		Vector2(0.27, -0.05), Vector2(0.0, -0.05)]), 0.11)
 	for k in SEATS:
 		var a := TAU * k / SEATS + PI * 0.5     # seat 0 faces +Z (booth side)
 		var s := Node3D.new()
@@ -125,14 +133,19 @@ func _build() -> void:
 		# In seat space: +Z = outward (rider faces out)
 		var shell := FairKit.mesh(s, seat_mesh, Vector3(0, -0.06, RING_R + 0.05), seat_m)
 		shell.rotation.y = -PI * 0.5   # profile X (outward) → seat +Z
-		FairKit.box(s, Vector3(0.5, 0.06, 0.45), Vector3(0, 0.1, RING_R + 0.08), FairKit.paint(Color(0.55, 0.08, 0.12), 0.7, 0.0))
-		FairKit.box(s, Vector3(0.66, 0.08, 0.3), Vector3(0, -0.8, RING_R + 0.45), FairKit.paint(Color(0.3, 0.3, 0.32), 0.5, 0.8))
+		FairKit.box(s, Vector3(0.5, 0.06, 0.45), Vector3(0, 0.12, RING_R + 0.08), cushion_m)
+		FairKit.box(s, Vector3(0.46, 0.75, 0.06), Vector3(0, 0.62, RING_R - 0.26), cushion_m)
+		FairKit.box(s, Vector3(0.4, 0.06, 0.7), Vector3(0, -0.12, RING_R + 0.05), frame_m)
+		FairKit.box(s, Vector3(0.5, 0.06, 0.26), Vector3(0, -0.8, RING_R + 0.45), frame_m)
+		FairKit.beam(s, Vector3(0, -0.12, RING_R + 0.3), Vector3(0, -0.8, RING_R + 0.42), 0.03, frame_m)
 		var r := Node3D.new()
 		r.position = Vector3(0, 1.15, RING_R - 0.25)
 		s.add_child(r)
-		FairKit.box(r, Vector3(0.12, 0.08, 0.75), Vector3(-0.22, 0, 0.35), harness_m)
-		FairKit.box(r, Vector3(0.12, 0.08, 0.75), Vector3(0.22, 0, 0.35), harness_m)
-		FairKit.box(r, Vector3(0.5, 0.35, 0.1), Vector3(0, -0.35, 0.72), harness_m)
+		for sx in [-0.17, 0.17]:
+			var bar := FairKit.mesh(r, bar_mesh, Vector3(sx, 0, 0), harness_m)
+			bar.rotation.y = -PI * 0.5   # profile X → +Z (forward over the shoulder)
+		FairKit.box(r, Vector3(0.46, 0.12, 0.1), Vector3(0, -0.5, 0.62), harness_m)
+		FairKit.cyl(r, 0.022, 0.022, 0.3, Vector3(0, -0.6, 0.68), accent_m, 8).rotation.z = PI * 0.5
 		_restraints.append(r)
 	_car.position.y = Y0
 	FairKit.ticket_booth(self, batch, booth_local_position, Vector3(signf(booth_local_position.x) * absf(0.1), 0, 1), item, Color(0.25, 0.8, 1.0))

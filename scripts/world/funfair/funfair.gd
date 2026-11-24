@@ -48,7 +48,7 @@ var _bench_spots: Array = []
 func initialize(seed_value: int, tier: int = 3) -> void:
 	_rng.seed = seed_value
 	_tier = clampi(tier, 0, 3)
-	_npc_cap = [0, 6, 10, 16][_tier]   # visitors; vendors and the band come on top
+	_npc_cap = [0, 6, 12, 24][_tier]   # visitors; vendors and the band come on top
 	if _tier == 0:
 		_build_survey_lot()
 	else:
@@ -63,6 +63,7 @@ func initialize(seed_value: int, tier: int = 3) -> void:
 			_build_side_lanes()
 			_build_reactor_yard()
 			_build_service_area()
+			_build_paths_and_garden()
 		if _tier >= 3:
 			_build_bleachers()
 			_build_launch_support()
@@ -149,10 +150,10 @@ func _territory_display_name() -> String:
 func _build_ground() -> void:
 	var planks := FairKit.pbr("metal_plate_02", Color(0.55, 0.57, 0.62), 0.5)   # metal deck midway (low albedo: no blow-out under the lamps)
 	var pavers := FairKit.pbr("asphalt_02", Color(0.72, 0.72, 0.76), 0.3)
-	var kerb := FairKit.pbr("asphalt_02", Color(0.6, 0.6, 0.64), 0.3)
+	var kerb := FairKit.pbr("asphalt_02", Color(0.38, 0.38, 0.41), 0.3)
 	# Dark regolith apron under the stall fronts on both sides of the deck
 	var apron_len := absf(ARCH_S) - PLAZA_R + 1.0
-	var apron := FairKit.box(self, Vector3((MIDWAY_HALF + 3.2) * 2.0, PATH_Y * 0.5, apron_len), _p(ARCH_S + apron_len * 0.5, 0, PATH_Y * 0.25), FairKit.pbr("asphalt_02", Color(0.45, 0.45, 0.48), 0.3))
+	var apron := FairKit.box(self, Vector3((MIDWAY_HALF + 3.2) * 2.0, PATH_Y * 0.5, apron_len), _p(ARCH_S + apron_len * 0.5, 0, PATH_Y * 0.25), FairKit.pbr("asphalt_02", Color(0.3, 0.3, 0.33), 0.3))
 	apron.rotation.y = _yaw_to(U)
 	# Boardwalk midway from the arch to the plaza
 	var mlen := absf(ARCH_S) - PLAZA_R + 3.0
@@ -360,7 +361,7 @@ func _lamp_post(p: Vector3) -> void:
 	_batch.prop("street_lamp_01", Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), p))
 	FairKit.mesh(self, FairKit.sphere_mesh(0.16, 10), p + Vector3(0, 3.55, 0), FairKit.glow(Color(1.0, 0.82, 0.55), 4.0, 0.4), Vector3.ZERO, false)
 	FairKit.crystal_cluster(self, p + Vector3(0, 3.86, 0), _rng, FairKit.CRYSTAL_COLORS[_rng.randi() % 2], 3, 0.32)
-	_batch.pool(p + Vector3(0, 0.07, 0), 3.4, Color(1.0, 0.72, 0.42) * 0.45)
+	_batch.pool(p + Vector3(0, 0.07, 0), 3.2, Color(1.0, 0.72, 0.42) * 0.3)
 	FairKit.solid_cyl(self, 0.18, 3.0, p + Vector3(0, 1.5, 0))
 
 
@@ -398,8 +399,10 @@ func _stall(pos: Vector3, facing: Vector3, kind: String, pair: Array) -> void:
 		FairKit.box(root, Vector3(0.14, h + 0.25, 0.14), Vector3(sx * (w * 0.5 - 0.02), (h + 0.25) * 0.5, d * 0.5), trim)
 		# Cool neon tube up each front post — the Dysnomia accent
 		FairKit.box(root, Vector3(0.04, h - 0.3, 0.04), Vector3(sx * (w * 0.5 - 0.02), h * 0.5, d * 0.5 + 0.09),
-			FairKit.glow(FairKit.NEON_VIOLET if cool else FairKit.NEON_CYAN, 3.0, 1.0))
+			FairKit.glow(FairKit.NEON_VIOLET if cool else FairKit.NEON_CYAN, 2.2, 0.8))
 	FairKit.box(root, Vector3(w + 0.1, 0.1, d + 0.1), Vector3(0, h + 0.05, 0), roof)
+	# Striped canvas roof so the stall reads as a stall (not a container) from above
+	FairKit.awning(root, w + 0.3, d + 0.3, Vector3(0, h + 0.16, -0.05), Vector3(0.06, 0, 0), pair, roundf(w / 0.5))
 	# Back of house: service panel, conduit and a cool strip so the backs aren't black boxes
 	FairKit.box(root, Vector3(w - 0.6, 1.2, 0.03), Vector3(0, 1.0, -d * 0.5 - 0.055), FairKit.pbr("metal_plate_02", Color(0.6, 0.62, 0.66), 0.8))
 	FairKit.box(root, Vector3(w, 0.04, 0.04), Vector3(0, h - 0.1, -d * 0.5 - 0.06), FairKit.glow(FairKit.NEON_CYAN, 2.5, 0.6))
@@ -407,7 +410,7 @@ func _stall(pos: Vector3, facing: Vector3, kind: String, pair: Array) -> void:
 	# Counter: painted planks front, oiled plank top, neon lip
 	FairKit.box(root, Vector3(w - 0.2, 1.0, 0.5), Vector3(0, 0.5, d * 0.5 - 0.2), paint_wood)
 	FairKit.box(root, Vector3(w - 0.05, 0.07, 0.7), Vector3(0, 1.04, d * 0.5 - 0.15), top_wood)
-	FairKit.box(root, Vector3(w - 0.2, 0.03, 0.03), Vector3(0, 0.98, d * 0.5 + 0.06), FairKit.glow(FairKit.NEON_CYAN, 2.5, 0.6))
+	FairKit.box(root, Vector3(w - 0.2, 0.03, 0.03), Vector3(0, 0.98, d * 0.5 + 0.06), FairKit.glow(FairKit.NEON_CYAN, 1.6, 0.5))
 	# Awning sloping out over the counter
 	var tilt := 0.36
 	FairKit.awning(root, w + 0.3, 1.9, Vector3(0, h - 0.1 - 0.95 * sin(tilt), d * 0.5 - 0.05 + 0.95 * cos(tilt)), Vector3(tilt, 0, 0), pair)
@@ -436,7 +439,7 @@ func _stall(pos: Vector3, facing: Vector3, kind: String, pair: Array) -> void:
 	var inner := Color(0.7, 0.6, 1.0) if cool else Color(1.0, 0.85, 0.62)
 	FairKit.box(root, Vector3(w - 0.4, 0.05, 0.05), Vector3(0, h - 0.12, d * 0.5 - 0.35), FairKit.glow(inner, 5.0, 1.5))
 	FairKit.box(root, Vector3(w - 0.4, 0.04, 0.04), Vector3(0, h - 0.2, -d * 0.5 + 0.1), FairKit.glow(inner, 4.0, 1.2))
-	_batch.pool(root.transform * Vector3(0, 0.08, d * 0.5 + 1.2), 3.0, (Color(0.6, 0.6, 1.0) if cool else Color(1.0, 0.7, 0.45)) * 0.35)
+	_batch.pool(root.transform * Vector3(0, 0.08, d * 0.5 + 1.0), 2.6, (Color(0.6, 0.6, 1.0) if cool else Color(1.0, 0.7, 0.45)) * 0.2)
 	_batch.pool(root.transform * Vector3(0, 0.14, 0.0), 1.8, inner * 0.35)
 	_stall_goods(root, b, kind, w, d)
 	b.flush(root)
@@ -510,12 +513,33 @@ func _stall_goods(root: Node3D, b: FairKit.Batch, kind: String, w: float, d: flo
 			_crystal_prizes(root, d)
 		"saat":
 			# Saat Fortune Teller: drapes, a glowing scrying orb, cards laid out on the counter
-			var drape := FairKit.paint(Color(0.2, 0.06, 0.3), 0.95, 0.0)
-			FairKit.box(root, Vector3(w - 0.3, 2.6, 0.04), Vector3(0, 1.42, back + 0.1), drape)
+			var drape := FairKit.paint(Color(0.24, 0.07, 0.34), 0.92, 0.0)
+			var drape2 := FairKit.paint(Color(0.17, 0.05, 0.25), 0.92, 0.0)
+			# Pleated back curtain (alternating folds) + tied-back front curtains
+			for i in 16:
+				var px := -(w - 0.4) * 0.5 + (i + 0.5) * (w - 0.4) / 16.0
+				FairKit.box(root, Vector3((w - 0.4) / 16.0 + 0.01, 2.6, 0.05), Vector3(px, 1.42, back + 0.1 + 0.05 * float(i % 2)), drape if i % 2 == 0 else drape2)
+			FairKit.box(root, Vector3(w - 0.3, 0.08, 0.1), Vector3(0, 2.72, back + 0.12), FairKit.paint(Color(0.95, 0.74, 0.32), 0.25, 0.95))
+			for sx in [-1.0, 1.0]:
+				var cur := FairKit.cyl(root, 0.08, 0.28, 2.2, Vector3(sx * (w * 0.5 - 0.3), 1.6, d * 0.5 - 0.42), drape, 10)
+				cur.scale = Vector3(1, 1, 0.5)
+				FairKit.mesh(root, FairKit.torus_mesh(0.1, 0.14, 12, 4), Vector3(sx * (w * 0.5 - 0.3), 1.5, d * 0.5 - 0.42), FairKit.paint(Color(0.95, 0.74, 0.32), 0.25, 0.95))
+			# Moon phases across the back curtain
+			for i in 5:
+				var mp := Vector3(-1.2 + i * 0.6, 2.35, back + 0.2)
+				FairKit.mesh(root, FairKit.sphere_mesh(0.09, 12), mp, FairKit.glow(Color(0.85, 0.8, 1.0), 1.6, 0.8), Vector3.ZERO, false)
+				FairKit.mesh(root, FairKit.sphere_mesh(0.092, 12), mp + Vector3(-0.09 + i * 0.045, 0, 0.03), drape2, Vector3.ZERO, false)
+			# Table cloth with gold fringe, candles, the reader's stool
 			FairKit.cyl(root, 0.45, 0.4, 0.85, Vector3(0, 0.55, -0.3), FairKit.paint(Color(0.1, 0.05, 0.12), 0.6, 0.2), 16)
 			FairKit.cyl(root, 0.14, 0.18, 0.12, Vector3(0, 1.03, -0.3), FairKit.paint(Color(0.95, 0.74, 0.32), 0.25, 0.95), 16)
-			FairKit.mesh(root, FairKit.sphere_mesh(0.24, 24), Vector3(0, 1.33, -0.3), FairKit.crystal_mat(FairKit.NEON_VIOLET))
-			FairKit.mesh(root, FairKit.sphere_mesh(0.12, 12), Vector3(0, 1.33, -0.3), FairKit.glow(Color(0.75, 0.55, 1.0), 6.0, 2.0), Vector3.ZERO, false)
+			FairKit.mesh(root, FairKit.torus_mesh(0.42, 0.47, 32, 4), Vector3(0, 0.98, -0.3), FairKit.paint(Color(0.95, 0.74, 0.32), 0.3, 0.9))
+			FairKit.mesh(root, FairKit.sphere_mesh(0.26, 24), Vector3(0, 1.35, -0.3), FairKit.glass(Color(0.75, 0.7, 1.0, 0.22)), Vector3.ZERO, false)
+			FairKit.mesh(root, FairKit.sphere_mesh(0.13, 16), Vector3(0, 1.35, -0.3), FairKit.glow(Color(0.7, 0.5, 1.0), 4.0, 1.6), Vector3.ZERO, false)
+			FairKit.crystal_cluster(root, Vector3(0, 1.2, -0.3), _rng, FairKit.NEON_VIOLET, 3, 0.18)
+			for sx in [-0.32, 0.32]:
+				FairKit.cyl(root, 0.03, 0.03, 0.16, Vector3(sx, 1.08, -0.12), FairKit.paint(Color(0.92, 0.9, 0.82), 0.6, 0.0), 8)
+				FairKit.mesh(root, FairKit.sphere_mesh(0.022, 6), Vector3(sx, 1.18, -0.12), FairKit.glow(Color(1.0, 0.7, 0.35), 5.0, 1.5), Vector3.ZERO, false)
+			b.pool(Vector3(0, 1.0, -0.3), 0.9, Color(0.7, 0.5, 1.0) * 0.5)
 			for i in 5:
 				var cd := FairKit.box(root, Vector3(0.14, 0.01, 0.22), Vector3(-0.9 + i * 0.45, cy + 0.01, front), FairKit.paint(Color(0.12, 0.08, 0.2), 0.5, 0.2))
 				cd.rotation.y = (i - 2) * 0.12
@@ -640,9 +664,15 @@ func _build_plaza_dressing() -> void:
 	## swagged with string lights; benches, bins and crystal planters beside them.
 	var angles := [-153.0, -106.0, -61.0, -16.0, 29.0, 75.0, 113.0, 162.0]
 	var posts: Array = []
+	var sightlines := _booth_sightlines()
 	for deg in angles:
 		var a := deg_to_rad(deg)
 		var p := Vector3(cos(a), 0, sin(a)) * (PLAZA_R - 0.4)
+		for tries in 8:   # slide along the ring until no booth sign is blocked
+			if not _blocks_sign(p, sightlines):
+				break
+			a += deg_to_rad(5.0)
+			p = Vector3(cos(a), 0, sin(a)) * (PLAZA_R - 0.4)
 		posts.append(p)
 		_lamp_post(p)
 	for i in posts.size():
@@ -675,6 +705,31 @@ func _build_plaza_dressing() -> void:
 	for k in 16:
 		var off := Vector3(_rng.randf_range(-0.6, 0.6), _rng.randf_range(0.0, 0.7), _rng.randf_range(-0.6, 0.6))
 		_batch.balloon(seller + Vector3(0, 1.3, 0) + off * 0.3, FairKit.PALETTE[_rng.randi() % 6], _rng.randf())
+
+
+func _booth_sightlines() -> Array:
+	## [kiosk position, facing] for every ride ticket booth (its sign faces `facing`).
+	var out: Array = []
+	for r in _rides:
+		var ride: RideBase = r
+		var bp: Vector3 = ride.transform * ride.booth_local_position
+		var f: Vector3 = ride.transform.basis * Vector3(signf(ride.booth_local_position.x) * 0.15, 0, 1)
+		f = Vector3(f.x, 0, f.z).normalized()
+		out.append([bp - f * 1.7, f])
+	return out
+
+
+func _blocks_sign(p: Vector3, sightlines: Array) -> bool:
+	## True when p stands within 2 m of a booth or in the 14 m view corridor in front of its sign.
+	for e in sightlines:
+		var k: Vector3 = e[0]
+		var f: Vector3 = e[1]
+		var d := Vector3(p.x - k.x, 0, p.z - k.z)
+		var along := d.dot(f)
+		var side := (d - f * along).length()
+		if d.length() < 2.5 or (along > 0.0 and along < 14.0 and side < 1.8 + along * 0.12):
+			return true
+	return false
 
 
 # ─── Bandstand ──────────────────────────────────────────────────────────
@@ -937,12 +992,12 @@ func _build_perimeter() -> void:
 func _conduit(a: Vector3, b: Vector3, c: Color, r: float = 0.05) -> void:
 	## A glowing chain conduit: armoured pipe with light pulses chasing along it.
 	_batch.strut(a, b, r, FairKit.paint(Color(0.12, 0.13, 0.16), 0.35, 0.85))
-	_batch.strut(a + Vector3(0, r * 0.9, 0), b + Vector3(0, r * 0.9, 0), r * 0.35, FairKit.glow(c, 3.0, 1.0))
+	_batch.strut(a + Vector3(0, r * 0.9, 0), b + Vector3(0, r * 0.9, 0), r * 0.3, FairKit.glow(c, 1.4, 0.6))
 	var n := int(a.distance_to(b) / 0.7)
 	var pts := PackedVector3Array()
 	for i in n:
 		pts.append(a.lerp(b, (i + 0.5) / n) + Vector3(0, r * 1.2, 0))
-	_batch.bulb_line(pts, [c], -0.045, r * 0.9)
+	_batch.bulb_line(pts, [c * 0.7], -0.045, r * 1.1)
 
 
 func _prize_rack(root: Node3D, w: float, d: float, y0: float = 1.5) -> void:
@@ -1052,6 +1107,7 @@ func _kiosk(pos: Vector3, facing: Vector3, title: String, pair: Array) -> void:
 	FairKit.box(root, Vector3(2.4, 0.9, 0.05), Vector3(0, 1.6, 0.92), FairKit.glow(Color(1.0, 0.82, 0.55), 2.2, 0.8))
 	FairKit.box(root, Vector3(3.1, 0.08, 0.5), Vector3(0, 1.08, 1.05), FairKit.pbr("brown_planks_05", Color(0.5, 0.42, 0.36), 1.2))
 	FairKit.awning(root, 3.2, 1.3, Vector3(0, 2.35, 1.45), Vector3(0.4, 0, 0), pair)
+	FairKit.awning(root, 3.3, 2.5, Vector3(0, 2.66, -0.25), Vector3(0.05, 0, 0), pair, 7.0)
 	FairKit.box(root, Vector3(2.8, 0.6, 0.1), Vector3(0, 3.0, 0.75), FairKit.paint(Color(0.06, 0.05, 0.07), 0.6, 0.2))
 	var l := FairKit.label(root, title, Vector3(0, 3.0, 0.81), 44, (pair[0] as Color).lightened(0.4) * 2.0)
 	_fit_label(l, 2.6)
@@ -1066,7 +1122,7 @@ func _build_service_area() -> void:
 	var face := -V
 	var yaw := _yaw_to(face)
 	var tb := Basis(Vector3.UP, yaw)
-	var body := FairKit.paint(Color(0.82, 0.88, 0.95), 0.35, 0.4, 0.6)
+	var body := FairKit.pbr("metal_plate_02", Color(0.82, 0.88, 0.95), 0.7, 1.0)
 	# Box truck side-on to the lane; serving hatch on its +Z side
 	var tr := Node3D.new()
 	tr.name = "ErisIceTruck"
@@ -1079,11 +1135,39 @@ func _build_service_area() -> void:
 	for xx in [-2.2, 2.0, 4.2]:
 		for sz in [-1.15, 1.15]:
 			FairKit.cyl(tr, 0.5, 0.5, 0.35, Vector3(xx, 0.5, sz), FairKit.paint(Color(0.06, 0.06, 0.07), 0.9, 0.0), 16).rotation.x = PI * 0.5
-	FairKit.box(tr, Vector3(3.4, 1.0, 0.04), Vector3(-0.4, 2.1, 1.22), FairKit.glow(Color(0.7, 0.9, 1.0), 2.5, 0.8))
+	# Livery: Eris-blue lower band, violet pinstripe, frost-crystal decals, roof sign box
+	var livery := FairKit.paint(Color(0.12, 0.38, 0.7), 0.35, 0.4, 0.7)
+	for sz in [-1.0, 1.0]:
+		FairKit.box(tr, Vector3(6.62, 0.7, 0.03), Vector3(0, 0.85, sz * 1.21), livery)
+		FairKit.box(tr, Vector3(6.62, 0.05, 0.03), Vector3(0, 1.26, sz * 1.215), FairKit.glow(FairKit.NEON_VIOLET, 2.0, 0.6))
+		for xx in [-2.2, 2.0]:
+			FairKit.box(tr, Vector3(1.3, 0.55, 0.04), Vector3(xx, 0.75, sz * 1.22), FairKit.paint(Color(0.05, 0.05, 0.06), 0.8, 0.1))
+	for i in 4:
+		var dc := FairKit.mesh(tr, FairKit.crystal_mesh(), Vector3(1.6 + i * 0.32, 2.6, 1.22), FairKit.crystal_mat(FairKit.CRYSTAL_COLORS[i % 4]), Vector3(0, 0, -0.3 + i * 0.2), false)
+		dc.scale = Vector3(0.8, 1.2, 0.15)
+	FairKit.box(tr, Vector3(4.2, 0.7, 0.5), Vector3(-0.6, 3.4, 0.6), FairKit.paint(Color(0.06, 0.08, 0.12), 0.5, 0.3))
+	var rl := FairKit.label(tr, "ERIS ICE", Vector3(-0.6, 3.42, 0.86), 64, Color(1.0, 1.7, 2.4))
+	rl.outline_size = 8
+	_fit_label(rl, 3.9)
+	# Serving hatch: steel frame, lit interior, prop-up shutter
+	var steel := FairKit.paint(Color(0.7, 0.72, 0.76), 0.3, 0.9)
+	FairKit.box(tr, Vector3(3.6, 0.08, 0.1), Vector3(-0.4, 2.62, 1.24), steel)
+	FairKit.box(tr, Vector3(3.6, 0.08, 0.1), Vector3(-0.4, 1.56, 1.24), steel)
+	for xx in [-2.2, 1.4]:
+		FairKit.box(tr, Vector3(0.08, 1.1, 0.1), Vector3(xx, 2.09, 1.24), steel)
+	FairKit.box(tr, Vector3(3.4, 1.0, 0.04), Vector3(-0.4, 2.1, 1.18), FairKit.glow(Color(0.7, 0.9, 1.0), 1.8, 0.6))
+	for i in 5:
+		FairKit.cyl(tr, 0.1, 0.1, 0.12, Vector3(-1.6 + i * 0.55, 1.62, 1.0), FairKit.paint([Color(0.7, 0.92, 1.0), Color(0.92, 0.75, 1.0), Color(0.75, 1.0, 0.88)][i % 3], 0.85, 0.0), 12)
+	FairKit.box(tr, Vector3(1.2, 0.8, 0.04), Vector3(2.0, 2.1, 1.23), FairKit.paint(Color(0.05, 0.05, 0.07), 0.6, 0.1))
+	FairKit.label(tr, "COMET CONE\nNITROGEN SWIRL\nPLUTO PARFAIT", Vector3(2.0, 2.1, 1.255), 16, Color(1.6, 1.6, 1.8))
+	for xx in [-2.2, 2.0, 4.2]:
+		FairKit.box(tr, Vector3(1.25, 0.12, 2.5), Vector3(xx, 1.07, 0), FairKit.paint(Color(0.1, 0.1, 0.11), 0.7, 0.3))
+	for sz in [-0.8, 0.8]:
+		FairKit.mesh(tr, FairKit.sphere_mesh(0.1, 8), Vector3(5.12, 1.0, sz), FairKit.glow(Color(1.0, 0.95, 0.85), 4.0, 0.6), Vector3.ZERO, false)
 	FairKit.box(tr, Vector3(3.6, 0.08, 0.45), Vector3(-0.4, 1.5, 1.4), FairKit.pbr("brown_planks_05", Color(0.5, 0.42, 0.36), 1.2))
 	FairKit.awning(tr, 3.8, 1.2, Vector3(-0.4, 2.85, 1.75), Vector3(0.45, 0, 0), [Color(0.2, 0.55, 0.85), Color(0.95, 0.95, 0.98)])
-	var l := FairKit.label(tr, "ERIS ICE · FROZEN VOLATILES", Vector3(-0.4, 3.35, 1.23), 40, Color(1.2, 1.8, 2.4))
-	_fit_label(l, 5.5)
+	var l := FairKit.label(tr, "FROZEN VOLATILES", Vector3(-0.4, 2.92, 1.36), 30, Color(1.2, 1.8, 2.4))
+	_fit_label(l, 3.4)
 	FairKit.solid_box(self, Vector3(6.8, 3.0, 2.6), c + Vector3(0, 1.5, 0), yaw)
 	_vendor_spots.append([tr.transform * Vector3(-0.4, 0.75, 0.4), tb * Vector3.BACK])
 	_queue_rails(tr.transform * Vector3(-0.4, 0, 2.0), tb * Vector3.BACK, 3.3, Color(0.3, 0.7, 1.0))
@@ -1127,6 +1211,86 @@ func _clear_of_structures(p: Vector3, r: float) -> bool:
 		if Vector2(p.x - k[0].x, p.z - k[0].z).length() < float(k[1]) + r:
 			return false
 	return true
+
+
+func _path(a: Vector3, b: Vector3, width: float = 3.0) -> void:
+	## Paved link path a→b (laid just under the plaza/deck surfaces so joins never z-fight).
+	var d := Vector3(b.x - a.x, 0, b.z - a.z)
+	var mid := (a + b) * 0.5
+	var pv := FairKit.box(self, Vector3(width, PATH_Y * 0.6, d.length()), Vector3(mid.x, PATH_Y * 0.3 - 0.004, mid.z), FairKit.pbr("asphalt_02", Color(0.6, 0.6, 0.64), 0.3))
+	pv.rotation.y = _yaw_to(d.normalized())
+
+
+func _path_dressing(a: Vector3, b: Vector3, side: float) -> void:
+	## A bench + bin on one side of a path's midpoint and a crystal planter on the other.
+	var d := Vector3(b.x - a.x, 0, b.z - a.z).normalized()
+	var n := d.cross(Vector3.UP) * side
+	var m := (a + b) * 0.5
+	var bp := m + n * 2.3
+	FairKit.model(self, "painted_wooden_bench", Vector3(bp.x, PATH_Y, bp.z), _yaw_to(-n))
+	FairKit.solid_box(self, Vector3(1.2, 0.9, 0.5), Vector3(bp.x, 0.45, bp.z), _yaw_to(-n))
+	var bin := bp + d * 1.1
+	FairKit.model(self, "metal_trash_can", Vector3(bin.x, PATH_Y + 0.072, bin.z), _rng.randf() * TAU)
+	_seat_spots.append([Vector3(bp.x, PATH_Y, bp.z), -n])
+	var cp := m - n * 2.6
+	FairKit.model(self, "moon_rock_03", Vector3(cp.x, 0, cp.z), _rng.randf() * TAU, 10.0).scale.y *= 1.5
+	FairKit.crystal_cluster(self, Vector3(cp.x, 0.25, cp.z), _rng, FairKit.CRYSTAL_COLORS[_rng.randi() % 4], 5, 0.6)
+
+
+func _build_paths_and_garden() -> void:
+	## Paved paths tie every area to the plaza, and a Crystal Garden fills the open quarter
+	## between the bandstand, the reactor yard and the launch pad.
+	var g := _p(26.0, -13.5)
+	var dg := Vector3(g.x, 0, g.z).normalized()
+	_path(dg * (PLAZA_R - 0.5), g - dg * 5.0)
+	_path_dressing(dg * PLAZA_R, g - dg * 5.0, 1.0)
+	_path(g + (_p(9.0, -25.5) - g).normalized() * 5.0, _p(10.0, -23.5))          # garden → food row
+	_path(_p(4.0, -12.0), _p(8.0, -22.5))                                        # plaza → food row
+	_path(_p(12.5, 22.0), _p(12.0, 25.0), 4.0)                                    # food court → truck
+	_path(_p(-9.0, 11.0), _p(-12.0, 22.0))                                       # plaza → games corner lane
+	_path_dressing(_p(-9.0, 11.0), _p(-12.0, 22.0), -1.0)
+	if _tier >= 3:
+		var rb: Vector3 = _booth_sightlines()[1][0] if _rides.size() > 1 else ROCKET_POS
+		for e in _booth_sightlines():
+			if Vector3(e[0]).distance_to(ROCKET_POS) < 16.0:
+				rb = e[0]
+		_path(g + (rb - g).normalized() * 5.0, rb + (g - rb).normalized() * 2.5)   # garden → rocket booth
+	# The garden: paved disc, raised crystal bed with a glow ring, benches facing it
+	FairKit.mesh(self, FairKit.cyl_mesh(5.2, 5.2, PATH_Y, 40), Vector3(g.x, PATH_Y * 0.5, g.z), FairKit.pbr("asphalt_02", Color(0.6, 0.6, 0.64), 0.3))
+	FairKit.mesh(self, FairKit.torus_mesh(5.15, 5.4, 48, 4), Vector3(g.x, 0.02, g.z), FairKit.pbr("asphalt_02", Color(0.38, 0.38, 0.41), 0.3)).scale = Vector3(1, 0.4, 1)
+	FairKit.mesh(self, FairKit.cyl_mesh(1.7, 1.9, 0.55, 24), Vector3(g.x, 0.275, g.z), FairKit.pbr("asphalt_02", Color(0.5, 0.5, 0.54), 0.5))
+	FairKit.solid_cyl(self, 1.9, 1.2, Vector3(g.x, 0.6, g.z))
+	FairKit.crystal_cluster(self, Vector3(g.x, 0.55, g.z), _rng, FairKit.NEON_CYAN, 8, 1.7)
+	FairKit.crystal_cluster(self, Vector3(g.x + 0.8, 0.55, g.z - 0.5), _rng, FairKit.NEON_VIOLET, 5, 1.0)
+	FairKit.mesh(self, FairKit.torus_mesh(1.82, 1.9, 48, 4), Vector3(g.x, 0.57, g.z), FairKit.glow(FairKit.NEON_CYAN, 2.0, 0.5), Vector3.ZERO, false)
+	FairKit.omni(self, Vector3(g.x, 3.0, g.z), Color(0.5, 0.85, 1.0), 1.6, 11.0, 0.0)
+	_batch.pool(Vector3(g.x, 0.08, g.z), 5.5, FairKit.NEON_CYAN * 0.3)
+	for i in 4:
+		var a := TAU * i / 4.0 + PI / 4.0
+		var d := Vector3(cos(a), 0, sin(a))
+		var bp := g + d * 3.6
+		FairKit.model(self, "painted_wooden_bench", Vector3(bp.x, PATH_Y, bp.z), _yaw_to(-d))
+		FairKit.solid_box(self, Vector3(1.2, 0.9, 0.5), Vector3(bp.x, 0.45, bp.z), _yaw_to(-d))
+		_seat_spots.append([Vector3(bp.x, PATH_Y, bp.z), -d])
+		if i % 2 == 0:
+			_lamp_post(g + Vector3(cos(a + PI / 4.0), 0, sin(a + PI / 4.0)) * 4.6)
+	var plaque := FairKit.label(self, "CRYSTAL GARDEN", Vector3(g.x, 1.0, g.z) - dg * 1.95, 30, FairKit.NEON_CYAN * 1.6, _yaw_to(-dg))
+	plaque.outline_size = 5
+	# Souvenir kiosk on the garden's edge
+	var kp := g + Vector3(-dg.z, 0, dg.x) * -7.2
+	_kiosk(kp, (g - kp).normalized(), "UPSILON SOUVENIRS", FairKit.AWNING_PAIRS[0])
+
+
+func get_board_anchor() -> Transform3D:
+	## LOCAL transform reserved for a 3.2 m × 1.8 m media billboard by the entrance, at every
+	## tier. Origin = centre of the board face (bottom edge 1.2 m above ground, so y = 2.1);
+	## the board's front is local −Z, turned toward visitors arriving from the spawn side.
+	## The spot (beside the arch, opposite the tier-0 sign, outside every path/ride/sign) is
+	## kept clear by the fair.
+	var front := (-U + V * 0.25).normalized()      # faces arriving visitors, a little toward the gate
+	var basis := Basis.looking_at(front, Vector3.UP)   # looking_at → −Z points along `front`
+	var pos := _p(ARCH_S - 1.0, -9.0, 2.1)
+	return Transform3D(basis, pos)
 
 
 # ─── Tier 0: Surveyed Lot ──────────────────────────────────────────────
@@ -1399,7 +1563,8 @@ func _batch_local_stick(holder: Node3D) -> void:
 
 func _spawn_visitors(seed_value: int) -> void:
 	## Staff first (one vendor per stall/kiosk/truck, a bandleader), then visitors in priority
-	## order — clusters, queues, diners, strollers — until the tier's cap (6 / 10 / 16).
+	## order — queues at every booth, clumps on the midway, ride riders, customers, diners,
+	## strollers — until the tier's cap (6 / 12 / 24). Locals cull past 70 m, so this is cheap.
 	if _tier == 0:
 		return
 	var y := PATH_Y
@@ -1410,10 +1575,52 @@ func _spawn_visitors(seed_value: int) -> void:
 	var band := get_node_or_null("Bandstand") as Node3D
 	if band:
 		_npc(seed_value + 32, [], band.transform.basis * Vector3.BACK, band.transform * Vector3(0.0, 0.96, 0.3), true)
-	# Customers at the stall counters (some holding their winnings / snacks)
+	# Queues at every ride booth (the rocket draws the longest line)
+	for r in _rides:
+		var ride: RideBase = r
+		var booth := ride.to_global(ride.booth_local_position)
+		var lane := ride.global_transform.basis * Vector3(signf(ride.booth_local_position.x) * 0.15, 0, 1).normalized()
+		var n: int = {"rocket": 3, "wheel": 2, "drop": 2, "carousel": 2}.get(ride.ride_id, 1)
+		for q in n:
+			var p := to_local(booth + lane * (1.2 + q * 1.0))
+			p.y = 0.0
+			_npc(seed_value + 60 + _npc_count, [], -lane, p)
+	# Clumps on the midway: friends stopped to chat, one with a snack
+	var clumps := [_p(-24.5, -1.9, y), _p(-19.0, 1.9, y)]
+	if _tier >= 2:
+		clumps.append(_p(-13.5, -2.0, y))
+	for ci in clumps.size():
+		var cc: Vector3 = clumps[ci]
+		for i in 3:
+			var a := TAU * i / 3.0 + ci
+			var off := Vector3(cos(a), 0, sin(a)) * 0.75
+			var cn := _npc(seed_value + 100 + ci * 3 + i, [], -off, cc + off)
+			if i == 0:
+				_give_food(cn, (ci + 1) % 2)
+	# Riders: a few locals already seated on the carousel and up in the wheel
+	for r in _rides:
+		if not r.has_method("get_rider_mounts"):
+			continue
+		var mounts: Array = r.get_rider_mounts()
+		var picks: Array = [0, 2, 4] if r.ride_id == "carousel" else [3, 7, 11]
+		for i in picks:
+			if i >= mounts.size() or _npc_count >= _npc_cap:
+				continue
+			_npc_count += 1
+			var rider := AmbientNPC.new()
+			var m: Node3D = mounts[i]
+			m.add_child(rider)
+			rider.setup(seed_value + 90 + i + (0 if r.ride_id == "carousel" else 20), [], Vector3.FORWARD)
+			if r.ride_id == "carousel":
+				rider.transform = Transform3D(Basis.IDENTITY, Vector3(0, -0.06, 0.12))
+			else:
+				# Gondola bench (back at -Z), sitting facing the middle of the cabin
+				rider.transform = Transform3D(Basis(Vector3.UP, PI), Vector3(-0.32, -2.63, -0.55))
+			rider.set_pose("sit")
+	# Customers at the stall counters
 	var k := 0
 	for v in _vendor_spots:
-		if k >= 3:
+		if k >= 2:
 			break
 		var at: Vector3 = v[0] + (v[1] as Vector3) * 1.9
 		at.y = 0.0
@@ -1421,47 +1628,14 @@ func _spawn_visitors(seed_value: int) -> void:
 		if k == 1:
 			_give_food(c, 1)
 		k += 1
-	# A cluster chatting by the carousel, facing each other
-	var cl := _p(6.5, 9.5, y)
-	for i in 3:
-		var a := TAU * i / 3.0
-		var off := Vector3(cos(a), 0, sin(a)) * 0.8
-		var c2 := _npc(seed_value + 50 + i, [], -off, cl + off)
-		if i == 0:
-			_give_food(c2, 0)
-	# Queues at the ride booths
-	for r in _rides:
-		var ride: RideBase = r
-		if ride.ride_id == "carousel":
-			continue
-		var booth := ride.to_global(ride.booth_local_position)
-		var lane := ride.global_transform.basis * Vector3(signf(ride.booth_local_position.x) * 0.15, 0, 1).normalized()
-		for q in (2 if ride.ride_id == "rocket" else 1):
-			var p := to_local(booth + lane * (1.3 + q * 1.1))
-			p.y = 0.0
-			_npc(seed_value + 60 + _npc_count, [], -lane, p)
-	# Diners at the food court / food row tables and launch fans on the bleachers
+	# Diners at tables / launch fans on the bleachers
 	var seated := 0
 	for st in _seat_spots:
 		if seated >= (2 if _tier == 1 else 4):
 			break
 		_seat(_npc(seed_value + 80 + seated, [], st[1], st[0]))
 		seated += 1
-	# Riders on the carousel sleds
-	for r in _rides:
-		if r.ride_id == "carousel" and r.has_method("get_rider_mounts"):
-			var mounts: Array = r.get_rider_mounts()
-			for i in mini(2, mounts.size()):
-				var m: Node3D = mounts[(i * 5 + 2) % mounts.size()]
-				if _npc_count >= _npc_cap:
-					break
-				_npc_count += 1
-				var rider := AmbientNPC.new()
-				m.add_child(rider)
-				rider.setup(seed_value + 90 + i, [], Vector3.FORWARD)
-				rider.transform = Transform3D(Basis.IDENTITY, Vector3(0, -0.06, 0.12))
-				rider.set_pose("sit")
-	# Strollers: midway, plaza ring, out to the food court
+	# Strollers: midway, plaza ring, out to the garden and the food court
 	var ring: Array = []
 	for i in 9:
 		var a2 := TAU * i / 9.0
@@ -1470,9 +1644,9 @@ func _spawn_visitors(seed_value: int) -> void:
 	ring2.reverse()
 	_npc(seed_value + 11, [_p(-29.0, -1.2, y), _p(-16.0, -1.6, y), _p(-11.5, -2.5, y), _p(-16.0, 1.0, y), _p(-28.5, 1.4, y)])
 	_npc(seed_value + 14, ring)
+	_npc(seed_value + 17, [_p(9.0, -9.0, y), _p(19.0, -12.5, y), _p(24.0, -10.0, y), _p(12.0, -6.0, y)])
 	_npc(seed_value + 16, [_p(9.0, 4.0, y), _p(12.0, 14.0, y), _p(14.5, 18.0, y), _p(9.0, 13.0, y)])
 	_npc(seed_value + 12, [_p(-14.0, 1.5, y), _p(-27.0, 0.8, y), _p(-29.5, -0.5, y), _p(-22.0, -1.8, y)])
 	_npc(seed_value + 15, ring2.slice(4) + ring2.slice(0, 4))
 	_npc(seed_value + 13, [_p(-20.0, 0.0, y), _p(-12.5, 4.0, y), _p(-3.0, 10.5, y), _p(6.0, 10.0, y), _p(-8.0, 9.0, y)])
-	_npc(seed_value + 17, [_p(8.0, -13.0, y), _p(9.0, -23.0, y), _p(16.0, -24.5, y), _p(12.0, -14.0, y)])
 	_npc(seed_value + 18, [_p(-14.0, 6.0, y), _p(-14.0, 22.0, y), _p(-13.0, 30.0, y), _p(-14.5, 12.0, y)])
