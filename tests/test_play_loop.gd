@@ -104,12 +104,27 @@ func test_identity_gates_and_cover() -> void:
 		"room": {"loaded": true, "last_block": -1, "head": 50, "cover": _w("414000000000000000000"), "admitted": false}})
 	var su := _find(acts, "su")
 	eq(su["doable"], false)
-	check(String(su["blocker"]).contains("front door"))
+	check(String(su["blocker"]).contains("needs a wallet"))
 	var room := _find(acts, "room")
 	eq(room["call"], "QING.Join(LAU)")
 	check(String(room["detail"]).contains("414"))
 	var zero := PlayLoop.acts({"wallet": ME, "identity": "ok", "omega": PackedInt64Array()})
 	eq(_find(zero, "su")["title"], "Su here: Ω = 0")
+
+
+func test_newcomer_can_read_the_room() -> void:
+	# No wallet: every signed act is blocked, but reading the room is free and doable.
+	var acts := PlayLoop.acts({"wallet": "", "omega": _w("10"), "room": {"loaded": true, "last_block": 40, "head": 50000}})
+	var room := _find(acts, "room")
+	eq(room["title"], "Read the room")
+	eq(room["doable"], true)
+	eq(room["blocker"], "")
+	check(String(room["detail"]).contains("last line at block 40"), room["detail"])
+	eq(_find(acts, "su")["doable"], false)
+	eq(_find(acts, "su")["blocker"], PlayLoop.NO_WALLET)
+	# With a wallet the same room is the speaking act.
+	var mine := PlayLoop.acts({"wallet": ME, "identity": "ok", "omega": _w("10"), "room": {"loaded": true, "last_block": 40, "head": 50000}})
+	eq(_find(mine, "room")["title"], "The room is quiet: speak")
 
 
 func test_su_outcome_measured() -> void:

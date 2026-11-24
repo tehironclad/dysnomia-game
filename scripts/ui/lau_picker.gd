@@ -60,7 +60,8 @@ func refresh() -> void:
 		return
 	_laus = r["laus"]
 	_block = int(r.get("block", 0))
-	_fill(_laus, ("%d LAU%s · read at block %s" % [_laus.size(), "" if _laus.size() == 1 else "s", ArcadeScores.grouped(_block)])
+	_fill(_laus, ("%d LAU%s · read at block %s%s" % [_laus.size(), "" if _laus.size() == 1 else "s", ArcadeScores.grouped(_block),
+		"\nTo switch, connect this wallet (the chip at the top): switching is signed." if Wallet.address == "" and _laus.size() > 1 else ""])
 		if not _laus.is_empty() else "This wallet owns no LAU yet: Enter the Void to make one.")
 
 

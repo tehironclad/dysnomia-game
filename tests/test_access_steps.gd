@@ -1,5 +1,5 @@
 extends TestCase
-## AccessGates: a snapshot of facts → the numbered steps (✓ / → / ✗ / checking… / —).
+## AccessGates: a snapshot of facts → the numbered steps (✓ / → / ○ / checking… / —).
 
 const W := "0x18f6aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3111"
 const ONE := "1000000000000000000"
@@ -22,7 +22,7 @@ func test_room_post_with_no_wallet() -> void:
 	var r := AccessGates.resolve("room_post", {"wallet": "", "relay": false, "room": {"state": "ok", "cover": false}})
 	eq(_ids(r), ["wallet", "window", "chain", "lau", "room"], "unbanned is hidden until a ban is read")
 	eq(r["current"], 0)
-	eq(_marks(r), "→✗——✓", "connect is current; chain/LAU unknown; an open door is done")
+	eq(_marks(r), "→○——✓", "connect is current; chain/LAU unknown; an open door is done")
 	eq(r["steps"][0]["action"], "connect")
 	check(not r["ready"])
 	check(String(r["summary"]).begins_with("Step 1 of 5: Connect a wallet"), r["summary"])
@@ -70,7 +70,7 @@ func test_identity_states() -> void:
 	f["lau"] = false
 	f["yue"] = false
 	r = AccessGates.resolve("su", f)
-	eq(_marks(r), "✓✓✓→✗")
+	eq(_marks(r), "✓✓✓→○")
 	eq(r["steps"][3]["action"], "void")
 	eq(r["steps"][4]["action"], "", "YUE comes after the LAU: no button yet")
 

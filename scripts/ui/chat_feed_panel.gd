@@ -41,9 +41,9 @@ func _init() -> void:
 	header = Label.new()
 	header.theme_type_variation = "MonoLabel"
 	header.add_theme_font_size_override("font_size", 11)
-	header.add_theme_color_override("font_color", DeepFieldTheme.DIM)
-	header.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	header.add_theme_constant_override("outline_size", 4)
+	header.add_theme_color_override("font_color", DeepFieldTheme.MUTED)  # DIM vanished over bright regolith
+	header.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	header.add_theme_constant_override("outline_size", 6)
 	head_row.add_child(header)
 	unread_chip = Label.new()
 	unread_chip.theme_type_variation = "MonoLabel"
@@ -273,8 +273,9 @@ func _render_history() -> void:
 		return
 	(history.get_child(0).get_node("Title") as Label).text = "ROOM · %s" % String(_feed.territory.get("name", _feed.qing)).to_upper()
 	var st: Dictionary = ChatFeed.stats()
-	history_sub.text = "%s\nLines today (last %s blocks): %s · speakers today: %d" % [_feed.describe(),
-		TokenFormat.group(str(ChatLines.DAY_BLOCKS)), ChatLines.count_text(st), st["speakers"].size()]
+	# Loading is not zero: no count until the history has been read.
+	history_sub.text = "%s\nLines today (last %s blocks): %s" % [_feed.describe(), TokenFormat.group(str(ChatLines.DAY_BLOCKS)),
+		("%s · speakers today: %d" % [ChatLines.count_text(st), st["speakers"].size()]) if _feed.is_loaded() else "— (reading the history…)"]
 	_keys.clear()
 	var parts: PackedStringArray = []
 	if not _feed.is_loaded() and _feed.lines.is_empty():

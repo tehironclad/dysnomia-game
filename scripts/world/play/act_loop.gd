@@ -278,13 +278,24 @@ func open_steward() -> void:
 		if a["doable"] and a["kind"] in ["su", "beat", "crown"]:
 			top = "beat" if a["kind"] == "beat" else "su"
 			break
+	var ps: PlayerState = Session.player
+	var identity_ready := Session.wallet != "" and ps != null and ps.ok and ps.has_lau() and ps.has_yue()
 	if top == "su" and actions:
 		_panel.set_primary("Su here now (simulate first)", true, func(): _panel.close(); actions.open_su())
 	elif top == "beat" and actions:
 		_panel.set_primary("Beat at the Heart (simulate first)", true, func(): _panel.close(); actions.open_beat())
+	elif not identity_ready:
+		# Not a refusal: the numbered steps in (connect, the window, the chain, LAU, YUE).
+		_panel.set_primary("Connect wallet: the steps" if Session.wallet == "" else "What I still need", true, func():
+			_panel.close()
+			AccessSteps.popup(self, "identity", {"title": "Play as yourself at %s" % String(territory.get("name", ""))}))
 	else:
 		_panel.set_primary("Nothing to sign yet", false, Callable())
-	_panel.set_status("Each move is simulated from your wallet first; success is read back from the chain.")
+	_panel.set_secondary("Read the room (%s)" % ControlsHelp.key_of("chat_history"), ChatFeed.hud != null, func():
+		_panel.close()
+		ChatFeed.hud.feed.toggle_history())
+	_panel.set_status("Each move is simulated from your wallet first; success is read back from the chain." if identity_ready
+		else "Looking is free: walk anywhere, read the room, visit the fair and the arcade, M for the Field. Signing needs a wallet.")
 
 
 func _on_panel_closed() -> void:

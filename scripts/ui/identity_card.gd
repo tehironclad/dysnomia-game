@@ -166,7 +166,7 @@ func refresh() -> void:
 		return
 	emblem.visible = true
 	var p := DeepField.for_identity(w)
-	emblem.apply_params(p, "Your Aura, %s = uint160(%s) % 953,467,954,114,363 (the contract's formula), drawn as a Julia set." % [DeepField.aura(w), w])
+	emblem.apply_params(p, "Your Aura, %s = uint160(%s) %% 953,467,954,114,363 (the contract's formula), drawn as a Julia set." % [DeepField.aura(w), w])
 	var ps: PlayerState = Session.player
 	if ps == null:
 		_name.text = "READING…"

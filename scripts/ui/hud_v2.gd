@@ -122,6 +122,8 @@ func _ready() -> void:
 	hint.theme_type_variation = "MutedLabel"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.position = Vector2(20, -36)
+	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))  # readable over bright regolith
+	hint.add_theme_constant_override("outline_size", 6)
 	hint.text = "%s  use   ·   %s  how is this drawn   ·   %s  the field   ·   %s  controls   ·   %s  settings" % [
 		ControlsHelp.key_of("interact"), ControlsHelp.key_of("inspect"), ControlsHelp.key_of("open_field"),
 		ControlsHelp.key_of("controls_help"), ControlsHelp.key_of("settings")]
@@ -152,7 +154,7 @@ func _on_state() -> void:
 ## gap to the leader or to the next one above.
 static func you_fact(st: TerritoryState, wallet: String) -> Fact:
 	if wallet == "":
-		return Fact.empty("no wallet: connect at the front door")
+		return Fact.ok("no wallet connected", "your rank here needs a wallet (the chip at the top)")
 	if not st.total_hypobar.has_value():
 		return Fact.loading("YUE.Bar(QING)")
 	var rows: Array = st.board

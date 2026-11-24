@@ -25,6 +25,7 @@ var _rows := {}
 var _name: LineEdit
 var _symbol: LineEdit
 var _out: Label
+var _connect: Button
 var _busy := false
 
 
@@ -86,6 +87,13 @@ func _init() -> void:
 	_out.theme_type_variation = "MonoLabel"
 	_out.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_out)
+	# Not connected: the first thing to do, right here (not only on the doors).
+	_connect = Button.new()
+	_connect.text = "Connect wallet"
+	_connect.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_connect.custom_minimum_size = Vector2(180, 38)
+	_connect.pressed.connect(_on_connect)
+	box.add_child(_connect)
 
 
 func _ready() -> void:
@@ -130,8 +138,16 @@ func refresh_view() -> void:
 		var b: Button = _rows[k2]["button"]
 		b.disabled = not connected or _busy or step_done(k2) or (k2 != first_open and k2 != "name") \
 			or (k2 == "name" and not step_done("bind"))
+	_connect.visible = not connected
 	if not connected:
-		_out.text = "Connect a wallet to begin."
+		_out.text = "Connect a wallet to begin. Each step is one transaction, paid in PLS gas."
+
+
+func _on_connect() -> void:
+	if Wallet.connect_wallet():
+		_out.text = "A wallet window opened in your browser: approve the connection there."
+	else:
+		_out.text = "Could not start the local wallet relay (another copy of the game running?)."
 
 
 func _lau() -> String:

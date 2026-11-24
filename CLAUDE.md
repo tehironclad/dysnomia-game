@@ -56,7 +56,7 @@
 - `godot --headless --path . -s res://tools/live_readiness.gd [-- --n=12]` prints identity + WORLD
   readiness for real players (read-only).
 - `screenshot.gd -- --session=<wallet>` views any wallet's identity read-only. Nothing is signed.
-  Add `--view=hud --open=su|room|beat|void` to render a move's panel (preview only).
+  Add `--view=hud --open=su|beat|world|steward` to render a move's panel (preview only; the room and the Void are places: `--scene=res://scenes/places/…`).
 - `godot --headless --path . -s res://tools/live_moves.gd [-- --wallet=0x… --qing=0x…]` runs the Phase 5
   previews against the chain (Su, Beat, door, room and Void lines, World watch). It is read-only.
 - `tools/perf.gd` samples draw calls, objects, primitives and object growth (under Xvfb), or script cost

@@ -2,8 +2,8 @@ extends SceneTree
 ## Renders a scene and saves the viewport to PNG (needs a real renderer:
 ## run under xvfb-run with Vulkan, e.g. lavapipe; see CLAUDE.md).
 ##   godot --path . -s res://tools/screenshot.gd -- --out=/abs/shot.png
-##       [--scene=res://scenes/main.tscn] [--qing=0x…] [--frames=90] [--quality=0..3]
-##       [--session=0x…] [--open=su|room|beat|void|world] (with --view=hud: a move's panel, previewed only)
+##       [--scene=<the main scene: the front door>] [--qing=0x…] [--frames=90] [--quality=0..3]
+##       [--session=0x…] [--open=su|beat|world|steward] (with --view=hud: a move's panel, previewed only)
 ##       [--toggle=guide|help] (with --view=hud: show that panel)
 ##       (the front door: --open=void|identity|guide|opps shows that panel on the right)
 ##       [--dive=<arcade catalog id> --dive-phase=push|warp|inside|menu --classic] (an arcade place:
@@ -21,7 +21,7 @@ extends SceneTree
 ## With --qing, the territory is loaded from the chain first (read-only).
 
 var _out := ""
-var _scene := "res://scenes/main.tscn"
+var _scene := String(ProjectSettings.get_setting("application/run/main_scene", "res://scenes/ui/front_door.tscn"))
 var _qing := ""
 var _frames := 90
 var _quality := -1
@@ -135,8 +135,11 @@ func _run() -> void:
 			current_scene.open_panel(_open)  # the front door: void | identity | guide | opps
 		elif _open == "steward" and current_scene and current_scene.get("act_loop"):
 			current_scene.act_loop.open_steward()  # the Steward's words (ActLoop)
-		elif acts:
+		elif acts and acts.has_method("open_" + _open):
 			acts.call("open_" + _open)
+		elif acts:
+			# The room and the Void are places now (a door, not a panel): render the scene instead.
+			push_warning("--open=%s: no such panel here (rooms and the Void are places: --scene=res://scenes/places/…)" % _open)
 		elif _open == "chat" and current_scene and current_scene.get("chat_ctl"):
 			current_scene.chat_ctl.open()  # a hall or the Void
 	if _head != "" and current_scene:

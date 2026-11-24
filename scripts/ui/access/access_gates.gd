@@ -2,7 +2,7 @@ class_name AccessGates
 extends RefCounted
 ## What stands between the player and a thing they want to do, as numbered steps.
 ## Pure: a snapshot of facts (already read from the chain, the wallet relay and
-## Session) → the steps, each ✓ done, → the current one, ✗ still to do, or
+## Session) → the steps, each ✓ done, → the current one, ○ still to do, or
 ## "checking…" / "—" when the fact is not read yet / could not be read. Nothing
 ## here reads anything; AccessSteps gathers the facts and draws the result.
 ##
@@ -31,7 +31,7 @@ extends RefCounted
 const CHAIN_ID := 369
 
 ## status → the glyph drawn for a step that is not the current one
-const MARKS := {"done": "✓", "todo": "✗", "checking": "…", "unknown": "—"}
+const MARKS := {"done": "✓", "todo": "○", "checking": "…", "unknown": "—"}
 
 const GOALS := {
 	"identity": {"title": "Play as yourself", "gates": ["wallet", "window", "chain", "lau", "yue"]},

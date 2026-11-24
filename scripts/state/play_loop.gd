@@ -32,6 +32,8 @@ const QUIET_BLOCKS := 11223
 const REACH_MAX := 25  # Su to pass someone, beyond which it is not offered as an act
 const MAX_ACTS := 6
 const MAX_SU := 1 << 62  # "more than can be counted" for display
+## The blocker on every signed act with no wallet: where to connect one from here.
+const NO_WALLET := "needs a wallet: ask the Steward (Core)"
 
 
 static func _pia(v) -> PackedInt64Array:
@@ -143,7 +145,7 @@ static func acts(snap: Dictionary) -> Array:
 	var streak: Dictionary = snap["streak"] if _has(snap, "streak") else {}
 	var id_block := ""
 	if wallet == "":
-		id_block = "connect a wallet at the front door"
+		id_block = NO_WALLET
 	elif ident == "no_lau":
 		id_block = "no LAU yet: enter the Void at the front door"
 	elif ident == "no_yue":
@@ -218,6 +220,10 @@ static func acts(snap: Dictionary) -> Array:
 				r.merge({"title": "The room is talking", "detail": "last line at block %s" % TokenFormat.group(str(last)), "priority": 25})
 			r["doable"] = id_block == ""
 			r["blocker"] = id_block
+			if wallet == "":
+				# Reading a room needs no wallet: the one thing here a newcomer can do now.
+				r.merge({"title": "Read the room", "call": "QING LogEvent history (a read: free)", "doable": true, "blocker": "",
+					"detail": String(r["detail"]) + " · go in, or Y for the history"}, true)
 			out.append(r)
 
 	# Crowns: pass the one above you, or hold your lead.

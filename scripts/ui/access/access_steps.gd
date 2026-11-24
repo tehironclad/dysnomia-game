@@ -1,7 +1,7 @@
 class_name AccessSteps
 extends PanelContainer
 ## The path forward, on screen: a numbered checklist of what stands between the
-## player and the thing they tried (✓ done, → the current step, ✗ still to do,
+## player and the thing they tried (✓ done, → the current step, ○ still to do,
 ## "checking…" while a fact is being read, "—" when it could not be read). Each
 ## step says plainly what it is, and its button does it (or opens what does).
 ##
@@ -466,7 +466,7 @@ func _mark_color(s: Dictionary) -> Color:
 	if s["current"]:
 		return DeepFieldTheme.ICE
 	match String(s["status"]):
-		"todo": return TODO
+		"todo": return DeepFieldTheme.INK.darkened(0.25)  # a step still to do, not a failure
 		"checking": return DeepFieldTheme.MUTED
 	return DeepFieldTheme.DIM
 

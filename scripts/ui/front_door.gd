@@ -50,6 +50,7 @@ var _left: VBoxContainer
 var _t := 0.0
 var _head_timer := 0.0
 var _lead_news := ""
+var _current := "summary"
 
 
 func _ready() -> void:
@@ -143,6 +144,8 @@ func _build_backdrop() -> void:
 	for r in rows:
 		cols.append(DeepFieldTheme.rarity_color(String(r["rarity"])) if String(r["rarity"]) != "" else DeepFieldTheme.MUTED)
 	_globe.paint(cols, PackedByteArray(), -1, -1, _mine(), _last_visited())
+	_globe.here_label.text = "LAST VISITED"  # on the title screen you are nowhere yet
+	_globe.here_label.modulate = Color(1, 1, 1, 0.7)
 	_globe.rotation = Vector3(0.32, 0.0, 0.0)
 	_cam = Camera3D.new()
 	_cam.fov = 38.0
@@ -399,6 +402,10 @@ func _build_right() -> void:
 	_opps = OpportunitiesPanel.new()
 	_right.add_child(_opps)
 	_panels["opps"] = _opps
+	# Their own Close buttons: back to the summary, not an empty column with "← Back".
+	for pk in ["guide", "opps"]:
+		var pc: Control = _panels[pk]
+		pc.visibility_changed.connect(func(): if not pc.visible and _current == pk: open_panel("summary"))
 
 
 ## Shows one panel on the right ("summary" | "void" | "identity" | "guide" | "opps").
@@ -406,6 +413,7 @@ func _build_right() -> void:
 func open_panel(which: String) -> void:
 	if which == "":
 		which = "summary"
+	_current = which
 	for k in PANELS:
 		var p: Control = _panels[k]
 		var on: bool = k == which
