@@ -59,6 +59,7 @@ var _was_ready := false
 var _poll: Timer
 var _prev_mouse := Input.MOUSE_MODE_VISIBLE
 var _render_key := ""
+var _diag_at := -100000
 
 
 static func add_provider(c: Callable) -> void:
@@ -139,6 +140,12 @@ func _ready() -> void:
 	Session.changed.connect(_on_world_changed)
 	Wallet.connected.connect(func(_a): _on_world_changed())
 	Wallet.disconnected.connect(_on_world_changed)
+	if Wallet.has_signal("status_changed"):
+		Wallet.status_changed.connect(func():
+			if not _reading.has("diag") and Time.get_ticks_msec() - _diag_at > 3000:
+				_diag_at = Time.get_ticks_msec()
+				_reads.erase("diag")
+			refresh())
 	_poll = Timer.new()
 	_poll.wait_time = 1.5
 	_poll.timeout.connect(func(): if is_visible_in_tree() and goal != "": refresh())
@@ -231,7 +238,7 @@ func is_ready() -> bool:
 
 ## Forget the reads this panel made and ask again (and Session, if it is idle).
 func reread() -> void:
-	_reads.clear()
+	_reads.clear()  # the wallet diagnosis, balances and doors are read again
 	for k in ["room", "border", "fair", "aff"]:
 		if ctx.get(k) is Object:
 			ctx.erase(k)  # a host's RoomState is a snapshot: read it again
@@ -268,6 +275,7 @@ func gather() -> Dictionary:
 	f["wallet"] = Session.wallet
 	f["signer"] = Wallet.address
 	f["relay"] = Wallet.bridge != null and Wallet.bridge.is_server_running()
+	f["linked"] = Wallet.is_linked()
 	f["chain_id"] = Wallet.chain_id
 	var ps: PlayerState = Session.player
 	if Session.wallet == "":
@@ -301,6 +309,11 @@ func gather() -> Dictionary:
 		f["tier"] = ctx["tier"]
 	if ctx.has("extra"):
 		f["extra"] = ctx["extra"]
+	# The payment layer's own diagnosis (WalletDiagnosis, read-only) refines the wallet steps.
+	if _reads.has("diag"):
+		var d := AccessGates.from_diagnosis(_reads["diag"], goal)
+		f["override"] = d.get("override", {})
+		f["provider_steps"] = d.get("provider_steps", [])
 	for p in _providers:
 		if not p.is_valid():
 			continue
@@ -355,8 +368,14 @@ func _fair_facts(p) -> Dictionary:
 	return fair_facts(p if p is Dictionary else {})
 
 
+func _needs_wallet() -> bool:
+	return _needs("window")
+
+
 func _start_reads() -> void:
 	var w := Session.wallet
+	if _needs_wallet() and not _reads.has("diag") and not _reading.has("diag") and Wallet.bridge != null and Wallet.bridge.is_server_running():
+		_read_diag()
 	if w == "":
 		return
 	if _needs("affection") and not _reads.has("aff") and not _reading.has("aff"):
@@ -371,6 +390,18 @@ func _start_reads() -> void:
 		_read_door("border", bq)
 	if _needs("fair") and q != "" and not ctx.has("fair") and not _reads.has("fair") and not _reading.has("fair"):
 		_read_fair(w, q)
+
+
+## WalletDiagnosis.run() without opening anything (no window, no signature): its
+## failed checks become the wallet steps' verdicts (AccessGates.from_diagnosis).
+func _read_diag() -> void:
+	_reading["diag"] = true
+	var rows: Array = await WalletDiagnosis.run({"open": false, "sign": false, "qing": String(ctx.get("qing", ""))})
+	_reading.erase("diag")
+	if not is_inside_tree():
+		return
+	_reads["diag"] = rows
+	refresh()
 
 
 func _read_aff(w: String) -> void:
@@ -533,19 +564,11 @@ func _run(act: String) -> void:
 		reread()
 		return
 	match act:
-		"connect":
+		"connect", "reopen":
 			if Wallet.connect_wallet():
 				_set_status("The wallet window is opening in your browser: approve the connection there.", DeepFieldTheme.ICE)
 			else:
 				_set_status("Could not start the local wallet relay (ports %d+ busy?). Close other copies of the game and try again." % Config.wallet_bridge_port, TODO)
-		"reopen":
-			if Wallet.bridge != null and Wallet.bridge.is_server_running():
-				Wallet.bridge.reopen_wallet_page()
-				_set_status("The wallet window opened again: approve the connection there.", DeepFieldTheme.ICE)
-			elif Wallet.connect_wallet():
-				_set_status("The wallet window is opening in your browser.", DeepFieldTheme.ICE)
-			else:
-				_set_status("Could not start the local wallet relay.", TODO)
 		"chain":
 			_busy = true
 			await _switch_chain()
@@ -568,29 +591,20 @@ func _run(act: String) -> void:
 	refresh()
 
 
-## Asks the wallet window to switch to PulseChain. Wallet.switch_chain() when the
-## wallet layer offers one; otherwise the page's own switch_chain message, and the
-## chain id the page then reports (the wallet's own answer, never an assumed 369).
+## Asks the wallet window to switch to PulseChain (the bridge's switch_chain; the
+## wallet's own answer comes back as chain_changed, which Wallet keeps).
 func _switch_chain() -> void:
-	if Wallet.has_method("switch_chain"):
-		_set_status("Approve the switch to PulseChain in your wallet window…", DeepFieldTheme.ICE)
-		await Wallet.call("switch_chain")
-		refresh()
-		return
 	var b: Node = Wallet.bridge
-	if b == null or not b.is_server_running() or Wallet.address == "" or not b.has_method("_send_json"):
+	if b == null or not Wallet.is_linked() or not b.request_switch_chain():
 		_run("reopen")
 		return
-	b.call("_send_json", {"type": "switch_chain"})
-	if b.has_method("focus_wallet_page"):
-		b.focus_wallet_page()
+	b.focus_wallet_page()
 	_set_status("Approve the switch to PulseChain (369) in your wallet window…", DeepFieldTheme.ICE)
 	for i in 120:
 		await get_tree().create_timer(0.5).timeout
-		var cid := int(b.get("_chain_id"))
-		if cid == AccessGates.CHAIN_ID:
-			Wallet.chain_id = cid  # the page's report of the wallet's chain
+		if Wallet.chain_id == AccessGates.CHAIN_ID:
 			_set_status("The wallet reports PulseChain (369).", DONE)
+			_reads.erase("diag")
 			return
 	_set_status("The wallet did not report PulseChain within a minute: switch it in the wallet, then Check again.", TODO)
 

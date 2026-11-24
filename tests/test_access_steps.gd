@@ -165,3 +165,25 @@ func test_extra_and_providers() -> void:
 	eq(_ids(r), ["wallet", "window", "chain", "diag", "hoverbike"], "provider steps follow the chain step")
 	eq(r["steps"][1]["mark"], "→", "an override replaces a gate's verdict")
 	check(String(r["steps"][1]["detail"]).begins_with("Diagnosis"))
+
+
+func test_wallet_diagnosis_refines_wallet_steps() -> void:
+	var rows := [
+		{"id": "relay", "step": "Local wallet relay", "ok": true, "why": "listening"},
+		{"id": "window", "step": "Wallet window linked", "ok": true, "why": "opened as chrome"},
+		{"id": "provider", "step": "Browser wallet in that window", "ok": false, "why": "that browser has no wallet extension"},
+		{"id": "account", "step": "Account connected", "ok": null, "why": "skipped"},
+		{"id": "chain", "step": "Wallet on PulseChain (369)", "ok": false, "why": "the wallet is on chain 1"},
+		{"id": "gas", "step": "PLS for gas", "ok": false, "why": "0 PLS; a ticket's gas ≈ 0.5 PLS"},
+	]
+	var d := AccessGates.from_diagnosis(rows, "fair_ticket")
+	check(d["override"].has("chain") and not d["override"].has("window"), "only failed checks override")
+	eq(d["provider_steps"].map(func(x): return x["id"]), ["provider", "gas"])
+	var f := _ready_signer()
+	f.merge(d)
+	f["aff"] = {"state": "ok", "wallet": ONE, "fee": ONE}
+	var r := AccessGates.resolve("fair_ticket", f)
+	eq(_ids(r), ["wallet", "window", "chain", "provider", "gas", "affection"])
+	eq(r["steps"][r["current"]]["id"], "chain", "the diagnosis's chain verdict wins over the cached chain id")
+	check(String(r["steps"][2]["detail"]).contains("chain 1"))
+	eq(AccessGates.from_diagnosis(rows, "building"), {"override": {"chain": {"status": "todo", "detail": "the wallet is on chain 1"}}, "provider_steps": [AccessGates.from_diagnosis(rows, "building")["provider_steps"][0]]}, "no gas step for a goal that signs nothing")

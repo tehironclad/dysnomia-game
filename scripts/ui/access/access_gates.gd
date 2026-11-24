@@ -10,6 +10,7 @@ extends RefCounted
 ##   wallet     Session.wallet ("" = none connected)
 ##   signer     Wallet.address: the account the wallet window is linked to ("" = none)
 ##   relay      true when the local wallet relay (the window's server) is running
+##   linked     true when the wallet window is linked to the game right now (Wallet.is_linked)
 ##   chain_id   the chain the wallet window reports (0 = unknown)
 ##   identity   "none" | "reading" | "ok" | "failed"  (+ identity_error)
 ##   lau, yue, banned   bools from PlayerState (meaningful when identity == "ok")
@@ -176,6 +177,8 @@ static func gate(id: String, f: Dictionary) -> Dictionary:
 			if not bool(f.get("relay", false)):
 				var s := _step(id, "todo", "The wallet window is closed (its local relay is not running)." if wallet != "" else "Not open yet.", "connect")
 				return s
+			if f.has("linked") and not bool(f["linked"]):
+				return _step(id, "todo", "The relay is running but no wallet window is linked to the game: open it again.")
 			if signer == "":
 				return _step(id, "todo", "The window is open but no account is linked: approve the connection there, or open it again.")
 			if wallet != "" and signer != wallet.to_lower():
@@ -242,6 +245,42 @@ static func gate(id: String, f: Dictionary) -> Dictionary:
 				else "It is %s (Hypobar total %s%s); %s opens at %s." % [name_have, String(t.get("total", "—")), _blk(t), String(t.get("what", "this building")), name_need]
 			return s2
 	return {}
+
+
+## Pure: WalletDiagnosis.run() rows ([{id, step, ok, why}], ok true/false/null) → the
+## facts a provider adds: a failed check becomes the matching gate's verdict (its
+## reason is the payment layer's own), and checks with no gate of their own (a
+## wallet extension in that browser, PLS for gas) become steps after the chain step.
+static func from_diagnosis(rows: Array, goal: String) -> Dictionary:
+	var o := {}
+	var extra: Array = []
+	var gates: Array = GOALS.get(goal, {}).get("gates", [])
+	for r in rows:
+		if r.get("ok") != false:
+			continue
+		var why := String(r.get("why", ""))
+		match String(r.get("id", "")):
+			"relay":
+				o["window"] = {"status": "todo", "detail": why, "action": "connect"}
+			"window", "account":
+				if not o.has("window"):
+					o["window"] = {"status": "todo", "detail": why, "action": "reopen"}
+			"provider":
+				extra.append({"id": "provider", "title": "A browser wallet in that window", "status": "todo", "detail": why,
+					"explain": "The wallet window must open in the browser where your wallet extension lives.",
+					"action": "reopen", "action_label": "Open the wallet window"})
+			"chain":
+				o["chain"] = {"status": "todo", "detail": why}
+			"gas":
+				if gates.has("chain"):
+					extra.append({"id": "gas", "title": "PLS for gas", "status": "todo", "detail": why,
+						"explain": "Every signature pays a little PLS for gas. Get PLS from an exchange or a friend; a Swap Hall turns Ⓐ into PLS too.", "action": ""})
+	var out := {}
+	if not o.is_empty():
+		out["override"] = o
+	if not extra.is_empty():
+		out["provider_steps"] = extra
+	return out
 
 
 static func _blk(d: Dictionary) -> String:
