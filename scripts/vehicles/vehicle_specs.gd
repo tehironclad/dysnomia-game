@@ -42,7 +42,7 @@ const SPECS := {
 		"blurb": "A low jet-sled. Space jumps the plateau crests.",
 		"max_speed": 28.0, "boost": 1.3, "reverse": 0.35, "accel": 12.0, "brake": 18.0, "coast": 2.4,
 		"turn": 2.2, "grip": 4.0, "slide_grip": 1.2, "air_control": 0.5,
-		"jump": 8.5, "gravity_scale": 1.0, "glide": 0.5, "hover": 0.7, "hover_k": 34.0, "hover_c": 8.0,
+		"jump": 9.0, "gravity_scale": 1.0, "glide": 0.5, "hover": 0.7, "hover_k": 34.0, "hover_c": 8.0,
 		"floor_deg": 42.0, "snap": 0.0, "susp_k": 38.0, "susp_c": 4.5, "squash": 0.05, "travel": 0.3,
 		"chase": 6.5, "chase_h": 2.2, "seat": Vector3(0.0, 0.5, 0.45),
 		"hull": Vector3(2.0, 0.6, 3.2), "engine": "skimmer", "turn_in_place": false,

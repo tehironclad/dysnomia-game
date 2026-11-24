@@ -620,3 +620,35 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   receipt block − 1 and the receipt block and shows the measured change; for an AFFECTION op it is +0 (§1),
   and the menu says so. "The House Su" is `CHEON.Su(QING)`, the drink that does move bars. "Round for the
   house" is `ArcadePay.transfer_to_qing` (1 Ⓐ, receipt-verified, no arcade credit); the room cheers only after it.
+
+## 16. The skyline landmark and base jumping (2026-11-24)
+
+- **One landmark per developed QING** (`scripts/world/skyline/`, numbers in `LandmarkPlan`, pure). Class
+  from the Development tier: Wild/Outpost **nothing** (moonscape); Settlement a sky inn (64–112 m);
+  Town a grand hotel (128–232 m); City a twisted supertall (260–400 m + open crown); Capital a
+  Burj-class Y-plan tower (440–600 m roof + a spire of 0.32 × roof). The height is the Hypobar
+  total's log10 placed in the tier's band, in whole 4 m floors; bars only grow, so it only grows.
+  RatKing (log10 ≈ 9.1 at block 28,135,887): Burj, 111 floors, roof 444 m, spire tip 586 m.
+- **Site:** `LandmarkPlan.find_site` is the fair's search (round footprint fully on the plateau,
+  flattest, clear of the Core, arcade, monolith, plinth, arrival, the skyline ring and the fair),
+  preferring the north. The plaza (r 30 m) and the landing ring (r 14 m, 90–220 m away) are terraces
+  in the terrain's own material. The site does not depend on the tier, so it never moves.
+- **Lit windows** follow Development energy (Epibar total); **signs** are the QING's name (registry
+  snapshot of `name()`), the Hypobar total with its block, and the top Hypobar holder's
+  `LAU.Username()` (via `CHO.GetUserTokenAddress`), omitted when it does not read.
+- **Chain sense:** the glass lift is **free** (looking costs nothing). The jump from the sky deck is
+  the act: a **1 Ⓐ jump ticket**, `AFFECTION.transfer(QING, 1e18)` through `ArcadePay.pay`
+  (simulate → sign → receipt Transfer log verified → QING balance re-read), the credit spent at once.
+  No wallet or no ticket: a **practice** jump, labelled, never recorded. A jump from **your own
+  skyline tower** (its height is your Hypobar here) is free and scored. Any drop of ≥ 24 m becomes a
+  (practice) jump.
+- **Flight** (`JumpPhysics`, pure): the player's own gravity 3.2 m/s²; freefall terminal 30 m/s
+  (44 head-down); wingsuit settles to 22 fwd / 6.8 sink (glide ≈ 3.2), dive and flare change it;
+  canopy 8 / 3.0, flare (hold jump) 3 / 0.6 for 2.2 s. Wind is per territory (`String.hash` of the
+  lower-cased address; 1.5–4.5 m/s with gusts). An edge wind turns you back at |x|,|z| > 228 m.
+  An automatic canopy fires below 30 m AGL in a fast freefall.
+- **Score:** horizontal metres flown + ring points (≤ 3 m 1000, ≤ 8 m 600, ≤ 14 m 300, else
+  200 − d), times the landing (stand-up 1.0, skid 0.6, impact 0.25). Bests are local
+  (`user://basejump.cfg`).
+- **Keys:** `wingsuit` (Q) and `parachute` (C) are input actions in `project.godot`, listed in
+  `ControlsHelp.ACTIONS`.
