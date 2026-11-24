@@ -101,7 +101,7 @@ static func door_of_scene(path: String) -> String:
 
 ## In through a territory door: the place arrives walking in from its entrance.
 static func through_door(tree: SceneTree, kind: String) -> void:
-	var scene := place_scene(kind, GameManager.territory_address)
+	var scene := place_scene(kind, String(tree.root.get_node("GameManager").territory_address))
 	if scene == "":
 		return
 	door = kind
@@ -115,7 +115,7 @@ static func out_door(tree: SceneTree, kind: String) -> bool:
 	door = kind
 	door_inbound = false
 	_door_pending = kind != ""
-	var ok := _go(tree, GameManager.territory_address)
+	var ok := _go(tree, String(tree.root.get_node("GameManager").territory_address))
 	if not ok:
 		_door_pending = false
 	return ok
