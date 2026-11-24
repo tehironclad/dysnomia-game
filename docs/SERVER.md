@@ -43,6 +43,27 @@ inside your laptop.
 
 On Linux or macOS: `GODOT=/path/to/godot tools/server.sh --port=8787`.
 
+### On a Linux box (the pBank box, or WSL2 on a Windows PC)
+
+On the pBank box (pls-portfolio `deploy/box/`, including its Windows/WSL2 version), the server runs as
+a systemd service:
+
+```bash
+sudo bash tools/install-server-linux.sh            # NAME=<server name> to set --name
+```
+
+It creates a `dysnomia` user and prints a **read-only deploy key** to add in GitHub (this repo is
+private). It clones the repo to `/opt/dysnomia/game` and installs Godot 4.6.1, checked against the
+release's `SHA512-SUMS.txt`. It imports the project and starts `dysnomia-server.service` on
+`127.0.0.1:8787`, with its files in `/var/lib/dysnomia-server`. Extra options from the table above
+go in `/etc/dysnomia-server/env` (`SERVER_ARGS=--name=… --room-cap=…`). If the Entropy pulse node
+runs on the same box, it is pointed at this server. Running it again updates the checkout,
+re-imports when something changed, and restarts the server.
+
+The box publishes it: give pBank's `install.sh` stage g a `--game-host` name, and the URL is
+`wss://<that name>`. On a Windows PC that goes through the box's Cloudflare Tunnel, so you skip
+section 2 below. The box's nightly backup copies `/var/lib/dysnomia-server` (the leaderboards).
+
 ## 2. Make it reachable: pick a tunnel
 
 ### Option A (recommended): Tailscale Funnel
