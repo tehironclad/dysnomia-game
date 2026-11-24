@@ -24,6 +24,7 @@ var fair: FairSite
 var garage: GarageSite
 var landmark: Landmark      # skyline landmark + base jumping (scripts/world/skyline/)
 var base_jump: BaseJump
+var exchanges: Exchanges    # the Swap Hall and the YUE Exchange (scripts/world/exchange/)
 var phenomena: Phenomena
 var actions: CoreActions
 var lattice: WorldLattice
@@ -124,6 +125,14 @@ func _ready() -> void:
 		func(x, z): return terrain.get_height_at(x, z), DeepField.to_color(terrain.params["color"]), terrain.material,
 		[[Vector2(fair.position.x, fair.position.z), FairSite.RADIUS + 10.0]])
 	_add_landmark(core_y)
+	# --- Exchanges: the Swap Hall (PulseX) and the YUE Exchange (the tower's sky lobby)
+	exchanges = Exchanges.new()
+	exchanges.name = "Exchanges"
+	core.add_child(exchanges)
+	exchanges.setup(territory, hud, player, func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y,
+		DeepField.to_color(terrain.params["color"]), terrain.material,
+		[[Vector2(fair.position.x, fair.position.z), FairSite.RADIUS], [Vector2(garage.position.x, garage.position.z), GarageSite.RADIUS]], landmark)
+	# --- end Exchanges
 	_apply_development_snapshot()
 	lattice = WorldLattice.new()
 	lattice.name = "WorldLattice"
@@ -220,6 +229,8 @@ func _frame(view: String) -> void:
 		border.frame_camera(camera, view.substr(7) if view.length() > 7 else "n")
 	elif view == "relief":  # from the highest ground, back over the terraces
 		terrain.frame_relief(camera)
+	elif (view.begins_with("swap") or view.begins_with("yue")) and exchanges:
+		exchanges.frame(view, camera)
 	elif view in ["tower", "deck", "jump"] and landmark:
 		_frame_landmark(view)
 	elif view == "sky":
@@ -290,6 +301,8 @@ func _set_development(tier: int, hypo: PackedInt64Array, energy: float, board: A
 		fair.set_dev_tier(dev_tier)
 	if landmark:
 		landmark.set_development(dev_tier, hypo, energy, board, block)
+	if exchanges:
+		exchanges.set_development(dev_tier)
 	terrain.set_development(dev_tier, energy)
 	sky.set_aurora(energy if dev_tier >= 4 else 0.0)
 

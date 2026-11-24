@@ -54,6 +54,13 @@ var _practice_ok := false
 var _leader_wallet := ""
 var _t := 0.0
 var _pending := {}       ## a rebuild waiting for the lift to stop
+## The YUE Exchange floor (scripts/world/exchange/yue_floor.gd): a stop of the glass
+## lift at this height, set by whoever builds the floor after `built`; -1 = none.
+var exchange_y := -1.0
+
+
+func tower_node() -> Node3D:
+	return _tower
 
 
 func setup(qing: String, qing_name: String, hud: Node, player: CharacterBody3D, height_fn: Callable,
@@ -122,6 +129,7 @@ func _rebuild(s: Dictionary) -> void:
 	_blinkers.clear()
 	_lobby_sign = null
 	_focus = ""
+	exchange_y = -1.0
 	if spec.is_empty():
 		return
 	var ms := LandmarkPlan.masses(spec)
@@ -681,6 +689,8 @@ func _process(delta: float) -> void:
 		z = "lift_up"
 	elif Vector2(pp.x - c1.x, pp.z - c1.z).length() < 2.2 and absf(pp.y - c1.y) < 2.5:
 		z = "lift_down"
+	elif exchange_y > 0.0 and Vector2(pp.x - c0.x, pp.z - c0.z).length() < 2.2 and absf(pp.y - _car_global(exchange_y).y) < 2.0:
+		z = "lift_mid"
 	else:
 		var tip := plank_tip()
 		if Vector2(pp.x - tip.x, pp.z - tip.z).length() < 2.6 and absf(pp.y - tip.y) < 2.5:
@@ -699,7 +709,12 @@ func _set_focus(z: String) -> void:
 		"":
 			_hud.hide_prompt()
 		"lift_up":
-			_hud.show_prompt("%s  Glass lift to the sky deck · %d m · free" % [k, int(spec["deck"])])
+			if exchange_y > 0.0:
+				_hud.show_prompt("%s  Glass lift · free · first stop the YUE Exchange (%d m), then the sky deck (%d m)" % [k, int(exchange_y), int(spec["deck"])])
+			else:
+				_hud.show_prompt("%s  Glass lift to the sky deck · %d m · free" % [k, int(spec["deck"])])
+		"lift_mid":
+			_hud.show_prompt("%s  Glass lift up to the sky deck (%d m)  ·  %s  down to the lobby" % [k, int(spec["deck"]), ControlsHelp.key_of("crouch_descend")])
 		"lift_down":
 			_hud.show_prompt("%s  Glass lift down to the lobby" % k)
 		"plank":
@@ -708,12 +723,18 @@ func _set_focus(z: String) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _focus == "lift_mid" and not _riding and event.is_action_pressed("crouch_descend"):
+		get_viewport().set_input_as_handled()
+		_start_ride(exchange_y, 0.0)
+		return
 	if _focus == "" or _riding or _paying or not event.is_action_pressed("interact"):
 		return
 	get_viewport().set_input_as_handled()
 	match _focus:
 		"lift_up":
-			_start_ride(0.0, float(spec["deck"]))
+			_start_ride(0.0, exchange_y if exchange_y > 0.0 else float(spec["deck"]))
+		"lift_mid":
+			_start_ride(exchange_y, float(spec["deck"]))
 		"lift_down":
 			_start_ride(float(spec["deck"]), 0.0)
 		"plank":
@@ -753,7 +774,10 @@ func _ride_tick(delta: float) -> void:
 		if arm and rig:
 			arm.spring_length = float(rig.get("follow_distance"))
 		_focus = "?"
-		if _ride_to > 0.0:
+		if exchange_y > 0.0 and is_equal_approx(_ride_to, exchange_y):
+			_hud.ticker("YUE EXCHANGE · %d m · the desk is ahead of the lift; %s up to the sky deck, %s down" % [int(_ride_to),
+				ControlsHelp.key_of("interact"), ControlsHelp.key_of("crouch_descend")], DeepFieldTheme.ICE, 12.0)
+		elif _ride_to > 0.0:
 			_hud.ticker("SKY DECK · %d m · the plank is %s; the landing ring %d m %s" % [int(_ride_to), _plank_compass(), int(_ring_dist()), _ring_dir()], DeepFieldTheme.ICE, 12.0)
 
 

@@ -143,3 +143,37 @@ func test_error_decoding() -> void:
 	check(PulseX.wants_fot("PulseX: K"))
 	check(not PulseX.wants_fot("PulseXRouter: EXPIRED"))
 	eq(PulseX.explain("something else"), "something else")
+
+
+func test_yue_floor_height() -> void:
+	eq(YueFloor.floor_height({}), -1.0)
+	var burj := LandmarkPlan.spec(5, 9.06)
+	var f := YueFloor.floor_height(burj)
+	check(f >= 16.0 and f <= 96.0 and fmod(f, 4.0) == 0.0, "burj floor %s" % f)
+	var inn := LandmarkPlan.spec(2, 4.0)
+	check(YueFloor.floor_height(inn) >= 16.0 and YueFloor.floor_height(inn) < float(inn["roof"]), "inn floor below the roof")
+
+
+func test_swap_hall_site_clear_and_on_land() -> void:
+	var flat := func(_x: float, _z: float) -> float: return 0.0
+	var others := [[Vector2(0, 80), FairSite.RADIUS], [Vector2(40, -50), GarageSite.RADIUS], [Vector2(64, -128), LandmarkPlan.PLAZA_R]]
+	var s := SwapHall.find_site(flat, others)
+	check(s["ok"], "a site on flat land")
+	var at: Vector2 = s["at"]
+	check(at.length() >= 70.0 + SwapHall.RADIUS, "clear of the Core and the skyline")
+	for o in others:
+		check(at.distance_to(o[0]) >= float(o[1]) + SwapHall.RADIUS, "clear of %s" % str(o[0]))
+	eq(SwapHall.find_site(flat, others), s, "deterministic")
+
+
+func test_boards_never_invent_prices() -> void:
+	check(SwapHall.wall_text({}, "").contains("reading"))
+	check(SwapHall.wall_text({"ok": false, "error": "x"}, "").contains("—"))
+	var b := {"ok": true, "block": 5, "tokens": [{"address": "0xa", "name": "NoPool", "symbol": "N", "decimals": 18, "pools": {}, "best": ""},
+		{"address": "0xb", "name": "Deep", "symbol": "D", "decimals": 18, "best": "V2",
+			"pools": {"V2": {"pair": "0xp", "wpls": BigInt.from_decimal("26000000000000000000"), "token": BigInt.from_decimal("1000000000000000000")}}}]}
+	var t := SwapHall.wall_text(b, "0xb")
+	check(t.contains("no pool on PulseX"), t)
+	check(t.contains("26"), t)
+	check(SwapHall.face_text(b, 0).contains("DEEP"), "faces skip tokens with no pool")
+	check(SwapPanel.list_line(b["tokens"][0], "").contains("no pool on PulseX"))
