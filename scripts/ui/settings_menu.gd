@@ -21,6 +21,7 @@ var _rpc: LineEdit
 var _site_on: CheckBox
 var _site: LineEdit
 var _port: SpinBox
+var _browser: LineEdit
 var _note: Label
 
 
@@ -69,6 +70,10 @@ func _ready() -> void:
 	_port.min_value = 1024
 	_port.max_value = 65000
 	_row(grid, "Wallet relay port", _port)
+	_browser = LineEdit.new()
+	_browser.placeholder_text = "blank = automatic (your default browser)"
+	_browser.tooltip_text = "The browser that has your wallet extension, e.g. C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe"
+	_row(grid, "Wallet browser (.exe)", _browser)
 	_note = Label.new()
 	_note.theme_type_variation = "MutedLabel"
 	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -90,6 +95,10 @@ func _ready() -> void:
 	net_btn.text = "Online & voice…"
 	net_btn.pressed.connect(_open_net)
 	row.add_child(net_btn)
+	var wallet_btn := Button.new()  # the payment path, step by step (WalletDiagnosis)
+	wallet_btn.text = "Test my wallet…"
+	wallet_btn.pressed.connect(_open_wallet_test)
+	row.add_child(wallet_btn)
 	_load_from_config()
 
 
@@ -146,6 +155,7 @@ func _load_from_config() -> void:
 	_site_on.button_pressed = Config.site_api_enabled
 	_site.text = Config.site_api_base
 	_port.value = Config.wallet_bridge_port
+	_browser.text = Config.wallet_browser
 
 
 func _apply() -> void:
@@ -166,6 +176,7 @@ func _apply() -> void:
 	Config.site_api_enabled = _site_on.button_pressed
 	Config.site_api_base = _site.text.strip_edges()
 	Config.wallet_bridge_port = int(_port.value)
+	Config.wallet_browser = _browser.text.strip_edges().replace("\\", "/").trim_prefix("\"").trim_suffix("\"")
 	Config.save_settings()
 	Config.apply()
 	Chain.apply_config()
@@ -173,6 +184,18 @@ func _apply() -> void:
 
 
 var _net: NetSettingsPanel
+var _wallet_test: WalletTestPanel
+
+
+func _open_wallet_test() -> void:
+	if _wallet_test == null:
+		_wallet_test = WalletTestPanel.new()
+		add_child(_wallet_test)
+		_wallet_test.top_level = true
+	_wallet_test.visible = true
+	await get_tree().process_frame
+	_wallet_test.global_position = ((get_viewport_rect().size - _wallet_test.size) * 0.5).max(Vector2.ZERO)
+	_wallet_test.run()
 
 
 func _open_net() -> void:

@@ -71,7 +71,8 @@ static func pay(qing: String, place_name: String) -> Dictionary:
 static func transfer_to_qing(qing: String, label: String, fee_wei: String = FEE_WEI) -> Dictionary:
 	qing = qing.to_lower()
 	var wallet := Wallet.address
-	var funds := await ensure_funds(fee_wei)
+	print("[Pay] %s · AFFECTION.transfer(%s, %s wei) from %s" % [label, qing, fee_wei, wallet if wallet != "" else "(no wallet)"])
+	var funds := await ensure_funds(fee_wei, label)
 	if not funds["ok"]:
 		return funds
 	var data := Abi.encode_call("transfer(address,uint256)", [qing, fee_wei])
@@ -80,8 +81,9 @@ static func transfer_to_qing(qing: String, label: String, fee_wei: String = FEE_
 		return res
 	var v := verify_receipt(res["receipt"], wallet, qing, fee_wei)
 	if not v["ok"]:
-		return {"ok": false, "stage": "verify", "message": "Mined in block %d, but: %s" % [res["block"], v["message"]]}
+		return Wallet.report_failure(label, "verify", "Mined in block %d, but: %s" % [res["block"], v["message"]])
 	var after := await read_balance(qing, res["block"])
+	print("[Pay] %s · paid and verified: %s wei in block %d (%s)" % [label, BigInt.to_decimal(v["value"]), res["block"], res["hash"]])
 	return {"ok": true, "from": wallet, "hash": res["hash"], "block": res["block"], "qing_balance": after.get("balance", null), "value": v["value"]}
 
 
@@ -94,27 +96,29 @@ const TOPUP_WEI := "10000000000000000000"  # moved from the LAU when the wallet 
 ## this moves up to TOPUP_WEI with LAU.Withdraw(AFFECTION, amount) (the LAU's
 ## owner only; the LAU transfers to its owner) through the same write rule, and
 ## checks AFFECTION's Transfer(LAU → wallet) in the receipt. {ok} or {ok:false, stage:"funds", message}.
-static func ensure_funds(fee_wei: String = FEE_WEI) -> Dictionary:
+static func ensure_funds(fee_wei: String = FEE_WEI, label: String = "Payment") -> Dictionary:
 	var wallet := Wallet.address
 	if wallet == "":
 		return {"ok": true}  # Wallet.send reports the missing wallet
 	var fee := BigInt.from_decimal(fee_wei)
 	var wb := await read_balance(wallet)
 	if not wb["ok"]:
+		print("[Pay] %s · the wallet's balance could not be read; the simulation decides" % label)
 		return {"ok": true}  # can't tell: the simulation decides
 	if BigInt.cmp(wb["balance"], fee) >= 0:
 		return {"ok": true}
 	var ps = Session.player
 	var lau: String = ps.lau if ps != null and ps.has_lau() else ""
 	if lau == "":
-		return {"ok": false, "stage": "funds", "message": "This wallet holds %s and has no LAU to draw from; a play costs %s." % [fmt(wb["balance"]), fee_text()]}
+		return Wallet.report_failure(label, "funds", "This wallet holds %s and has no LAU to draw from; a play costs %s." % [fmt(wb["balance"]), fee_text()])
 	var lb := await read_balance(lau)
 	var need := BigInt.sub(fee, wb["balance"])
 	if not lb["ok"]:
-		return {"ok": false, "stage": "funds", "message": "This wallet holds %s; your LAU's balance could not be read. A play costs %s." % [fmt(wb["balance"]), fee_text()]}
+		return Wallet.report_failure(label, "funds", "This wallet holds %s; your LAU's balance could not be read. A play costs %s." % [fmt(wb["balance"]), fee_text()])
 	if BigInt.cmp(lb["balance"], need) < 0:
-		return {"ok": false, "stage": "funds", "message": "This wallet holds %s and your LAU %s holds %s; a play costs %s." % [
-			fmt(wb["balance"]), _lau_label(ps), fmt(lb["balance"]), fee_text()]}
+		return Wallet.report_failure(label, "funds", "This wallet holds %s and your LAU %s holds %s; a play costs %s." % [
+			fmt(wb["balance"]), _lau_label(ps), fmt(lb["balance"]), fee_text()])
+	print("[Pay] %s · the wallet holds %s; moving some from the LAU first" % [label, fmt(wb["balance"])])
 	var amount := BigInt.from_decimal(TOPUP_WEI)
 	if BigInt.cmp(lb["balance"], amount) < 0:
 		amount = lb["balance"]
@@ -127,7 +131,7 @@ static func ensure_funds(fee_wei: String = FEE_WEI) -> Dictionary:
 		return res
 	var v := verify_receipt(res["receipt"], lau, wallet, BigInt.to_decimal(amount))
 	if not v["ok"]:
-		return {"ok": false, "stage": "funds", "message": "Withdraw mined in block %d, but: %s" % [res["block"], v["message"]]}
+		return Wallet.report_failure(label, "funds", "Withdraw mined in block %d, but: %s" % [res["block"], v["message"]])
 	return {"ok": true, "moved": amount, "block": res["block"]}
 
 

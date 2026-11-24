@@ -1,25 +1,40 @@
 extends Node
-## Browser wallet bridge — serves wallet.html over HTTP and communicates
-## via WebSocket for wallet transaction signing (Rabby, MetaMask, etc.).
+## Browser wallet bridge: serves wallet.html over HTTP and talks to it over a
+## WebSocket; the page relays requests to the browser wallet (Rabby, MetaMask, …).
 ##
-## Flow: Godot (HTTP + WebSocket servers) <-> Browser (wallet.html + ethers.js) <-> Wallet <-> PulseChain
+## Flow: Godot (HTTP + WebSocket servers) <-> Browser (wallet.html) <-> Wallet <-> PulseChain
 ##
-## Two TCP servers on adjacent ports:
-##   - HTTP server (port): serves wallet.html so extensions inject window.ethereum
-##   - WebSocket server (port+1): handles the persistent WS connection
+## Two TCP servers on adjacent ports, both on 127.0.0.1:
+##   - HTTP (port): serves wallet.html, so extensions inject window.ethereum;
+##   - WebSocket (port+1): the link to the page.
 ##
-## open_wallet_page() launches the user's browser pointing at http://localhost:PORT
+## The link (tested end to end by tools/e2e_wallet.sh):
+##   - every socket is accepted; it stays unauthenticated (ignored) until its first
+##     message is {"type":"hello", token} with this session's token;
+##   - a valid hello makes that page THE linked page ("welcome", then
+##     "request_accounts"); while one is linked, a second window is told
+##     "superseded" and closes itself (the linked one keeps working);
+##   - a wrong token (a window left open from an earlier game session) is told
+##     "stale": the page reloads itself from this server and links with the new token;
+##   - losing the link keeps the wallet address (the wallet didn't change); requests
+##     wait for the page to relink, and the page re-sends any answer it couldn't deliver.
 
 signal wallet_connected(address: String, chain_id: int)
 signal wallet_disconnected()
+signal chain_changed(chain_id: int)
+## The page linked (true) or the link dropped (false).
+signal link_changed(linked: bool)
+## The page said which wallet it found (page_info).
+signal page_info_changed(info: Dictionary)
+## eth_requestAccounts was refused or failed in the page.
+signal connect_failed(error: String)
 signal tx_result(id: int, hash: String)
-signal tx_confirmed(id: int, hash: String)
 signal tx_failed(id: int, error: String)
 ## personal_sign (EIP-191): a free signature, not a transaction (the game server's sign-in).
 signal sign_result(id: int, signature: String)
 signal sign_failed(id: int, error: String)
 
-# ── Multiplayer signals ──
+# ── Multiplayer signals (legacy; the page no longer serves these) ──
 signal mp_sync(players: Array)
 signal mp_player_join(wallet: String, presence: Dictionary)
 signal mp_player_leave(wallet: String)
@@ -27,7 +42,7 @@ signal mp_position_update(wallet: String, x: float, y: float, z: float, yaw: flo
 signal mp_joined(channel: String)
 signal mp_left()
 
-# ── Voice chat signals ──
+# ── Voice chat signals (legacy) ──
 signal vc_started()
 signal vc_stopped()
 signal vc_mute_changed(muted: bool)
@@ -37,22 +52,37 @@ signal vc_error(error: String)
 const DEFAULT_PORT: int = 38420
 const MAX_PORT_RETRIES: int = 10
 const PING_INTERVAL: float = 15.0
+## An open socket that hasn't said a valid hello within this is closed.
+const HELLO_TIMEOUT_MS := 10000
+## The window title the page sets (FindWindow / EnumWindows match on it).
+const WINDOW_TITLE := "Dysnomia Wallet Bridge"
 
 var _http_server: TCPServer
 var _ws_server: TCPServer
-var _ws_peer: WebSocketPeer
-var _pending_peers: Array = []  # Array of WebSocketPeer waiting for handshake completion
-var _pending_http: Array = []   # Array of StreamPeerTCP waiting to receive request
-var _closing_http: Array = []   # Array of {peer, frames_left} — sent response, waiting to flush
+var _ws_peer: WebSocketPeer      # the linked (authenticated) page
+var _pending_peers: Array = []   # WebSocketPeer still in the HTTP upgrade handshake
+var _unauthed: Array = []        # {ws: WebSocketPeer, t0: int}: open, waiting for hello
+var _closing_ws: Array = []      # {ws, t0}: closing; polled so the last message and close frame go out
+var _pending_http: Array = []    # StreamPeerTCP waiting to send their request
+var _closing_http: Array = []    # {peer, frames}: answered, flushing
 var _http_port: int = DEFAULT_PORT
 var _ws_port: int = DEFAULT_PORT + 1
 var _wallet_address: String = ""
 var _chain_id: int = 0
 var _next_tx_id: int = 1
 var _ping_timer: float = 0.0
-var _cached_html: String = ""   # wallet.html with ports baked in
-var _browser_opened: bool = false  # True once we've opened the browser (avoid duplicate tabs)
-var _browser_pid: int = -1         # PID of the Chrome --app process (for cleanup)
+var _cached_html: String = ""    # wallet.html with the port and token baked in
+var _browser_opened: bool = false
+var _browser_opened_at := -1000000
+var _browser_pid: int = -1
+## false: never launch a browser (headless tools and the e2e harness open the page themselves).
+var launch_browser := true
+## What the linked page reported: {hasProvider, wallet, wallets, ua}.
+var page_info := {}
+## How the page was last opened ("chrome.exe --app", "default browser", …), for the wallet test.
+var browser_used := ""
+## The last error the page reported for eth_requestAccounts ("" when none).
+var connect_error := ""
 
 enum State {
 	STOPPED,
@@ -60,9 +90,9 @@ enum State {
 	CONNECTED,
 }
 var _state: int = State.STOPPED
-## Session token baked into the served page; the WebSocket stays unauthenticated
-## (every message ignored, peer closed) until the page echoes it in "hello".
-## Other web pages can open a socket to 127.0.0.1 but cannot read our page.
+## Session token baked into the served page; a socket is ignored until the page
+## echoes it in "hello". Other web pages can open a socket to 127.0.0.1 but cannot
+## read our page (no CORS read of a cross-origin response).
 var _token := ""
 var _authed := false
 
@@ -73,9 +103,7 @@ func _ready() -> void:
 
 
 func start_server(port: int = DEFAULT_PORT) -> bool:
-	## Start the HTTP + WebSocket servers on localhost.
-	## HTTP on `port`, WebSocket on `port + 1`.
-	## Tries the given port first, then falls back to port+2..port+MAX_PORT_RETRIES*2.
+	## HTTP on `port`, WebSocket on `port + 1`; then port+2…, up to MAX_PORT_RETRIES pairs.
 	if _state != State.STOPPED:
 		stop_server()
 
@@ -97,15 +125,9 @@ func start_server(port: int = DEFAULT_PORT) -> bool:
 		_http_port = try_http
 		_ws_port = try_ws
 		_state = State.LISTENING
-		_wallet_address = ""
-		_chain_id = 0
-
-		# Pre-build the HTML with both ports baked in
 		_token = Crypto.new().generate_random_bytes(16).hex_encode()
 		_authed = false
-		_cached_html = _get_wallet_html()
-		_cached_html = _cached_html.replace("{{PORT}}", str(_ws_port)).replace("{{TOKEN}}", _token)
-
+		_cached_html = _get_wallet_html().replace("{{PORT}}", str(_ws_port)).replace("{{TOKEN}}", _token)
 		print("[WalletBridge] HTTP on localhost:%d, WS on localhost:%d" % [_http_port, _ws_port])
 		return true
 
@@ -114,138 +136,159 @@ func start_server(port: int = DEFAULT_PORT) -> bool:
 
 
 func stop_server() -> void:
-	## Stop both servers and close all connections.
+	## Stop both servers and close every connection (an explicit disconnect).
 	if _ws_peer:
 		_ws_peer.close()
 		_ws_peer = null
 	for ws_peer in _pending_peers:
-		if ws_peer is WebSocketPeer:
-			ws_peer.close()
+		ws_peer.close()
 	_pending_peers.clear()
+	for u in _unauthed:
+		u["ws"].close()
+	_unauthed.clear()
+	_closing_ws.clear()
 	for http_peer in _pending_http:
-		if http_peer is StreamPeerTCP:
-			http_peer.disconnect_from_host()
+		http_peer.disconnect_from_host()
 	_pending_http.clear()
 	for item in _closing_http:
-		if item.peer is StreamPeerTCP:
-			item.peer.disconnect_from_host()
+		item.peer.disconnect_from_host()
 	_closing_http.clear()
 	_http_server.stop()
 	_ws_server.stop()
+	var was_linked := _authed
 	_state = State.STOPPED
+	_authed = false
 	_browser_opened = false
+	page_info = {}
+	if was_linked:
+		link_changed.emit(false)
 	if not _wallet_address.is_empty():
 		_wallet_address = ""
 		_chain_id = 0
 		wallet_disconnected.emit()
 
 
-func open_wallet_page() -> void:
-	## Open the wallet page as a Chrome/Edge --app popup (no tabs, no address bar).
-	## Falls back to OS.shell_open() if no Chromium browser is found.
-	## Only opens once per server session — calling again is a no-op.
+func page_url() -> String:
+	return "http://localhost:%d" % _http_port
+
+
+func open_wallet_page(force: bool = false) -> void:
+	## Opens the wallet page: as a Chromium --app window (no tabs or address bar) in the
+	## browser that holds the wallet, else in the default browser. Once per server
+	## session unless `force` (the window was closed, or the player asked).
 	if _state == State.STOPPED:
 		push_error("[WalletBridge] Server not running")
 		return
-	if _browser_opened:
+	if _browser_opened and not force:
 		print("[WalletBridge] Browser already opened — skipping")
 		return
-
-	var url := "http://localhost:%d" % _http_port
-	var browser_path := _find_chromium_browser()
-
+	_browser_opened = true
+	_browser_opened_at = Time.get_ticks_msec()
+	if not launch_browser:
+		browser_used = "not launched (tool run): %s" % page_url()
+		print("[WalletBridge] Wallet page at %s (not launching a browser)" % page_url())
+		return
+	var url := page_url()
+	var browser_path := find_browser()
 	if not browser_path.is_empty():
-		# Launch as --app popup: no address bar, no tabs, looks like a native window.
-		# Do NOT use --user-data-dir — that kills wallet extension access.
-		# --window-size sets initial size; wallet.html also calls resizeTo() as backup.
-		var args: PackedStringArray = PackedStringArray([
-			"--app=%s" % url,
-			"--window-size=400,520",
-		])
+		# --app: no address bar or tabs. No --user-data-dir: that would hide the wallet extension.
+		var args := PackedStringArray(["--app=%s" % url, "--window-size=420,560"])
 		_browser_pid = OS.create_process(browser_path, args)
 		if _browser_pid > 0:
-			_browser_opened = true
-			print("[WalletBridge] Opened wallet popup: %s (pid=%d)" % [browser_path.get_file(), _browser_pid])
+			browser_used = "%s --app" % browser_path.get_file()
+			print("[WalletBridge] Opened wallet window: %s (pid=%d)" % [browser_path, _browser_pid])
 			return
-		else:
-			push_warning("[WalletBridge] Failed to launch %s, falling back to shell_open" % browser_path)
-
-	# Fallback: default browser (may open as a regular tab)
+		push_warning("[WalletBridge] Failed to launch %s, falling back to the default browser" % browser_path)
 	OS.shell_open(url)
-	_browser_opened = true
-	print("[WalletBridge] Opened wallet page (fallback): %s" % url)
+	browser_used = "default browser (%s)" % (default_browser_progid() if OS.get_name() == "Windows" else OS.get_name())
+	print("[WalletBridge] Opened wallet page in the default browser: %s" % url)
 
 
 func focus_wallet_page() -> void:
-	## Bring the wallet popup window to front for transaction signing.
-	## Uses OS-level window activation (Win32 SetForegroundWindow via PowerShell)
-	## because JavaScript window.focus() is blocked by the OS for background windows.
-	## If the WS is disconnected (browser was closed), reopen the popup.
+	## Brings the wallet window to the front so the wallet's approval opens on top.
+	## Windows: Win32 SetForegroundWindow (window.focus() can't raise a background
+	## window). Elsewhere: a "focus" message (best effort). Not linked: reopen it.
 	if _state == State.STOPPED:
 		return
-	if not _browser_opened:
-		open_wallet_page()
-		return
-	if _ws_peer and _state == State.CONNECTED:
+	if is_linked():
 		_activate_browser_window()
-	else:
-		# WS is down — browser was probably closed. Reopen it.
-		print("[WalletBridge] WS disconnected — reopening wallet popup")
-		_browser_opened = false
-		_browser_pid = -1
-		open_wallet_page()
+	elif not _browser_opened or Time.get_ticks_msec() - _browser_opened_at > 15000:
+		print("[WalletBridge] Wallet window not linked — opening it again")
+		open_wallet_page(true)
 
 
 func reopen_wallet_page() -> void:
-	## Force-reopen the wallet popup. Used when the user manually requests it
-	## (e.g., W key) or if the wallet window was closed.
-	## Resets the _browser_opened flag so open_wallet_page() will launch again.
+	## The player asked for the wallet window: raise the linked one, else open it again.
 	if _state == State.STOPPED:
 		return
-	_browser_opened = false
-	_browser_pid = -1
-	open_wallet_page()
+	if is_linked():
+		_activate_browser_window()
+	else:
+		open_wallet_page(true)
 
 
-func send_transaction(to: String, fn_name: String, params: Array) -> int:
-	## Send a transaction request to the browser wallet.
-	## Returns a transaction ID for tracking.
-	if _state != State.CONNECTED or not _ws_peer:
-		push_error("[WalletBridge] Cannot send tx — wallet not connected")
+## Sends a fully built transaction ({from, to, data, value[, gas]}) for the user to
+## sign. Calldata is built in Godot (Abi); the page only relays it to the browser
+## wallet (eth_sendTransaction). `raise`: the game is raising the wallet window, so
+## the page waits (≤ 4 s) to be in front before asking the wallet. Returns the
+## request id (-1 if no page is linked).
+func send_raw(tx: Dictionary, raise: bool = false) -> int:
+	if not is_linked():
 		return -1
 	var tx_id := _next_tx_id
 	_next_tx_id += 1
-	_send_json({
-		"type": "send_transaction",
-		"id": tx_id,
-		"to": to,
-		"function": fn_name,
-		"params": params,
-	})
-	return tx_id
-
-
-## Sends a fully built transaction ({from, to, data, value}) for the user to
-## sign. Calldata is built in Godot (Abi); the page only relays it to the
-## browser wallet (eth_sendTransaction). Returns the request id (-1 if not ready).
-func send_raw(tx: Dictionary) -> int:
-	if _state != State.CONNECTED or not _authed:
-		return -1
-	var tx_id := _next_tx_id
-	_next_tx_id += 1
-	_send_json({"type": "send_raw", "id": tx_id, "tx": tx})
+	_send_json({"type": "send_raw", "id": tx_id, "tx": tx, "raise": raise})
 	return tx_id
 
 
 ## Asks the wallet to personal_sign `message` (UTF-8 text) with the connected
 ## account. Free: nothing is sent to the chain. Returns the request id (-1 if not ready).
-func personal_sign(message: String) -> int:
-	if _state != State.CONNECTED or not _authed or _wallet_address == "":
+func personal_sign(message: String, raise: bool = false) -> int:
+	if not is_linked() or _wallet_address == "":
 		return -1
 	var id := _next_tx_id
 	_next_tx_id += 1
-	_send_json({"type": "personal_sign", "id": id, "message": message, "address": _wallet_address})
+	_send_json({"type": "personal_sign", "id": id, "message": message, "address": _wallet_address, "raise": raise})
 	return id
+
+
+## Asks the page to switch the wallet to PulseChain (wallet_switchEthereumChain;
+## added first if the wallet doesn't know it). The answer arrives as chain_changed.
+func request_switch_chain() -> bool:
+	if not is_linked():
+		return false
+	_send_json({"type": "switch_chain"})
+	return true
+
+
+## Asks the page to connect again (eth_requestAccounts).
+func request_accounts() -> bool:
+	if not is_linked():
+		return false
+	_send_json({"type": "request_accounts"})
+	return true
+
+
+var _status_results := {}
+
+
+## What the wallet says right now, without a popup (eth_accounts, eth_chainId):
+## {ok, hasProvider, wallet, wallets, accounts, chainId, error} or {ok:false, error}.
+func query_status(timeout_s: float = 8.0) -> Dictionary:
+	if not is_linked():
+		return {"ok": false, "error": "the wallet window is not linked to the game"}
+	var id := _next_tx_id
+	_next_tx_id += 1
+	_send_json({"type": "status", "id": id})
+	var t0 := Time.get_ticks_msec()
+	while not _status_results.has(id) and Time.get_ticks_msec() - t0 < timeout_s * 1000.0:
+		await get_tree().create_timer(0.05).timeout
+	if not _status_results.has(id):
+		return {"ok": false, "error": "the wallet window did not answer within %d s" % int(timeout_s)}
+	var r: Dictionary = _status_results[id]
+	_status_results.erase(id)
+	r["ok"] = true
+	return r
 
 
 var _relay_next := 1
@@ -256,7 +299,7 @@ var _relay_results := {}
 ## Sends one JSON-RPC body through the wallet page's fetch (the browser's network).
 ## {ok, code, body}; {ok:false} if the page isn't linked or doesn't answer in 25 s.
 func relay_rpc(body: String) -> Dictionary:
-	if _state != State.CONNECTED or not _authed:
+	if not is_linked():
 		return {"ok": false}
 	var rid := _relay_next
 	_relay_next += 1
@@ -271,6 +314,11 @@ func relay_rpc(body: String) -> Dictionary:
 	return r
 
 
+## A page is linked (authenticated socket open).
+func is_linked() -> bool:
+	return _state == State.CONNECTED and _authed and _ws_peer != null
+
+
 func is_authenticated() -> bool:
 	return _authed
 
@@ -280,7 +328,7 @@ func get_chain_id() -> int:
 
 
 func is_wallet_connected() -> bool:
-	return _state == State.CONNECTED and not _wallet_address.is_empty()
+	return is_linked() and not _wallet_address.is_empty()
 
 
 func is_server_running() -> bool:
@@ -292,35 +340,27 @@ func get_wallet_address() -> String:
 	return _wallet_address
 
 
-# ─── Multiplayer Commands ────────────────────────────────────────────────
+func get_port() -> int:
+	return _http_port
+
+
+func get_token() -> String:
+	return _token
+
+
+# ─── Multiplayer / voice commands (legacy) ───────────────────────────────
 
 func send_mp_join(qing_address: String, wallet: String, username: String, tier: int) -> void:
-	## Tell wallet.html to join a Supabase channel for the given territory.
-	_send_json({
-		"type": "mp_join",
-		"qing": qing_address,
-		"wallet": wallet,
-		"username": username,
-		"tier": tier,
-	})
+	_send_json({"type": "mp_join", "qing": qing_address, "wallet": wallet, "username": username, "tier": tier})
 
 
 func send_mp_leave() -> void:
-	## Tell wallet.html to leave the current Supabase channel.
 	_send_json({"type": "mp_leave"})
 
 
 func send_mp_position(x: float, y: float, z: float, yaw: float, vx: float, vz: float) -> void:
-	## Broadcast local player position to the Supabase channel.
-	_send_json({
-		"type": "mp_position",
-		"x": x, "y": y, "z": z,
-		"r": yaw,
-		"vx": vx, "vz": vz,
-	})
+	_send_json({"type": "mp_position", "x": x, "y": y, "z": z, "r": yaw, "vx": vx, "vz": vz})
 
-
-# ─── Voice Chat Commands ────────────────────────────────────────────────
 
 func send_vc_start() -> void:
 	_send_json({"type": "vc_start"})
@@ -334,49 +374,38 @@ func send_vc_mute() -> void:
 	_send_json({"type": "vc_mute"})
 
 
-func get_port() -> int:
-	return _http_port
-
-
 # ─── Process Loop ─────────────────────────────────────────────────────────
 
 func _process(delta: float) -> void:
 	if _state == State.STOPPED:
 		return
 
-	# ── HTTP server: accept and respond ──
 	while _http_server.is_connection_available():
 		var peer := _http_server.take_connection()
 		if peer:
 			_pending_http.append(peer)
-
 	_poll_http_peers()
 	_flush_closing_http()
 
-	# ── WebSocket server: accept and upgrade ──
 	while _ws_server.is_connection_available():
 		var peer := _ws_server.take_connection()
 		if peer:
 			_try_ws_accept(peer)
-
 	_poll_pending_peers()
+	_poll_unauthed()
+	_poll_closing_ws()
 
-	# ── Poll active WebSocket ──
 	if _ws_peer:
 		_ws_peer.poll()
 		var ws_state := _ws_peer.get_ready_state()
-
 		if ws_state == WebSocketPeer.STATE_OPEN:
-			while _ws_peer.get_available_packet_count() > 0:
+			while _ws_peer and _ws_peer.get_available_packet_count() > 0:
 				var packet := _ws_peer.get_packet()
 				_handle_ws_message(packet.get_string_from_utf8())
-
-			# Ping keepalive
 			_ping_timer += delta
 			if _ping_timer >= PING_INTERVAL:
 				_ping_timer = 0.0
 				_send_json({"type": "ping"})
-
 		elif ws_state == WebSocketPeer.STATE_CLOSED:
 			_on_ws_disconnected()
 
@@ -384,43 +413,34 @@ func _process(delta: float) -> void:
 # ─── HTTP Server ──────────────────────────────────────────────────────────
 
 func _poll_http_peers() -> void:
-	## Check pending HTTP connections for incoming data and respond.
 	var to_remove: Array[int] = []
-
 	for i in range(_pending_http.size()):
 		var peer: StreamPeerTCP = _pending_http[i]
 		peer.poll()
 		var status := peer.get_status()
-
 		if status == StreamPeerTCP.STATUS_CONNECTED:
 			if peer.get_available_bytes() > 0:
-				# Read and discard the request data
 				var _request := peer.get_utf8_string(peer.get_available_bytes())
-				# Send the HTML response regardless of path
+				# The page for every path (a favicon request gets it too: harmless)
 				var body := _cached_html.to_utf8_buffer()
 				var header := "HTTP/1.1 200 OK\r\n"
 				header += "Content-Type: text/html; charset=utf-8\r\n"
 				header += "Content-Length: %d\r\n" % body.size()
+				header += "Cache-Control: no-store\r\n"
 				header += "Connection: close\r\n"
-				header += "Access-Control-Allow-Origin: *\r\n"
 				header += "\r\n"
 				peer.put_data(header.to_utf8_buffer())
 				peer.put_data(body)
-				# Move to closing queue — give TCP time to flush
 				_closing_http.append({"peer": peer, "frames": 10})
 				to_remove.append(i)
-
 		elif status != StreamPeerTCP.STATUS_CONNECTING:
-			# Error or disconnected
 			to_remove.append(i)
-
 	to_remove.reverse()
 	for idx in to_remove:
 		_pending_http.remove_at(idx)
 
 
 func _flush_closing_http() -> void:
-	## Give HTTP peers that sent their response time to flush, then disconnect.
 	var to_remove: Array[int] = []
 	for i in range(_closing_http.size()):
 		var item: Dictionary = _closing_http[i]
@@ -438,50 +458,105 @@ func _flush_closing_http() -> void:
 # ─── WebSocket Server ────────────────────────────────────────────────────
 
 func _try_ws_accept(peer: StreamPeerTCP) -> void:
-	## Try to upgrade a TCP connection to WebSocket.
-	## Reject if we already have an active connection.
-	if _ws_peer and _ws_peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
-		# Already have a good connection — reject the new one
-		peer.disconnect_from_host()
-		return
-
+	## Every connection is upgraded; only a valid hello links it (a stale or second
+	## window must never lock the real page out).
 	var new_ws := WebSocketPeer.new()
 	# Relayed chain reads (multicall results, logs) can be far larger than the 64 KiB
 	# default; an oversized message would be dropped and the read lost.
 	new_ws.inbound_buffer_size = 16 * 1024 * 1024
 	new_ws.outbound_buffer_size = 1024 * 1024
 	new_ws.max_queued_packets = 4096
-	var err := new_ws.accept_stream(peer)
-	if err != OK:
+	if new_ws.accept_stream(peer) != OK:
 		peer.disconnect_from_host()
 		return
-
 	_pending_peers.append(new_ws)
 
 
 func _poll_pending_peers() -> void:
-	## Poll pending WebSocket peers to check handshake completion.
 	var to_remove: Array[int] = []
-
 	for i in range(_pending_peers.size()):
 		var ws: WebSocketPeer = _pending_peers[i]
 		ws.poll()
 		var ws_state := ws.get_ready_state()
-
 		if ws_state == WebSocketPeer.STATE_OPEN:
 			to_remove.append(i)
-			_ws_peer = ws
-			_state = State.CONNECTED
-			_ping_timer = 0.0
-			_authed = false
-			print("[WalletBridge] WebSocket open; waiting for the page's hello")
-
+			_unauthed.append({"ws": ws, "t0": Time.get_ticks_msec()})
 		elif ws_state == WebSocketPeer.STATE_CLOSED:
 			to_remove.append(i)
-
 	to_remove.reverse()
 	for idx in to_remove:
 		_pending_peers.remove_at(idx)
+
+
+func _poll_unauthed() -> void:
+	var keep: Array = []
+	for u in _unauthed:
+		var ws: WebSocketPeer = u["ws"]
+		ws.poll()
+		if ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+			continue
+		if ws.get_available_packet_count() > 0:
+			var verdict := hello_verdict(ws.get_packet().get_string_from_utf8(), _token)
+			if verdict == "ok":
+				_promote(ws)
+			else:
+				# "stale": a page from an earlier game session reloads itself and links
+				push_warning("[WalletBridge] wallet page rejected (%s)" % verdict)
+				if verdict == "stale":
+					ws.send_text(JSON.stringify({"type": "stale"}))
+				_close_later(ws)
+			continue
+		if Time.get_ticks_msec() - int(u["t0"]) > HELLO_TIMEOUT_MS:
+			_close_later(ws)
+			continue
+		keep.append(u)
+	_unauthed = keep
+
+
+## Pure: what a socket's first message means. "ok" (this session's hello), "stale"
+## (a hello with another token: an old page), or "bad" (anything else).
+static func hello_verdict(text: String, token: String) -> String:
+	var j = JSON.parse_string(text)
+	if not (j is Dictionary) or String(j.get("type", "")) != "hello":
+		return "bad"
+	var t := String(j.get("token", ""))
+	if token != "" and t == token:
+		return "ok"
+	return "stale" if t != "" else "bad"
+
+
+func _promote(ws: WebSocketPeer) -> void:
+	# One linked window at a time, and the one already linked keeps the link (the
+	# player may be approving something in it): a second window is told to stop.
+	if _ws_peer and _ws_peer != ws and _ws_peer.get_ready_state() == WebSocketPeer.STATE_OPEN:
+		ws.send_text(JSON.stringify({"type": "superseded"}))
+		_close_later(ws)
+		print("[WalletBridge] A second wallet window opened; it was told to close (one is already linked)")
+		return
+	_ws_peer = ws
+	_state = State.CONNECTED
+	_authed = true
+	_ping_timer = 0.0
+	page_info = {}
+	print("[WalletBridge] Wallet page linked")
+	_send_json({"type": "welcome"})
+	_send_json({"type": "request_accounts"})
+	link_changed.emit(true)
+
+
+func _close_later(ws: WebSocketPeer) -> void:
+	ws.close(1000, "")
+	_closing_ws.append({"ws": ws, "t0": Time.get_ticks_msec()})
+
+
+func _poll_closing_ws() -> void:
+	var keep: Array = []
+	for c in _closing_ws:
+		var ws: WebSocketPeer = c["ws"]
+		ws.poll()
+		if ws.get_ready_state() != WebSocketPeer.STATE_CLOSED and Time.get_ticks_msec() - int(c["t0"]) < 3000:
+			keep.append(c)
+	_closing_ws = keep
 
 
 # ─── HTML Source ──────────────────────────────────────────────────────────
@@ -510,33 +585,32 @@ func _handle_ws_message(text: String) -> void:
 		return
 	if not (json.data is Dictionary):
 		return
-
 	var data: Dictionary = json.data
-	var msg_type: String = data.get("type", "")
-
-	if not _authed:
-		if msg_type == "hello" and String(data.get("token", "")) == _token and _token != "":
-			_authed = true
-			print("[WalletBridge] Page authenticated")
-			_send_json({"type": "request_accounts"})
-		else:
-			push_warning("[WalletBridge] Unauthenticated WebSocket client rejected")
-			if _ws_peer:
-				_ws_peer.close()
-		return
+	var msg_type: String = String(data.get("type", ""))
+	# JSON numbers arrive as floats: ids are read with int() so they match the int keys.
+	var id := int(data.get("id", -1))
 
 	match msg_type:
 		"connected":
-			var addr: String = data.get("address", "")
-			var cid: int = data.get("chainId", 0)
-			if not addr.is_empty() and addr != _wallet_address:
-				_wallet_address = addr
-				_chain_id = cid
+			var addr := String(data.get("address", "")).to_lower()
+			var cid := int(data.get("chainId", 0))
+			connect_error = ""
+			if addr.is_empty():
+				return
+			var changed := addr != _wallet_address or cid != _chain_id
+			_wallet_address = addr
+			_chain_id = cid
+			if changed:
 				print("[WalletBridge] Wallet connected: %s (chain %d)" % [addr, cid])
-				wallet_connected.emit(addr, cid)
+			wallet_connected.emit(addr, cid)
+
+		"connect_error":
+			connect_error = String(data.get("error", "refused"))
+			print("[WalletBridge] The wallet refused to connect: %s" % connect_error)
+			connect_failed.emit(connect_error)
 
 		"accounts_changed":
-			var addr: String = data.get("address", "")
+			var addr := String(data.get("address", "")).to_lower()
 			if addr != _wallet_address:
 				_wallet_address = addr
 				if addr.is_empty():
@@ -545,137 +619,175 @@ func _handle_ws_message(text: String) -> void:
 					wallet_connected.emit(addr, _chain_id)
 
 		"chain_changed":
-			_chain_id = data.get("chainId", 0)
+			var cid := int(data.get("chainId", 0))
+			if cid != _chain_id:
+				print("[WalletBridge] Wallet chain is now %d" % cid)
+			_chain_id = cid
+			chain_changed.emit(cid)
+
+		"page_info":
+			page_info = data
+			page_info_changed.emit(page_info)
 
 		"tx_result":
-			var tx_id: int = data.get("id", -1)
-			var hash: String = data.get("hash", "")
-			if tx_id >= 0:
-				tx_result.emit(tx_id, hash)
-
-		"tx_confirmed":
-			var conf_id: int = data.get("id", -1)
-			var conf_hash: String = data.get("hash", "")
-			if conf_id >= 0:
-				tx_confirmed.emit(conf_id, conf_hash)
-
-		"tx_reverted":
-			var rev_id: int = data.get("id", -1)
-			var rev_error: String = data.get("error", "Transaction reverted")
-			if rev_id >= 0:
-				tx_failed.emit(rev_id, rev_error)
+			if id >= 0:
+				tx_result.emit(id, String(data.get("hash", "")))
 
 		"tx_error":
-			var tx_id: int = data.get("id", -1)
-			var error: String = data.get("error", "Unknown error")
-			if tx_id >= 0:
-				tx_failed.emit(tx_id, error)
+			if id >= 0:
+				tx_failed.emit(id, String(data.get("error", "Unknown error")))
 
 		"sign_result":
-			sign_result.emit(int(data.get("id", -1)), String(data.get("signature", "")))
+			sign_result.emit(id, String(data.get("signature", "")))
 
 		"sign_error":
-			sign_failed.emit(int(data.get("id", -1)), String(data.get("error", "refused")))
+			sign_failed.emit(id, String(data.get("error", "refused")))
+
+		"status_result":
+			_status_results[id] = data
 
 		"rpc_result":
-			var rid: int = data.get("id", -1)
-			if _relay_waiting.has(rid):
-				_relay_results[rid] = {"ok": bool(data.get("ok", false)), "code": int(data.get("status", 0)), "body": String(data.get("body", ""))}
-				_relay_waiting.erase(rid)
+			if _relay_waiting.has(id):
+				_relay_results[id] = {"ok": bool(data.get("ok", false)), "code": int(data.get("status", 0)), "body": String(data.get("body", ""))}
+				_relay_waiting.erase(id)
 
 		"pong":
-			pass  # Keepalive response
-
-		"disconnected":
-			_on_ws_disconnected()
-
+			pass
 
 
 func _on_ws_disconnected() -> void:
+	## The page's socket closed (window closed, reload, sleep). The wallet address is
+	## kept: requests wait for the page to relink, and the page re-sends its answers.
 	_authed = false
 	_ws_peer = null
 	_state = State.LISTENING
-	var had_wallet := not _wallet_address.is_empty()
-	_wallet_address = ""
-	_chain_id = 0
 	_ping_timer = 0.0
-	if had_wallet:
-		print("[WalletBridge] Wallet disconnected")
-		wallet_disconnected.emit()
+	page_info = {}
+	print("[WalletBridge] Wallet page link closed")
+	link_changed.emit(false)
 
 
 # ─── Browser Window Activation ─────────────────────────────────────────────
 
 func _activate_browser_window() -> void:
-	## Bring the wallet --app window to the foreground using OS-level calls.
-	## JavaScript window.focus() doesn't work on Windows for background windows.
-	## We use PowerShell + Win32 FindWindow/SetForegroundWindow to find by title.
-	## Title comes from wallet.html <title> tag: "Dysnomia Wallet Bridge".
+	## Raises the wallet window. Windows: EnumWindows for a visible window whose title
+	## starts with WINDOW_TITLE (an --app window, or a tab of a normal browser window),
+	## then ShowWindow (restore only if minimised) + SetForegroundWindow. Allowed
+	## because the game (the foreground process) starts this PowerShell.
 	if OS.get_name() == "Windows":
-		var ps_script := (
-			"try { " +
-			"Add-Type -TypeDefinition '" +
-			"using System; using System.Runtime.InteropServices; " +
-			"public class WinAPI { " +
-			"[DllImport(\"user32.dll\")] public static extern IntPtr FindWindow(string cls, string title); " +
-			"[DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd); " +
-			"[DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); " +
-			"}'" +
-			" -Language CSharp -ErrorAction SilentlyContinue; " +
-			"$h = [WinAPI]::FindWindow([NullString]::Value, 'Dysnomia Wallet Bridge'); " +
-			"if ($h -ne [IntPtr]::Zero) { " +
-			"[WinAPI]::ShowWindow($h, 9); " +
-			"[WinAPI]::SetForegroundWindow($h) " +
-			"} } catch {}"
+		var cs := (
+			"using System; using System.Text; using System.Runtime.InteropServices; " +
+			"public class DysWin { " +
+			"public delegate bool EnumProc(IntPtr h, IntPtr l); " +
+			"[DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumProc f, IntPtr l); " +
+			"[DllImport(\"user32.dll\", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n); " +
+			"[DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr h); " +
+			"[DllImport(\"user32.dll\")] public static extern bool IsIconic(IntPtr h); " +
+			"[DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr h, int n); " +
+			"[DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr h); " +
+			"public static bool Raise(string prefix) { IntPtr found = IntPtr.Zero; " +
+			"EnumWindows(delegate (IntPtr h, IntPtr l) { if (!IsWindowVisible(h)) return true; " +
+			"StringBuilder sb = new StringBuilder(512); GetWindowText(h, sb, 512); string t = sb.ToString(); " +
+			"if (t.StartsWith(prefix) && t.IndexOf(\"(closed)\") < 0) { found = h; return false; } return true; }, IntPtr.Zero); " +
+			"if (found == IntPtr.Zero) return false; if (IsIconic(found)) ShowWindow(found, 9); return SetForegroundWindow(found); } }"
 		)
+		var ps_script := "try { Add-Type -TypeDefinition '%s' -Language CSharp -ErrorAction SilentlyContinue; [void][DysWin]::Raise('%s') } catch {}" % [cs, WINDOW_TITLE]
+		# -EncodedCommand (UTF-16LE base64): no command-line quoting of the C# quotes
 		OS.create_process("powershell.exe", PackedStringArray([
 			"-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
-			"-Command", ps_script,
+			"-EncodedCommand", Marshalls.raw_to_base64(ps_script.to_utf16_buffer()),
 		]))
 	else:
-		# Non-Windows: fall back to WS focus message (best effort)
 		_send_json({"type": "focus"})
 
 
 # ─── Browser Detection ────────────────────────────────────────────────────
 
-func _find_chromium_browser() -> String:
-	## Find a Chromium-based browser on the system (Chrome or Edge).
-	## Returns the full path to the executable, or "" if none found.
-	## Only Chrome/Edge support --app mode and wallet extension injection.
+## The wallet window's browser: Config.wallet_browser when set; on Windows the
+## default browser when it is Chrome, Brave or Edge (where the player's wallet
+## extension lives); "" = open the page in the default browser itself (Firefox, …).
+func find_browser() -> String:
+	var forced := String(Config.wallet_browser).strip_edges() if Config else ""
+	if forced != "":
+		if FileAccess.file_exists(forced):
+			return forced
+		push_warning("[WalletBridge] wallet browser %s not found; choosing automatically" % forced)
 	if OS.get_name() != "Windows":
-		# Linux/Mac: try common paths
-		var unix_paths: Array[String] = [
-			"/usr/bin/google-chrome",
-			"/usr/bin/google-chrome-stable",
-			"/usr/bin/chromium-browser",
-			"/usr/bin/chromium",
-			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-			"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-		]
-		for p in unix_paths:
+		for p in ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/brave-browser",
+				"/usr/bin/chromium-browser", "/usr/bin/chromium",
+				"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+				"/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+				"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"]:
 			if FileAccess.file_exists(p):
 				return p
 		return ""
-
-	# Windows: check common install locations
-	var win_paths: Array[String] = [
-		"C:/Program Files/Google/Chrome/Application/chrome.exe",
-		"C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-		"C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-		"C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-	]
-
-	# Also check user-local Chrome install (common when installed per-user)
-	var local_app_data := OS.get_environment("LOCALAPPDATA")
-	if not local_app_data.is_empty():
-		win_paths.insert(0, local_app_data + "/Google/Chrome/Application/chrome.exe")
-		win_paths.insert(1, local_app_data + "/Microsoft/Edge/Application/msedge.exe")
-
-	for p in win_paths:
-		if FileAccess.file_exists(p):
-			print("[WalletBridge] Found browser: %s" % p)
-			return p
-
-	push_warning("[WalletBridge] No Chromium browser found — will use OS.shell_open fallback")
+	var progid := default_browser_progid()
+	var kind := browser_kind(progid)
+	print("[WalletBridge] Default browser: %s (%s)" % [progid if progid != "" else "unknown", kind if kind != "" else "?"])
+	if kind == "other":
+		return ""  # Firefox, Opera…: the default browser opens the page (its wallet is there)
+	var order: Array = [kind] if kind != "" else []
+	for k in ["chrome", "brave", "edge"]:
+		if not k in order:
+			order.append(k)
+	for k in order:
+		for p in windows_paths(k, OS.get_environment("LOCALAPPDATA")):
+			if FileAccess.file_exists(p):
+				return p
 	return ""
+
+
+## Windows: the ProgId of the default http handler ("ChromeHTML", "BraveHTML", "MSEdgeHTM"…), "" if unknown.
+static func default_browser_progid() -> String:
+	if OS.get_name() != "Windows":
+		return ""
+	var out: Array = []
+	OS.execute("reg", PackedStringArray(["query",
+		"HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice",
+		"/v", "ProgId"]), out, true)
+	return parse_reg_progid("\n".join(out))
+
+
+## Pure: the ProgId value in `reg query … /v ProgId` output.
+static func parse_reg_progid(text: String) -> String:
+	for line in text.split("\n"):
+		var parts := line.strip_edges().split(" ", false)
+		if parts.size() >= 3 and parts[0] == "ProgId" and parts[1] == "REG_SZ":
+			return parts[2].strip_edges()
+	return ""
+
+
+## Pure: "chrome" | "brave" | "edge" | "other" (a non-Chromium default) | "" (unknown).
+static func browser_kind(progid: String) -> String:
+	var p := progid.to_lower()
+	if p == "":
+		return ""
+	if p.contains("brave"):
+		return "brave"
+	if p.begins_with("msedge"):
+		return "edge"
+	if p.begins_with("chrome"):
+		return "chrome"
+	return "other"
+
+
+## Pure: where each browser is installed on Windows (per-user first).
+static func windows_paths(kind: String, local_app_data: String) -> Array:
+	var out: Array = []
+	match kind:
+		"chrome":
+			if local_app_data != "":
+				out.append(local_app_data + "/Google/Chrome/Application/chrome.exe")
+			out.append_array(["C:/Program Files/Google/Chrome/Application/chrome.exe",
+				"C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"])
+		"brave":
+			if local_app_data != "":
+				out.append(local_app_data + "/BraveSoftware/Brave-Browser/Application/brave.exe")
+			out.append_array(["C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe",
+				"C:/Program Files (x86)/BraveSoftware/Brave-Browser/Application/brave.exe"])
+		"edge":
+			if local_app_data != "":
+				out.append(local_app_data + "/Microsoft/Edge/Application/msedge.exe")
+			out.append_array(["C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+				"C:/Program Files/Microsoft/Edge/Application/msedge.exe"])
+	return out
