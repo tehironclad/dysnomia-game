@@ -28,6 +28,8 @@ var _paying := false
 var _focus_key := ""   ## "ride:<id>" / "game:<id>" / "" (the prompt shown)
 var _focus_game := ""
 var _game: MidwayOverlay = null
+var _height_fn: Callable   ## ground height at (x, z) relative to the Core (parent), minus the Core's y
+var _voyage: Node = null
 var _ground_mat: Material = null  ## the terrain's own material (colours by world XZ) so the terrace continues the land
 
 
@@ -83,6 +85,7 @@ static func find_site(height_fn: Callable, land_floor: float = -2.5) -> Dictiona
 
 func setup(qing: String, hud: Node, player: CharacterBody3D, height_fn: Callable, tint: Color = Color(0.6, 0.8, 1.0), ground_mat: Material = null) -> void:
 	_ground_mat = ground_mat
+	_height_fn = height_fn
 	_qing = qing.to_lower()
 	_hud = hud
 	_player = player
@@ -244,6 +247,29 @@ func _start(ride: RideBase, note: String) -> void:
 	_focus_key = ""
 	_hud.ticker(note, DeepFieldTheme.ICE, 6.0)
 	ride.start_ride(_player)
+	if ride is RocketRide:
+		# After liftoff the player flies it (RocketVoyage)
+		ride.voyage = true
+		if not ride.voyage_handoff.is_connected(_start_voyage):
+			ride.voyage_handoff.connect(_start_voyage)
+
+
+func _start_voyage(ride: RocketRide) -> void:
+	_voyage = RocketVoyage.new()
+	_voyage.name = "RocketVoyage"
+	get_tree().current_scene.add_child(_voyage)
+	_voyage.ended.connect(func(_to_field: bool) -> void:
+		_voyage = null)
+	_voyage.begin(ride, _player, _hud, ground_y)
+
+
+## World ground height at global (x, z), from the territory's own heightfield.
+func ground_y(x: float, z: float) -> float:
+	var core := get_parent() as Node3D
+	if core == null or not _height_fn.is_valid():
+		return 0.0
+	var c := core.global_position
+	return c.y + float(_height_fn.call(x - c.x, z - c.z))
 
 
 func _on_finished(ride: RideBase) -> void:

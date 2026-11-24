@@ -62,6 +62,11 @@ var _desc := PackedFloat32Array()     # altitude table from _t_apo, DT steps
 var _captions: Array = []
 var _cap_idx := 0
 var _arm_idle := 0.0
+## Piloted voyage (RocketVoyage): at T_LIFT + VOYAGE_AT the player takes the controls.
+signal voyage_handoff(ride: RocketRide)
+const VOYAGE_AT := 3.0
+var voyage := false
+var _handed := false
 
 
 func _init() -> void:
@@ -447,9 +452,15 @@ func _on_ride_end() -> void:
 func _on_ride_start() -> void:
 	_cabin_light.visible = true
 	_cap_idx = 0
+	_handed = false
 
 
 func _ride_tick(t: float, _delta: float) -> void:
+	if voyage and not _handed and t >= T_LIFT + VOYAGE_AT:
+		_handed = true
+		paused = true
+		voyage_handoff.emit(self)
+		return
 	_beacon_mat.emission_energy_multiplier = (8.0 if fmod(t, 1.6) < 0.25 else 0.4) * (0.5 + 0.5 * FairKit.night)
 	# Captions: emit the latest one we've passed (robust to frame skips)
 	var cap := ""
@@ -500,6 +511,34 @@ func _ride_tick(t: float, _delta: float) -> void:
 	# Capsule lights pulse during the countdown
 	if t > 6.5 and t < T_LIFT:
 		_capsule_glow.emission_energy_multiplier = 4.0 + 3.0 * absf(sin(t * PI))
+
+
+## The flying parts, for RocketVoyage (it reparents the rocket, then gives it back).
+func rocket_node() -> Node3D:
+	return _rocket
+
+
+func set_engine(thr: float, t: float) -> void:
+	_flame.visible = thr > 0.0
+	_flame_mat.set_shader_parameter("throttle", thr)
+	_flame.scale = Vector3(1.0, 0.55 + 0.9 * thr + 0.06 * sin(t * 47.0), 1.0)
+	_flare.visible = thr > 0.0
+	_flare.light_energy = 16.0 * thr
+	_trail.emitting = false
+	_pad_smoke.emitting = false
+
+
+## Back from a voyage the player aborted: rocket home on the pad, rider set down.
+func voyage_returned() -> void:
+	var r := _rocket
+	if r.get_parent() != self:
+		r.get_parent().remove_child(r)
+		add_child(r)
+	r.position = Vector3(0, ROCKET_BASE, 0)
+	r.rotation = Vector3.ZERO
+	r.scale = Vector3.ONE * SCALE
+	paused = false
+	end_ride()
 
 
 func _elevator_y(t: float) -> float:

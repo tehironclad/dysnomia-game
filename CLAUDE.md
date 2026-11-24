@@ -88,6 +88,8 @@
 - Affection Fair (`scripts/world/funfair/`): `FairSite` picks what Use does by distance (a ride's booth or anywhere
   within its `reach_radius`; a midway game spot). Midway games: `MidwayGame` (pure rules, seeded by the ticket tx
   hash) + `MidwayOverlay`. `tools/probe_fair.gd` walks into every booth and plays every game headlessly.
+  The Upsilon Rocket is piloted after liftoff (`RocketVoyage`: W/S, mouse or A/D, Shift; slow climb to this world's
+  light speed `C_MS`; past 0.97 c a wormhole opens on the flight line and leads to the Field; Esc returns to the pad).
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
   total; skyline towers per player (`bar_columns.gd`, `tower.gdshader`), structures (`development_site.gd`),
   city lights/roads (terrain shader), aurora (sky shader). `tools/live_development.gd` measures every territory.

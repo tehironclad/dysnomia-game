@@ -29,6 +29,7 @@ var _rider: CharacterBody3D
 var _t: float = 0.0
 var _idle_t: float = 0.0
 var _riding: bool = false
+var paused := false   # true while something else flies the rider (RocketVoyage): no ticking, no seating
 var _booth_area: Area3D
 
 
@@ -76,6 +77,8 @@ func end_ride() -> void:
 
 func _process(delta: float) -> void:
 	_idle_t += delta
+	if paused:
+		return
 	if _riding:
 		_t += delta
 		_ride_tick(_t, delta)

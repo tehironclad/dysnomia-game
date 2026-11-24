@@ -61,3 +61,28 @@ func test_shy_has_hits_and_misses() -> void:
 		if MidwayGame.shy_hit(row, i * 0.05):
 			hits += 1
 	check(hits > 10 and hits < 190, "some throws hit, some miss (%d/200)" % hits)
+
+
+func test_rocket_voyage_heading_and_ramp() -> void:
+	var up := RocketVoyage.heading(0.0, PI * 0.5)
+	near(up.y, 1.0, 1e-5, "pitch 90°: straight up")
+	var level := RocketVoyage.heading(0.0, 0.0)
+	near(level.z, -1.0, 1e-5, "pitch 0: level, toward -Z")
+	# Full thrust from liftoff reaches the wormhole in about half a minute (slowly), boost in half that
+	var b := 18.0 / RocketVoyage.C_MS
+	var t := 0.0
+	while b < RocketVoyage.WORMHOLE_BETA and t < 300.0:
+		b += RocketVoyage.beta_rate(b, true, false, false) * 0.1
+		t += 0.1
+	check(t > 20.0 and t < 50.0, "thrust to the wormhole takes %.0f s" % t)
+	check(RocketVoyage.beta_rate(0.5, false, false, true) < 0.0, "the brake slows")
+	eq(RocketVoyage.beta_rate(0.5, false, false, false), 0.0, "coasting keeps speed")
+
+
+func test_wormhole_crossing_on_long_frames() -> void:
+	var c := Vector3(0, 0, -1000)
+	var n := Vector3(0, 0, 1)
+	check(RocketVoyage.crosses_disc(Vector3(0, 0, -900), Vector3(0, 0, -1300), c, n, 320.0), "a long frame straight through counts")
+	check(RocketVoyage.crosses_disc(Vector3(100, 50, -990), Vector3(100, 50, -1010), c, n, 320.0), "off-centre but inside the ring")
+	check(not RocketVoyage.crosses_disc(Vector3(500, 0, -900), Vector3(500, 0, -1100), c, n, 320.0), "outside the ring misses")
+	check(not RocketVoyage.crosses_disc(Vector3(0, 0, -100), Vector3(0, 0, -200), c, n, 320.0), "not there yet")
