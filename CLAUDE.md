@@ -172,6 +172,8 @@
   checked by GDScript ecrecover. Test it: `godot --headless --path . -s res://tools/net_selftest.gd`.
   Screenshot with a remote player: run the server and `tools/net_bot.gd -- --url=ws://127.0.0.1:N`,
   then `screenshot.gd -- --net-url=ws://127.0.0.1:N` (no `--view`).
+  The site's pulse node (entropy-ai-pulse `pulse-node/`) bridges to this server as a guest: `C_INFO`/`S_INFO`
+  (counts only, no wallets) and `C_LB_TOP`, served as the site's `/api/game-live` (SERVER.md §5b).
 
 - Front door (`scripts/ui/front_door.gd`): the title screen over `FieldGlobe` (the moon + every QING; warm halo =
   developed, ice ring = yours, white ring = here; shared with the Field). Four doors (Connect · Explore · Continue to my

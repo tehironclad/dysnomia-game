@@ -1,0 +1,34 @@
+# The Dysnomia game server (docs/SERVER.md) as a systemd service on a Linux box,
+# e.g. the pBank box (pls-portfolio deploy/box, also in WSL2 on a Windows PC).
+# tools/install-server-linux.sh installs it. It listens on 127.0.0.1:8787 only;
+# the box's Caddy + tunnel publish it as wss://<your hostname>.
+
+[Unit]
+Description=Dysnomia game server (headless Godot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dysnomia-server
+Group=dysnomia-server
+Environment=HOME=/opt/dysnomia
+WorkingDirectory=/opt/dysnomia/game
+# --name and anything else: /etc/dysnomia-server/env (SERVER_ARGS=...)
+EnvironmentFile=-/etc/dysnomia-server/env
+ExecStart=/opt/dysnomia/godot/godot --headless --path /opt/dysnomia/game res://scenes/net/game_server.tscn -- --port=8787 --bind=127.0.0.1 --data=/var/lib/dysnomia-server $SERVER_ARGS
+Restart=always
+RestartSec=5
+# /var/lib/dysnomia-server: leaderboards.json, tokens.json, server.log.
+StateDirectory=dysnomia-server
+StateDirectoryMode=0750
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+MemoryMax=4G
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dysnomia-server
+
+[Install]
+WantedBy=multi-user.target

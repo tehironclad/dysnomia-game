@@ -241,7 +241,8 @@ func _poll_peer(p: Peer, now: float) -> void:
 		p.nonce = Crypto.new().generate_random_bytes(16).hex_encode()
 		stats["connections"] += 1
 		_send(p, NetProto.json_msg(NetProto.S_WELCOME, {"id": p.id, "nonce": p.nonce, "server": server_name,
-			"v": NetProto.VERSION, "login": NetProto.login_message(server_name, p.nonce), "voice_radius": voice_radius}))
+			"v": NetProto.VERSION, "login": NetProto.login_message(server_name, p.nonce), "voice_radius": voice_radius,
+			"features": NetProto.FEATURES}))
 	var n := 0
 	while p.ws.get_available_packet_count() > 0 and n < 200:
 		n += 1
@@ -365,8 +366,37 @@ func _handle(p: Peer, msg: PackedByteArray, now: float) -> void:
 				"rows": lb.top(board, int(b.get("n", 10))) if board != "" else [], "error": "" if board != "" else "bad board id"}))
 		NetProto.C_LB_SUBMIT:
 			_lb_submit(p, NetProto.json_body(msg), now)
+		NetProto.C_INFO:
+			if not p.b_ctrl.take(now):
+				_throttled(p, now)
+				return
+			var b := NetProto.json_body(msg)
+			_send(p, NetProto.json_msg(NetProto.S_INFO, info(int(b.get("req", 0)), now)))
 		_:
 			_strike(p, "unknown type %d" % t)
+
+
+## What the server is doing, for the site's pulse node (entropy-ai-pulse/pulse-node)
+## and anyone else who asks: counts only, never wallets or positions.
+func info(req: int, now: float) -> Dictionary:
+	var players := 0
+	var signed_in := 0
+	for p in _peers.values():
+		if p.room != "":
+			players += 1
+			if p.wallet != "":
+				signed_in += 1
+	var rooms: Array = []
+	for r in _rooms:
+		rooms.append({"room": r, "players": (_rooms[r] as Dictionary).size()})
+	rooms.sort_custom(func(a, b): return int(a["players"]) > int(b["players"]))
+	var boards: Array = []
+	for id in lb.boards:
+		boards.append({"board": id, "rows": (lb.boards[id] as Array).size()})
+	boards.sort_custom(func(a, b): return int(a["rows"]) > int(b["rows"]))
+	return {"req": req, "server": server_name, "v": NetProto.VERSION, "uptime_s": int(now - _started_s),
+		"connections": _peers.size(), "players": players, "signed_in": signed_in, "guests": players - signed_in,
+		"rooms": rooms.slice(0, 200), "boards": boards.slice(0, 200)}
 
 
 func _set_profile(p: Peer, b: Dictionary) -> void:

@@ -196,6 +196,16 @@ func _run() -> void:
 	var top: Dictionary = await b.lb_top(board, 10)
 	ok(top.get("ok", false) and top["rows"].size() == 1 and int(top["rows"][0]["score"]) == 4200 and top["rows"][0]["wallet"] == a.wallet, "B reads the board: one real row")
 
+	# ── server info (what the site's pulse node reads): counts only ──
+	if server:
+		var inf: Dictionary = server.info(5, server._now())
+		var here := (inf["rooms"] as Array).filter(func(r): return r["room"] == ROOM)
+		ok(int(inf["players"]) == 3 and int(inf["signed_in"]) == 2 and int(inf["guests"]) == 1 and here.size() == 1 and int(here[0]["players"]) == 3,
+			"info counts 3 players in the room, 2 signed in (%s)" % JSON.stringify(inf).left(160))
+		ok((inf["boards"] as Array).any(func(r): return r["board"] == board and int(r["rows"]) == 1), "info lists the board with its row count")
+		ok(not JSON.stringify(inf).contains(a.wallet.trim_prefix("0x")), "info names no wallet")
+		ok(NetProto.size_ok(NetProto.json_msg(NetProto.C_INFO, {"req": 123456})), "a C_INFO request fits its size limit")
+
 	# ── rate limits ──
 	got.clear()
 	var a_notes := []

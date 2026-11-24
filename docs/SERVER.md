@@ -43,6 +43,27 @@ inside your laptop.
 
 On Linux or macOS: `GODOT=/path/to/godot tools/server.sh --port=8787`.
 
+### On a Linux box (the pBank box, or WSL2 on a Windows PC)
+
+On the pBank box (pls-portfolio `deploy/box/`, including its Windows/WSL2 version), the server runs as
+a systemd service:
+
+```bash
+sudo bash tools/install-server-linux.sh            # NAME=<server name> to set --name
+```
+
+It creates a `dysnomia-server` service account (never a login) and prints a **read-only deploy key** to add in GitHub (this repo is
+private). It clones the repo to `/opt/dysnomia/game` and installs Godot 4.6.1, checked against the
+release's `SHA512-SUMS.txt`. It imports the project and starts `dysnomia-server.service` on
+`127.0.0.1:8787`, with its files in `/var/lib/dysnomia-server`. Extra options from the table above
+go in `/etc/dysnomia-server/env` (`SERVER_ARGS=--name=… --room-cap=…`). If the Entropy pulse node
+runs on the same box, it is pointed at this server. Running it again updates the checkout,
+re-imports when something changed, and restarts the server.
+
+The box publishes it: give pBank's `install.sh` stage g a `--game-host` name, and the URL is
+`wss://<that name>`. On a Windows PC that goes through the box's Cloudflare Tunnel, so you skip
+section 2 below. The box's nightly backup copies `/var/lib/dysnomia-server` (the leaderboards).
+
 ## 2. Make it reachable: pick a tunnel
 
 ### Option A (recommended): Tailscale Funnel
@@ -133,6 +154,21 @@ Either:
   score). Fair rows are checked against their ticket's receipt, and replayed once the fair games
   expose a replay hook. When the server is unreachable, boards show "—".
 
+## 5b. Sharing with the site: the pulse node
+
+The website has a companion server, the **pulse node** (entropy-ai-pulse: `pulse-node/`, `docs/PULSE_NODE.md`).
+It runs the site's API on a spare laptop with its chain indexes warm, chat history and storage on disk,
+and Vercel relaying to it. It reads this server's live numbers for the site:
+
+- Same laptop: start it with `pulse-node.bat --game=ws://127.0.0.1:8787` and give it a second Funnel port:
+  `tailscale funnel --bg --https=8443 8788`.
+- Separate laptop: `--game=wss://<this laptop>.<tailnet>.ts.net`.
+
+It connects as a guest (it never joins a room, so nobody sees it), sends `C_INFO` every 20 s and
+`C_LB_TOP` when the site asks, and pings every 15 s. The site then shows `/api/game-live`: players and
+signed-in counts per territory, and the boards. That is one extra connection. Players' game settings
+(F2 → Chain → Site API) can point at the node's address as well as at the site.
+
 ## 6. Limits (what protects your laptop)
 
 | Limit | Value |
@@ -186,6 +222,9 @@ One WebSocket **binary** message is `[type u8][body]`, little-endian. The code i
   - `C_JOIN {room, name, head, acc, body}`, which brings `S_PEER` / `S_PEER_LEAVE`
   - `C_CHAT {text}`, relayed as `S_CHAT {id, wallet, name, text, pos}`
   - `C_LB_TOP` / `C_LB_SUBMIT`, answered by `S_LB`
+  - `C_INFO {req}`, answered by `S_INFO {req, server, v, uptime_s, connections, players, signed_in, guests,
+    rooms: [{room, players}], boards: [{board, rows}]}`. Guests may ask. It returns counts only. The welcome lists
+    `"features": ["info"]`.
   - `S_NOTICE {code, text}`
 - Sign-in text: `NetProto.login_message(server, nonce)`. The nonce is new for each attempt.
 - Run the checks: `godot --headless --path . -s res://tools/net_selftest.gd` (its own server), or add
