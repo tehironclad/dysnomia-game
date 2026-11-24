@@ -217,6 +217,18 @@ func _ready() -> void:
 	act_loop.setup(territory, state, core, hud, actions, border, columns, player,
 		func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y, view != "")
 	# --- end Acts
+	# Props end where they'd cover a few pixels (the fair, garage, halls from afar); state-sized
+	# geometry (the skyline towers, development) is never culled by size.
+	var cull := DetailCull.new()
+	cull.name = "DetailCull"
+	add_child(cull)
+	cull.skip(columns)
+	cull.skip(development)
+	cull.watch(core)
+	var legible := LegibleLabels.new()  # billboard labels keep a readable size from afar
+	legible.name = "LegibleLabels"
+	add_child(legible)
+	legible.watch(core)
 	view_mode = view
 	if view == "":
 		# Play: the player's camera. (With no current camera, Godot would pick

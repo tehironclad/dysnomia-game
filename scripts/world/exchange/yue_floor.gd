@@ -15,6 +15,10 @@ const POD_W := 18.0
 const POD_D := 12.0
 const POD_H := 4.6
 const REACH := 2.4
+const BOARD_L := 10.0  ## the side boards: length along the wall, height, centre height
+const BOARD_H := 3.6
+const BOARD_Y := 2.35
+const LIST_ROWS := 7    ## rated territories on the right-hand board (it must fit BOARD_H)
 
 var floor_y := 0.0
 var desk_at := Vector3.ZERO
@@ -92,13 +96,26 @@ func build(spec: Dictionary, lift_info: Dictionary, player: CharacterBody3D, hud
 	var title := _label("YUE EXCHANGE", Vector3(0, POD_H - 0.9, z1 - 0.3), 0.012, 96, Color("#ffb8e6"), false, PI)
 	title.outline_size = 10
 	_label("%s · %d m · Hong / Hung at the territory's fixed rate" % [tower_title, int(floor_y)], Vector3(0, POD_H - 1.75, z1 - 0.3), 0.0075, 48, DeepFieldTheme.INK, true, PI)
-	# Side boards: this territory's pair, and the territories that trade
-	_board = _label("reading the desk…", Vector3(-POD_W * 0.5 + 0.25, 2.4, zc + POD_D * 0.5 - 1.3), 0.0036, 64, DeepFieldTheme.INK, true, PI * 0.5)
-	_board.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_list = _label("", Vector3(POD_W * 0.5 - 0.25, 2.4, zc - POD_D * 0.5 + 1.3), 0.0036, 64, Color("#ffd27a"), true, -PI * 0.5)
-	_list.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	# Side boards: this territory's pair, and the territories that trade. Lit screens (a
+	# self-lit navy face in a glowing frame) with the text centred on them, big enough to
+	# read from the desk (2026-11-24: they were small, off-centre and on bare black metal).
+	var face := Landmark._glow(Color(0.035, 0.05, 0.09), 1.0)
+	var frame := Landmark._glow(_tint, 1.6)
 	for s in [-1.0, 1.0]:
-		_box(Vector3(0.06, 3.2, POD_D - 2.0), Vector3(s * (POD_W * 0.5 - 0.15), 2.4, zc), Landmark._metal(Color(0.02, 0.02, 0.03)))
+		var x: float = s * (POD_W * 0.5 - 0.15)
+		_box(Vector3(0.06, BOARD_H, BOARD_L), Vector3(x, BOARD_Y, zc), face)
+		for e in [-1.0, 1.0]:
+			_box(Vector3(0.08, 0.06, BOARD_L + 0.12), Vector3(x, BOARD_Y + e * (BOARD_H * 0.5 + 0.03), zc), frame)
+			_box(Vector3(0.08, BOARD_H, 0.06), Vector3(x, BOARD_Y, zc + e * (BOARD_L * 0.5 + 0.03)), frame)
+	# A left-aligned Label3D starts at its position: each text starts a margin in from the
+	# board's near end (the left board's text runs toward -z, the right board's toward +z).
+	_board = _label("reading the desk…", Vector3(-POD_W * 0.5 + 0.2, BOARD_Y, zc + BOARD_L * 0.5 - 0.45), 0.0050, 64, DeepFieldTheme.INK, true, PI * 0.5)
+	_list = _label("", Vector3(POD_W * 0.5 - 0.2, BOARD_Y, zc - BOARD_L * 0.5 + 0.45), 0.0038, 64, Color("#ffd27a"), true, -PI * 0.5)
+	for l in [_board, _list]:
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		l.outline_size = 10
+		l.outline_modulate = Color(0.0, 0.0, 0.02, 0.95)
+		l.double_sided = false
 	for p in [Vector3(-4, POD_H - 0.6, zc), Vector3(4, POD_H - 0.6, zc)]:
 		var o := OmniLight3D.new()
 		o.position = p
@@ -149,7 +166,7 @@ func show_desk(d: Dictionary, name: String, rated: Variant) -> void:
 		else:
 			lines.append("QING.GetMarketRate(Asset) · block %s" % TokenFormat.group(str(YueExchange.rated_block())))
 			lines.append("%d of %d territories have a rate" % [rated.size(), Registry.count()])
-			for r in rated.slice(0, 12):
+			for r in rated.slice(0, LIST_ROWS):
 				lines.append("%-22s %s" % [String(r["name"]).left(22), PulseX.fmt(r["rate"], 18, 6)])
 		_list.text = "\n".join(lines)
 
@@ -206,8 +223,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	use_desk.emit()
 
 
-## Screenshot camera: from beside the lift door, looking over the desk and out.
-func preview_transform() -> Transform3D:
+## Screenshot camera: from beside the lift door, looking over the desk and out;
+## "board" / "list": from mid-floor, square on to the left / right side board.
+func preview_transform(which: String = "") -> Transform3D:
 	var t := Transform3D()
+	var zc := _lift_front + POD_D * 0.5
+	if which == "board" or which == "list":
+		var s := -1.0 if which == "board" else 1.0
+		t.origin = to_global(Vector3(-s * 1.5, 1.7, zc))
+		return t.looking_at(to_global(Vector3(s * POD_W * 0.5, BOARD_Y, zc)), Vector3.UP)
 	t.origin = to_global(Vector3(5.5, 2.1, _lift_front + 1.0))
 	return t.looking_at(to_global(Vector3(-4.0, 1.9, _lift_front + POD_D * 0.62)), Vector3.UP)

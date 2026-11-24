@@ -252,9 +252,11 @@ static func _front_z(x: float) -> float:
 
 
 func _build_hall() -> void:
-	var wall := Landmark._metal(Color(0.3, 0.32, 0.37))
-	wall.metallic = 0.45
-	wall.roughness = 0.4
+	# Satin panels, not mirror metal: a metal wall shows the (black) sky it reflects, so the hall
+	# read as a dark box at Low quality (no SSIL/SSAO); these take the hall's own lights.
+	var wall := Landmark._metal(Color(0.42, 0.44, 0.5))
+	wall.metallic = 0.12
+	wall.roughness = 0.55
 	var dark := Landmark._metal(Color(0.07, 0.075, 0.09))
 	dark.metallic = 0.4
 	dark.roughness = 0.15
@@ -292,12 +294,14 @@ func _build_hall() -> void:
 	_box(Vector3(DOOR_HALF * 2.0, H - 4.6, 0.12), Vector3(0, 4.4 + (H - 4.6) * 0.5, _front_z(0)), glass)
 	# The wing roof: a slab tilted up toward the front, overhanging the glass
 	var roof := Node3D.new()
-	roof.position = Vector3(0, H + 0.2, 0.5)
-	roof.rotation.x = deg_to_rad(-5.0)
+	# (At 5° from H + 0.2 its back edge dipped ~0.9 m into the hall, cutting the quote wall's
+	# top lines and light band; 2° from H + 0.55 keeps its underside at the back wall's top.)
+	roof.position = Vector3(0, H + 0.55, 0.5)
+	roof.rotation.x = deg_to_rad(-2.0)
 	_built.add_child(roof)
 	_box(Vector3(W + 3.0, 0.5, 19.0), Vector3(0, 0, 0.5), Landmark._metal(Color(0.22, 0.23, 0.27)), 0.0, false, roof)
 	_box(Vector3(W + 3.1, 0.12, 0.2), Vector3(0, -0.05, 10.0), glow, 0.0, false, roof)
-	Solid.box(_built, Vector3(W, 0.5, 18.0), Vector3(0, H + 0.2, 0.0))
+	Solid.box(_built, Vector3(W, 0.5, 18.0), Vector3(0, H + 0.55, 0.0))
 	# The roof lantern: a glowing glass box over the trading floor
 	_box(Vector3(12.0, 2.2, 6.0), Vector3(0, H + 1.6, -1.5), Landmark._glass(0.35))
 	_box(Vector3(12.2, 0.1, 6.2), Vector3(0, H + 2.75, -1.5), glow)
@@ -327,8 +331,16 @@ func _build_hall() -> void:
 	# Inside: the quote wall on the back wall
 	_box(Vector3(W - 3.0, 6.4, 0.1), Vector3(0, 4.45, BACK + 0.3), Landmark._glow(Color(0.02, 0.03, 0.05), 1.0))
 	_box(Vector3(W - 2.8, 0.08, 0.12), Vector3(0, 7.7, BACK + 0.32), glow)
-	_wall_board = _label("", Vector3(-W * 0.5 + 2.2, 4.6, BACK + 0.38), 0.0045, 64, DeepFieldTheme.INK)
+	# A left-aligned Label3D starts at its position: the ~9.5 m block sits mid-wall, under the
+	# light band, top-aligned so a long token list grows down the screen, not off its top.
+	_wall_board = _label("", Vector3(-4.9, 7.45, BACK + 0.38), 0.0042, 64, DeepFieldTheme.INK)
 	_wall_board.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_wall_board.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_wall_board.outline_size = 10
+	_wall_board.outline_modulate = Color(0, 0, 0.02, 0.95)
+	# Ceiling light panels over the floor (self-lit, so the hall reads bright at any quality)
+	for k in [-1.0, 1.0]:
+		_box(Vector3(6.0, 0.06, 1.2), Vector3(k * 5.5, H - 0.08, -1.0), Landmark._glow(Color(1.0, 0.97, 0.92), 1.4))
 	# The hanging four-face board over the floor
 	var hang := Node3D.new()
 	hang.position = Vector3(0, 5.9, 2.6)
@@ -358,7 +370,8 @@ func _build_hall() -> void:
 		var term := PlaceBase.load_piece("Prop_Computer")
 		term.position = Vector3(-3.4 + k * 3.4, 0.1, -5.5)
 		_built.add_child(term)
-	_label("SWAP COUNTER · PulseX", Vector3(0, 1.55, -3.75), 0.008, 56, DeepFieldTheme.ICE, false)
+	# On the desk's front face (it used to float over the desk, across the terminals)
+	_label("SWAP COUNTER · PulseX", Vector3(0, 0.62, -3.77), 0.0075, 56, DeepFieldTheme.ICE, false)
 	zones["swap"] = Vector3(0, 0, -3.1)
 	# The YUE counter (or the sign saying where the YUE Exchange is)
 	var yx := W * 0.5 - 1.6
@@ -370,8 +383,8 @@ func _build_hall() -> void:
 		var o := OmniLight3D.new()
 		o.position = p
 		o.light_color = Color(1.0, 0.96, 0.9).lerp(_tint, 0.25)
-		o.light_energy = 5.0
-		o.omni_range = 18.0
+		o.light_energy = 6.0
+		o.omni_range = 20.0
 		_built.add_child(o)
 	var sign_l := OmniLight3D.new()
 	sign_l.position = Vector3(0, H - 2.0, _front_z(0) + 2.5)

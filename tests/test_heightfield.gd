@@ -115,3 +115,28 @@ func test_external_angle_matches_arg_far_away() -> void:
 		var a := -PI + 0.3 + k * 0.75
 		var g := JuliaHeightfield.external_angle(p, 40.0 * cos(a), 40.0 * sin(a), 3)
 		near(angle_difference(g, a), 0.0, 0.01, "angle %f" % a)
+
+
+func test_progress_clears_when_done() -> void:
+	var q := _q(ILLINOIS)
+	eq(JuliaHeightfield.progress_of(ILLINOIS, 65), -1.0, "nothing running")
+	var hf := JuliaHeightfield.compute(DeepField.for_territory(q), ILLINOIS, 65)
+	eq(JuliaHeightfield.progress_of(ILLINOIS, 65), -1.0, "cleared when the compute returns")
+	eq(hf.fingerprint(), JuliaHeightfield.compute(DeepField.for_territory(q), ILLINOIS, 65).fingerprint(), "progress tracking leaves the result alone")
+
+
+func test_loading_bar_overall() -> void:
+	near(Warp.overall(0.5, false, 0, 0), 0.5, 1e-6, "no neighbours: the ground is the bar")
+	near(Warp.overall(-1.0, true, 0, 4), 0.8, 1e-6, "ground done, neighbours to go")
+	near(Warp.overall(-1.0, true, 2, 4), 0.9, 1e-6, "half the neighbours")
+	near(Warp.overall(1.0, false, 4, 4), 1.0, 1e-6, "all done")
+	near(Warp.overall(-1.0, false, 0, 4), 0.0, 1e-6, "not started")
+
+
+func test_legible_label_scale() -> void:
+	near(LegibleLabels.scale_for(0.5, 10.0, 620.0), 1.0, 1e-6, "near: its own size")
+	var s := LegibleLabels.scale_for(0.5, 60.0, 620.0)
+	near(0.5 * s * 620.0 / 60.0, LegibleLabels.MIN_PX, 1e-3, "far: grown to the minimum on-screen size")
+	near(LegibleLabels.scale_for(0.5, 5000.0, 620.0), LegibleLabels.MAX_SCALE, 1e-6, "capped")
+	var far := LegibleLabels.far_for(0.5)
+	near(0.5 * LegibleLabels.MAX_SCALE * LegibleLabels.FOCAL_REF / far, LegibleLabels.MIN_PX, 1e-3, "ends where even the cap is too small")

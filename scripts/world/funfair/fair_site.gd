@@ -404,8 +404,12 @@ func preview_game(id: String, phase: String, codes: Array = []) -> void:
 			if g["id"] == id and l is Label3D:
 				var cam := Camera3D.new()
 				add_child(cam)
-				var c: Vector3 = l.to_global(Vector3(0.6, -0.62, 0.0))
-				cam.global_position = c + l.global_transform.basis.z.normalized() * 1.9 + Vector3.UP * 0.1
+				# From where a player would read it: a few metres out, at eye height.
+				var c: Vector3 = l.to_global(Vector3(1.2, -0.9, 0.0))
+				var out: Vector3 = (l as Label3D).global_transform.basis.z.normalized()
+				var eye: Vector3 = c + out * 4.2
+				eye.y = _fair.global_position.y + 1.7 + maxf(0.0, c.y - _fair.global_position.y - 3.0) * 0.3
+				cam.global_position = eye
 				cam.look_at(c)
 				cam.fov = 50.0
 				cam.current = true

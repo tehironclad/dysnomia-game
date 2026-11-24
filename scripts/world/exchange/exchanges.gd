@@ -134,7 +134,8 @@ func frame(view: String, camera: Camera3D) -> void:
 		_pending_view = view  # framed once the tower is built
 		return
 	if view.begins_with("yue") and yue_floor and is_instance_valid(yue_floor):
-		camera.global_transform = yue_floor.preview_transform()
+		# --view=yue_board / yue_list: square on to a side board
+		camera.global_transform = yue_floor.preview_transform(view.substr(4) if view in ["yue_board", "yue_list"] else "")
 		camera.fov = 70.0
 	elif view == "swap":
 		camera.global_transform = hall.preview_transform("out")

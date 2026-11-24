@@ -40,7 +40,7 @@ func test_cues_render() -> void:
 func test_quality_presets_complete() -> void:
 	eq(Config.QUALITY_PRESETS.size(), Config.QUALITY_NAMES.size())
 	for p in Config.QUALITY_PRESETS:
-		for k in ["ssao", "ssil", "glow", "volumetric_fog", "shadow_distance", "msaa"]:
+		for k in ["ssao", "ssil", "glow", "volumetric_fog", "shadow_distance", "shadow_splits", "msaa"]:
 			check(p.has(k), "preset key %s" % k)
 	check(AudioServer.get_bus_index("Music") >= 0 and AudioServer.get_bus_index("SFX") >= 0, "audio buses exist")
 

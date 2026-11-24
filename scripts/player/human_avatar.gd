@@ -688,6 +688,8 @@ func modulate_grey(grey: bool) -> void:
 		_trim_mat.emission = c
 		_trim_mat.emission_energy_multiplier = 0.4 if grey else 1.8
 	if _head:
+		if _head is MeshInstance3D:  # a baked creature head: swap the shared material
+			(_head as MeshInstance3D).material_override = AvatarHeads.head_material(grey)
 		for mi in _head.find_children("*", "MeshInstance3D", true, false):
 			var hm := (mi as MeshInstance3D).material_override as StandardMaterial3D
 			if hm:
