@@ -3,7 +3,8 @@ extends Node
 ## JSON-RPC transport for PulseChain. Rules (docs/LEARNINGS.md §9):
 ## - never send JSON-RPC batches (the public node serialises them);
 ## - at most MAX_IN_FLIGHT concurrent single requests;
-## - 4 tries with 300·2^i ms backoff and a 25 s timeout; a non-JSON body is a failure;
+## - one try per node (15 s timeout) across FALLBACKS, then the wallet-window relay, then
+##   backed-off retries; a non-JSON body is a failure;
 ## - a JSON-RPC error is an answer (e.g. a revert), never retried.
 ##
 ## Every request returns a Dictionary:
@@ -14,7 +15,7 @@ extends Node
 
 const MAX_IN_FLIGHT := 8
 const MAX_TRIES := 4
-const TIMEOUT_S := 25.0
+const TIMEOUT_S := 15.0  ## short: an unreachable node must fail over fast
 
 signal _slot_freed
 
@@ -27,6 +28,10 @@ const FALLBACKS := ["https://rpc.pulsechain.com", "https://pulsechain-rpc.public
 ## through the browser wallet window (the same network the site uses). Set by Wallet.
 var relay: Callable = Callable()
 var last_error := ""
+## When every direct node failed and the relay worked, use the relay first until this
+## time (ms), then give direct connections another chance.
+var _relay_first_until := 0
+const RELAY_FIRST_MS := 60000
 var _logged := {}
 var _in_flight := 0
 var _next_id := 1
@@ -38,15 +43,17 @@ func request(method: String, params: Array = []) -> Dictionary:
 	while _in_flight >= MAX_IN_FLIGHT:
 		await _slot_freed
 	_in_flight += 1
-	var res := {}
-	for attempt in MAX_TRIES:
-		if attempt > 0:
-			stats["retries"] += 1
-			await get_tree().create_timer(0.3 * pow(2.0, attempt - 1)).timeout
-		res = await _send_once(method, params)
+	var res := {"ok": false, "kind": "transport", "error": {"message": "not tried"}}
+	# 0) direct nodes known to be unreachable on this PC: straight to the relay
+	if relay.is_valid() and Time.get_ticks_msec() < _relay_first_until:
+		res = await _via_relay(method, params)
 		if res["ok"] or res["kind"] != "transport":
-			break
-	# The node can't be reached at all: fail over to the other public nodes…
+			_in_flight -= 1
+			_slot_freed.emit()
+			return res
+	# 1) the current node, once, with a short timeout
+	res = await _send_once(method, params)
+	# 2) unreachable → every other public node once (fast failover, not 4 slow retries)
 	if not res["ok"] and res["kind"] == "transport":
 		_log_once(endpoint, String(res["error"]["message"]))
 		for alt in FALLBACKS:
@@ -59,22 +66,37 @@ func request(method: String, params: Array = []) -> Dictionary:
 				res = r2
 				break
 			_log_once(alt, String(r2["error"]["message"]))
-	# …and finally through the browser wallet window, if it is linked.
+	# 3) still nothing → through the browser wallet window, if it is linked
 	if not res["ok"] and res["kind"] == "transport" and relay.is_valid():
-		var body := JSON.stringify({"jsonrpc": "2.0", "id": _next_id, "method": method, "params": params})
-		_next_id += 1
-		var rr: Dictionary = await relay.call(body)
-		if rr.get("ok", false):
-			res = classify(HTTPRequest.RESULT_SUCCESS, int(rr.get("code", 200)), String(rr.get("body", "")).to_utf8_buffer())
-			if res["ok"] and not _logged.has("relay"):
+		var rr := await _via_relay(method, params)
+		if rr["ok"] or rr["kind"] != "transport":
+			res = rr
+			_relay_first_until = Time.get_ticks_msec() + RELAY_FIRST_MS
+			if not _logged.has("relay"):
 				_logged["relay"] = true
 				print("[Rpc] direct connections failed — reading the chain through the wallet window")
+	# 4) a blip (429, 5xx, timeout): a few backed-off retries on the node that worked last
+	for attempt in range(1, MAX_TRIES):
+		if res["ok"] or res["kind"] != "transport":
+			break
+		stats["retries"] += 1
+		await get_tree().create_timer(0.3 * pow(2.0, attempt - 1)).timeout
+		res = await _send_once(method, params)
 	if not res["ok"] and res["kind"] == "transport":
 		stats["failures"] += 1
 		last_error = String(res["error"]["message"])
 	_in_flight -= 1
 	_slot_freed.emit()
 	return res
+
+
+func _via_relay(method: String, params: Array) -> Dictionary:
+	var body := JSON.stringify({"jsonrpc": "2.0", "id": _next_id, "method": method, "params": params})
+	_next_id += 1
+	var rr: Dictionary = await relay.call(body)
+	if not rr.get("ok", false):
+		return {"ok": false, "kind": "transport", "error": {"message": "wallet-window relay did not answer"}}
+	return classify(HTTPRequest.RESULT_SUCCESS, int(rr.get("code", 200)), String(rr.get("body", "")).to_utf8_buffer())
 
 
 func _log_once(url: String, why: String) -> void:
