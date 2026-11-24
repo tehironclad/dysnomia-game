@@ -19,6 +19,7 @@ var dev_tier := 0
 var monolith: VoidMonolith
 var arcade: ArcadeFront
 var fair: FairSite
+var garage: GarageSite
 var phenomena: Phenomena
 var actions: CoreActions
 var lattice: WorldLattice
@@ -109,6 +110,14 @@ func _ready() -> void:
 		func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y,
 		DeepField.to_color(terrain.params["color"]), terrain.material)
 	fair.set_dev_tier(0)
+	# The vehicle pad near arrival (unlocks from the viewer's own chain state)
+	garage = GarageSite.new()
+	garage.name = "Garage"
+	core.add_child(garage)
+	garage.setup(String(territory["address"]), hud, player, state,
+		func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y,
+		func(x, z): return terrain.get_height_at(x, z), DeepField.to_color(terrain.params["color"]), terrain.material,
+		[[Vector2(fair.position.x, fair.position.z), FairSite.RADIUS + 10.0]])
 	lattice = WorldLattice.new()
 	lattice.name = "WorldLattice"
 	core.add_child(lattice)
@@ -189,6 +198,9 @@ func _frame(view: String) -> void:
 		camera.position = f + Vector3(0.0, 28.0, -95.0)
 		camera.look_at(f + Vector3(0.0, 8.0, 0.0))
 		camera.fov = 60.0
+	elif view == "garage" and garage:
+		camera.global_transform = garage.preview_transform()
+		camera.fov = 62.0
 	elif view == "sky":
 		camera.position = Vector3(0.0, core_h + 2.0, 0.0)
 		camera.look_at(camera.position + Vector3(-0.55, 0.62, 0.55))

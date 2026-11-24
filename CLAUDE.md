@@ -67,6 +67,9 @@
   library is `scripts/arcade/` (ArcadeGame, three original games, the Folklore 6502 cart player,
   ArcadeCatalog). Places: `arcade_place.gd` (every territory, door `ArcadeFront` on the plaza) and
   `sunny_pub.gd` (TehSunFlowrScioety QING), both on `GamesPlace`.
+- Vehicles (`scripts/vehicles/`, LEARNINGS §15): a pad per territory (`scripts/world/garage/garage_site.gd`), five
+  vehicles (`MoonVehicle`, specs and pure physics in `VehicleSpecs`), unlocks from real state (`VehicleUnlocks`).
+  V in/out, R upright. Shots: `--view=garage`, or `--drive=<kind> [--drive-s=N --steer=left] [--session=0x…]`.
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
   total; skyline towers per player (`bar_columns.gd`, `tower.gdshader`), structures (`development_site.gd`),
   city lights/roads (terrain shader), aurora (sky shader). `tools/live_development.gd` measures every territory.

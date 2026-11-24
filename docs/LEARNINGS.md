@@ -552,3 +552,26 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   reads AFFECTION `Transfer(loser → winner)` logs after the game's last block and allocates them
   oldest debt first. ✓ paid / ⚠ unpaid is what everyone sees.
 - **Sunny's Pub** replaces the arcade in TehSunFlowrScioety QING `0x2b78b345880807ac9be28c1309ab55d6fa8796de`.
+
+---
+
+## 15. Vehicles at the pad (2026-11-24)
+
+- **Every territory has a vehicle pad** (`GarageSite`) near arrival: a terrace in the terrain's own material,
+  placed like the fair (`find_site`: on land, flattest, clear of the Core's landmarks, the skyline ring and the fair).
+- **Unlocks come only from state the game already read** (`VehicleUnlocks.gather`: Session's identity and bars
+  pass, this territory's board). Not read yet → "…", read failed → "—"; neither counts as locked or open.
+
+  | Vehicle | Opens when |
+  |---|---|
+  | Regolith Rover (6 wheels) | always, no wallet needed |
+  | Hoverbike | a Hypobar anywhere (`YUE.Bar(QING)` > 0 at any territory) |
+  | Crest Skimmer | a Hypobar here (`YUE.Bar(this QING)`, or a row on this board) |
+  | Lander Hopper (VTOL) | bars at 3+ territories (the gear's spark rule, §11) |
+  | Bar Crawler (tracks) | your tower is in this board's top 3 (known players; the skyline everyone sees) |
+
+- **Rental:** E at a locked bay pays 1 Ⓐ to this QING through `ArcadePay` (simulate → sign → receipt Transfer
+  check); that vehicle opens here for this session only (in memory, keyed wallet@QING:kind). The credit
+  ArcadePay records is spent at once, so a rental is never also an arcade play.
+- **Physics:** a yaw-only `CharacterBody3D` (capsule keel + box) on the terrain collider and every `Solid`;
+  the feel (drift, hover cushion and glide, hops, fuel, springs) is pure functions in `VehicleSpecs`.
