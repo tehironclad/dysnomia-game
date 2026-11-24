@@ -18,6 +18,7 @@ var development: DevelopmentSite
 var dev_tier := 0
 var monolith: VoidMonolith
 var arcade: ArcadeFront
+var fair: FairSite
 var phenomena: Phenomena
 var actions: CoreActions
 var lattice: WorldLattice
@@ -100,6 +101,13 @@ func _ready() -> void:
 	arcade.build(String(territory["address"]), DeepField.to_color(terrain.params["color"]))
 	arcade.position = Vector3(ArcadeFront.AT.x, terrain.get_height_at(core.global_position.x + ArcadeFront.AT.x, core.global_position.z + ArcadeFront.AT.y) - core_y - 0.3, ArcadeFront.AT.y)
 	arcade.look_at(core.global_position + Vector3(0.0, arcade.global_position.y - core.global_position.y, 0.0), Vector3.UP, true)
+	# The Affection Fair: rides paid in Ⓐ to this QING, sized by Development
+	fair = FairSite.new()
+	fair.name = "AffectionFair"
+	core.add_child(fair)
+	fair.position = Vector3(FairSite.AT.x, 0.0, FairSite.AT.y)
+	fair.setup(String(territory["address"]), hud, player, func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y)
+	fair.set_dev_tier(0)
 	lattice = WorldLattice.new()
 	lattice.name = "WorldLattice"
 	core.add_child(lattice)
@@ -200,6 +208,8 @@ func _on_state_changed() -> void:
 		var energy := Development.energy_of(BigInt.coerce(state.total_epibar.value)) if state.total_epibar.has_value() else 0.0
 		columns.set_energy(energy)
 		development.set_tier(dev_tier, energy)
+		if fair:
+			fair.set_dev_tier(dev_tier)
 		terrain.set_development(dev_tier, energy)
 		sky.set_aurora(energy if dev_tier >= 4 else 0.0)
 	var model := player.get_node_or_null("PlayerModel")
