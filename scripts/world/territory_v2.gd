@@ -192,6 +192,10 @@ func _ready() -> void:
 	if view == "":
 		border.place_arrival()
 	# --- end Borders
+	if view == "":
+		var back := Travel.take_door(false)  # back out of a place: out of the same building's door
+		if back != "":
+			_arrive_from(back)
 	roads = TerritoryRoads.new()
 	roads.name = "Roads"
 	add_child(roads)
@@ -416,13 +420,79 @@ static func zone_at(local: Vector3, monolith_local: Vector3) -> String:
 	return ""
 
 
+# --- Doors: walking in and out of the Room, the Void and the arcade (DoorSequence) ---
+
+## Not while driving, riding or seated (the body is held by something else).
+func _can_use_doors() -> bool:
+	return player.is_physics_processing() and player.process_mode != Node.PROCESS_MODE_DISABLED \
+		and (garage == null or garage.driving == null) and not DoorSequence.active_in(self)
+
+
+## A territory door: `at` the middle of its threshold (world, on the ground),
+## `out` the horizontal way out of the building, `depth` how far in a walk
+## can go (0 = a solid face), `door` its PassDoor (or a light curtain made for
+## this pass: `owns`).
+func _door_spot(kind: String) -> Dictionary:
+	var at := Vector3.ZERO
+	var out := Vector3.BACK
+	var depth := 0.0
+	var d: PassDoor = null
+	var owns := true
+	match kind:
+		"room":
+			at = core.to_global(Vector3(0.0, 0.0, TerritoryCore.ROOM_RADIUS))
+			out = core.global_transform.basis.z
+			depth = 1.2
+			d = PassDoor.make("curtain", 3.3, 2.8, DeepField.to_color(terrain.params["color"]).lerp(DeepFieldTheme.ICE, 0.5))
+			d.reach = 0.0
+			core.add_child(d)
+			d.position = Vector3(0.0, 0.0, TerritoryCore.ROOM_RADIUS * cos(deg_to_rad(16.0)) + 0.05)
+		"void":
+			at = monolith.to_global(Vector3(0.0, 0.2, 0.3))
+			out = monolith.global_transform.basis.z
+			d = PassDoor.make("curtain", 2.2, 5.6, DeepFieldTheme.ICE)
+			d.reach = 0.0
+			monolith.add_child(d)
+			d.position = Vector3(0.0, 0.2, 0.3)
+		"arcade":
+			at = arcade.to_global(Vector3(0.0, 0.3, 0.12))
+			out = arcade.global_transform.basis.z
+			d = arcade.door
+			owns = false
+	out = Vector3(out.x, 0.0, out.z).normalized()
+	at.y = terrain.get_height_at(at.x, at.z)
+	return {"at": at, "out": out, "depth": depth, "door": d, "owns": owns}
+
+
+func _enter_door(kind: String) -> void:
+	var s := _door_spot(kind)
+	var to: Vector3 = s["at"] - s["out"] * float(s["depth"]) + s["out"] * (0.35 if float(s["depth"]) == 0.0 else 0.0)
+	DoorSequence.enter(self, player, to, s["door"], func(): Travel.through_door(get_tree(), kind), bool(s["owns"]))
+
+
+## Back from a place: start on its threshold, walk out facing away from it.
+func _arrive_from(kind: String) -> void:
+	var s := _door_spot(kind)
+	var at: Vector3 = s["at"]
+	var out: Vector3 = s["out"]
+	var from := at + out * (0.7 if float(s["depth"]) == 0.0 else -0.6)
+	var to := at + out * 4.0
+	from.y = terrain.get_height_at(from.x, from.z) + 0.15
+	to.y = terrain.get_height_at(to.x, to.z)
+	if s["door"]:
+		(s["door"] as PassDoor).open = 1.0
+	# The camera starts off to the side, looking at the doorway, and swings in behind.
+	DoorSequence.arrive(self, player, from, to, s["door"], bool(s["owns"]), 2.2)
+
+
 ## The arcade's door (relative to the Core): its front faces the Core.
 static func arcade_door() -> Vector2:
 	return ArcadeFront.AT - ArcadeFront.AT.normalized() * 4.2
 
 
 func _process(_delta: float) -> void:
-	if view_mode != "" or actions == null or actions.is_open():
+	if view_mode != "" or actions == null or actions.is_open() or not _can_use_doors():
+		_near = ""  # re-offered (and re-shown) once the player is free again
 		return
 	var z := zone_at(player.global_position - core.global_position, monolith.global_position - core.global_position)
 	if z != _near:
@@ -437,16 +507,16 @@ func _process(_delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if actions != null and actions.is_open():
 		return
-	if event.is_action_pressed("interact") and _near != "":
+	if DoorSequence.active_in(self):
+		return
+	if event.is_action_pressed("interact") and _near != "" and _can_use_doors():
 		get_viewport().set_input_as_handled()
 		hud.hide_prompt()
 		match _near:
 			"su": actions.open_su()
-			"room": Travel.hall(get_tree())
+			"room", "void", "arcade": _enter_door(_near)
 			"beat": actions.open_beat()
-			"void": Travel.void_place(get_tree())
 			"world": actions.open_world()
-			"arcade": Travel.pub(get_tree()) if arcade and arcade.is_pub else Travel.arcade(get_tree())
 		_near = ""
 		return
 	if event.is_action_pressed("open_field"):

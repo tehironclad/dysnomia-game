@@ -65,6 +65,9 @@ var _flying := false
 var _was_on_floor := true
 var _fall_speed := 0.0
 var _land_t := 0.0
+var _air_t := 0.0  ## seconds off the ground: a step down a slope is not a jump
+## Off the ground this long (and not rising) before the fall loop plays.
+const AIR_GRACE := 0.14
 var _bank := 0.0
 var _last_yaw := 0.0
 var _grey := false
@@ -545,14 +548,18 @@ func _process(delta: float) -> void:
 		_fly_blend = maxf(0.0, _fly_blend - delta * 4.0)
 		if hold_clip != "":
 			_play(hold_clip, hold_speed)
-		elif not _on_floor:
-			if _was_on_floor and _vel.y > 1.0:
+		elif not _on_floor and (_air_t > AIR_GRACE or _vel.y > 1.0 or _clip == "Jump_Start" or _clip == "Jump"):
+			if _air_t <= delta * 1.5 and _vel.y > 1.0:
 				_play("Jump_Start")
 			elif _clip != "Jump_Start" or not anim.is_playing() or anim.current_animation_position > 0.25:
 				_play("Jump")
-		elif not _was_on_floor and _fall_speed < -5.0:
-			_land_t = 0.35
-			_play("Jump_Land", 1.3)
+		elif _on_floor and not _was_on_floor and _fall_speed < -5.0:
+			# Soft landing: the knees take it; a harder fall holds the crouch longer.
+			_land_t = lerpf(0.3, 0.55, clampf((-_fall_speed - 5.0) / 15.0, 0.0, 1.0))
+			_play("Jump_Land", lerpf(1.3, 1.0, clampf((-_fall_speed - 5.0) / 15.0, 0.0, 1.0)))
+		elif _on_floor and _land_t > 0.0 and speed > 2.5 and anim.current_animation_position > 0.12:
+			_land_t = 0.0  # running on: straight back into the stride
+			_play("Jog_Fwd" if speed >= 4.5 else "Walk", clampf(speed / CLIP_SPEED["Jog_Fwd" if speed >= 4.5 else "Walk"], 0.7, 2.4))
 		elif _land_t > 0.0:
 			_land_t -= delta
 		elif _crouching():
@@ -565,6 +572,7 @@ func _process(delta: float) -> void:
 			_play("Jog_Fwd", clampf(speed / CLIP_SPEED["Jog_Fwd"], 0.8, 2.2))
 		else:
 			_play("Sprint", clampf(speed / CLIP_SPEED["Sprint"], 0.9, 2.4))
+	_air_t = 0.0 if _on_floor else _air_t + delta
 	if _on_floor:
 		_fall_speed = 0.0
 	_was_on_floor = _on_floor
