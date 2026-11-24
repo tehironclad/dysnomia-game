@@ -87,6 +87,20 @@ With the borders (four fields, three or four neighbour grounds at 129²), RatKin
 camera, 500 frames: 164 draw calls, 520 objects, 0.30 M primitives, object growth 0.04 (a one-off:
 the fair opening mid-sample; 200 frames read 0.12 for the same reason).
 
+724 m territories (2026-11-24): the ground mesh is 363² (2 m, 0.26 M triangles, was 0.13 M) and each
+neighbour ground 181² (4 m, 65 k triangles, was 33 k), so a view with all of it adds ≈ 0.26 M primitives
+Roads cost no draw calls (the terrain shader reads a 512² distance texture); their lamps are one
+MultiMesh pair (+2 draw calls). Measured on RatKing, 30 frames (2026-11-24):
+
+| View | before (512 m) | after (724 m) |
+|---|---|---|
+| player camera | 376 draw calls, 787 objects, 0.36 M prims | 299, 793, 0.60 M |
+| `--view=aerial` | 1,309 draw calls, 2,611 objects, 0.96 M prims (master with the fair games) | 1,302, 2,622, 1.15 M |
+| headless wall time | 7.4 ms/frame | 7.2 ms/frame |
+
+The aerial view (whole territory, grand fair, Burj) was already over the draw-call and object budgets
+before the resize; the resize adds only primitives.
+
 Script cost is measured headless: wall time minus the empty-scene floor (`--disable=.`).
 
 `--scene=res://scenes/places/sunny_pub.tscn --qing=0x2b78…96de --view=room` samples Sunny's Pub (its widest
