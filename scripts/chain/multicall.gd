@@ -27,7 +27,10 @@ static func encode(calls: Array) -> String:
 
 static func decode(return_data: String) -> Array:
 	var out: Array = []
-	for pair in Abi.decode(["(bool,bytes)[]"], return_data)[0]:
+	var dec := Abi.decode(["(bool,bytes)[]"], return_data)
+	if dec.is_empty():
+		return out  # empty return data: a failed read, never a list of fake results
+	for pair in dec[0]:
 		out.append({"ok": pair[0], "data": pair[1]})
 	return out
 
