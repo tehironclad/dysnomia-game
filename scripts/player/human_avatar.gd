@@ -16,7 +16,7 @@ extends Node3D
 const DIR := "res://assets/characters/quaternius/"
 const BODIES := {"male": DIR + "Superhero_Male_FullBody.gltf", "female": DIR + "Superhero_Female_FullBody.gltf"}
 const ANIMS := DIR + "UAL1_Standard.glb"
-const LOOPS := ["Idle", "Walk", "Jog_Fwd", "Sprint", "Crouch_Idle", "Crouch_Fwd", "Jump", "Swim_Fwd", "Swim_Idle"]
+const LOOPS := ["Idle", "Walk", "Jog_Fwd", "Sprint", "Crouch_Idle", "Crouch_Fwd", "Jump", "Swim_Fwd", "Swim_Idle", "Driving", "Sitting_Idle"]
 ## Ground speed (m/s) at which each clip plays at 1×.
 const CLIP_SPEED := {"Walk": 1.7, "Jog_Fwd": 3.9, "Sprint": 6.2, "Crouch_Fwd": 1.3}
 const HEAD_SCALE := 0.58
@@ -50,6 +50,7 @@ var _grey := false
 var _fly_blend := 0.0
 var _fly_speed := 0.0
 var _fly_pitch := 0.0
+var _seat_clip := ""  ## "" = on foot; else the clip held while seated (a vehicle: "Driving")
 var _materials: Array = []  # [StandardMaterial3D, original albedo texture]
 var _suit_mat: StandardMaterial3D
 var _plate_mat: StandardMaterial3D
@@ -450,7 +451,12 @@ func _process(delta: float) -> void:
 	if anim == null:
 		return
 	var speed := Vector2(_vel.x, _vel.z).length()
-	if _flying:
+	if _seat_clip != "":
+		_play(_seat_clip)
+		extras.set_flames(false, Vector3.ZERO, Vector3.ZERO)
+		_fly_blend = 0.0
+		speed = 0.0
+	elif _flying:
 		# Flying: the Idle clip keeps the torso alive; the arms and legs are posed
 		# over it (_fly_pose) and the whole body pitches into the direction of travel.
 		_play("Idle")
@@ -608,6 +614,14 @@ static func _grey_of(tex: Texture2D) -> Texture2D:
 
 func set_crow(on: bool) -> void:
 	extras.set_crow(on)
+
+
+## Seated in a vehicle (GarageSite): hold `clip` ("" = back on foot).
+func set_seated(clip: String) -> void:
+	_seat_clip = clip
+	_vel = Vector3.ZERO
+	_on_floor = true
+	_was_on_floor = true
 
 
 func set_flying(_on: bool) -> void:

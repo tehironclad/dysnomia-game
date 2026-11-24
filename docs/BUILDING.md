@@ -51,7 +51,9 @@ VK_ICD_FILENAMES=/opt/lavapipe/lvp_icd.json xvfb-run -a -s "-screen 0 1280x720x2
   --session=0x… --open=su|room|beat|world|void --toggle=guide|help --quality=0
 ```
 
-- `--view` sets the camera: `aerial`, `ground`, `core`, `sky` or `hud`.
+- `--view` sets the camera: `aerial`, `ground`, `core`, `sky`, `hud`, `fair` or `garage`.
+- `--drive=<kind>` (no `--view`): gets into that pad vehicle if the viewed wallet's real unlocks allow it and
+  holds the throttle (`--drive-s=N`, `--steer=left|right`).
 - `--session` views a wallet read-only.
 - `--open` opens a move's panel (preview only).
 - `--dive=<catalog id>` (with `--scene=res://scenes/places/arcade_place.tscn`) dives into that cabinet:
