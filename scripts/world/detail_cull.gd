@@ -128,8 +128,8 @@ func _apply(gi: GeometryInstance3D, retried: bool = false) -> void:
 		return
 	if gi.visibility_range_end > 0.0 or gi.visibility_parent != NodePath():
 		return  # its own range (ambient NPCs, prizes): theirs stands
-	if gi is Label3D and (gi as Label3D).fixed_size:
-		return
+	if gi is Label3D and ((gi as Label3D).fixed_size or (gi as Label3D).billboard != BaseMaterial3D.BILLBOARD_DISABLED):
+		return  # screen-sized, or kept legible by LegibleLabels (which gives it its own range)
 	var size := world_size(gi)
 	if size < 0.0:
 		if not retried:

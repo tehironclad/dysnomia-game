@@ -131,3 +131,12 @@ func test_loading_bar_overall() -> void:
 	near(Warp.overall(-1.0, true, 2, 4), 0.9, 1e-6, "half the neighbours")
 	near(Warp.overall(1.0, false, 4, 4), 1.0, 1e-6, "all done")
 	near(Warp.overall(-1.0, false, 0, 4), 0.0, 1e-6, "not started")
+
+
+func test_legible_label_scale() -> void:
+	near(LegibleLabels.scale_for(0.5, 10.0, 620.0), 1.0, 1e-6, "near: its own size")
+	var s := LegibleLabels.scale_for(0.5, 60.0, 620.0)
+	near(0.5 * s * 620.0 / 60.0, LegibleLabels.MIN_PX, 1e-3, "far: grown to the minimum on-screen size")
+	near(LegibleLabels.scale_for(0.5, 5000.0, 620.0), LegibleLabels.MAX_SCALE, 1e-6, "capped")
+	var far := LegibleLabels.far_for(0.5)
+	near(0.5 * LegibleLabels.MAX_SCALE * LegibleLabels.FOCAL_REF / far, LegibleLabels.MIN_PX, 1e-3, "ends where even the cap is too small")

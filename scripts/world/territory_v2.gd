@@ -225,6 +225,10 @@ func _ready() -> void:
 	cull.skip(columns)
 	cull.skip(development)
 	cull.watch(core)
+	var legible := LegibleLabels.new()  # billboard labels keep a readable size from afar
+	legible.name = "LegibleLabels"
+	add_child(legible)
+	legible.watch(core)
 	view_mode = view
 	if view == "":
 		# Play: the player's camera. (With no current camera, Godot would pick
