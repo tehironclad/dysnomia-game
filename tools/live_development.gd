@@ -3,15 +3,19 @@ extends SceneTree
 ## players (a floor), per territory, in Multicall batches pinned to one block.
 ## Prints the distribution and the leaders; --json=<abs path> writes it all.
 ##   godot --headless --path . -s res://tools/live_development.gd [-- --json=/abs/out.json]
+## --snapshot=<abs path to assets/data/development.json> refreshes the shipped snapshot.
 func _initialize() -> void:
 	_run.call_deferred()
 
 
 func _run() -> void:
 	var out := ""
+	var snap := ""
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--json="):
 			out = a.substr(7)
+		elif a.begins_with("--snapshot="):
+			snap = a.substr(11)
 	var chain = root.get_node("Chain")
 	var terr: Array = root.get_node("Registry").all()
 	var players: Array = root.get_node("Players").all()
@@ -66,4 +70,15 @@ func _run() -> void:
 	if out != "":
 		var f := FileAccess.open(out, FileAccess.WRITE)
 		f.store_string(JSON.stringify({"block": head, "players": players.size(), "rows": rows}))
+	if snap != "":
+		# The shipped development snapshot (scripts/state/development_snapshot.gd):
+		# only territories with bars, decimal strings, one block for all.
+		var t := {}
+		for r in rows:
+			if String(r["hypo"]) != "0":
+				t[String(r["address"]).to_lower()] = {"name": r["name"], "hypo": r["hypo"], "epi": r["epi"], "reactors": r["reactors"]}
+		var g := FileAccess.open(snap, FileAccess.WRITE)
+		g.store_string(JSON.stringify({"block": head, "players": players.size(), "source": "Σ YUE.Bar(QING) over known players, Multicall3 at this block",
+			"territories": t}, "\t", true))
+		print("snapshot: %d territories with bars → %s" % [t.size(), snap])
 	quit()

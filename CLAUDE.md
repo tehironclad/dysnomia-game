@@ -33,6 +33,9 @@
   prints the deployer nonce, which is the WORLD launch signal.
 - `godot --headless --path . -s res://tools/update_snapshot.gd` refreshes
   `assets/data/territories.json` from the chain.
+- `godot --headless --path . -s res://tools/live_development.gd -- --snapshot=$PWD/assets/data/development.json`
+  refreshes the development snapshot (`DevelopmentSnapshot`): the world builds at each territory's measured
+  tier (labelled with its block) at once, before or without the live read, which replaces it when it lands.
 - `node tools/golden/gen.js <entropy-ai-pulse> <qing-registry.json>` regenerates the test goldens.
 - `godot --headless --path . -s res://tools/boot_territory.gd` loads a real territory from the chain
   (read-only), enters the world headlessly and prints the HUD territory card. It catches runtime

@@ -1,0 +1,181 @@
+{
+	"block": 28136594,
+	"players": 55,
+	"source": "Σ YUE.Bar(QING) over known players, Multicall3 at this block",
+	"territories": {
+		"0x1299bbac80f7038c19c20843f80608bd80c14a74": {
+			"epi": "400",
+			"hypo": "3960",
+			"name": "MrStu QING",
+			"reactors": 3
+		},
+		"0x1661d42f37273f17c155fbf946c6dbc813fc8c21": {
+			"epi": "18686",
+			"hypo": "3008",
+			"name": "Shadows of Triton QING",
+			"reactors": 1
+		},
+		"0x1b8774c0d0ba2a814a592be7978dfe78b0e86e35": {
+			"epi": "170143",
+			"hypo": "10715",
+			"name": "Gibson QING",
+			"reactors": 2
+		},
+		"0x299c56d1e1efa1d662823faa7fe7ccda6a4f35eb": {
+			"epi": "9467478",
+			"hypo": "786538",
+			"name": "Wizard QING",
+			"reactors": 1
+		},
+		"0x2b78b345880807ac9be28c1309ab55d6fa8796de": {
+			"epi": "1249504109",
+			"hypo": "153778853",
+			"name": "TehSunFlowrScioety QING",
+			"reactors": 2
+		},
+		"0x2d013f27781672705869a1695f53f99a4d800b66": {
+			"epi": "110",
+			"hypo": "100",
+			"name": "PuffY-BFF QING",
+			"reactors": 1
+		},
+		"0x400b55bd0859954d673aba0f5e350d78d8a885ac": {
+			"epi": "36612",
+			"hypo": "444789",
+			"name": "HoneyPot QING",
+			"reactors": 1
+		},
+		"0x6152e1b78a4f428bf26348b658e7107c6bcf747c": {
+			"epi": "54",
+			"hypo": "24",
+			"name": "Grav QING",
+			"reactors": 2
+		},
+		"0x72dbc884541980e36012becb054065a57f3f0e43": {
+			"epi": "2474705",
+			"hypo": "18480",
+			"name": "Bill Burrs Better Business Bureau of Boston QING",
+			"reactors": 1
+		},
+		"0x7b10d6133b0a66a49a0f1c0902e9693633b9d294": {
+			"epi": "1327734",
+			"hypo": "6620",
+			"name": "Babylonian Talmudic Academies QING",
+			"reactors": 1
+		},
+		"0x8105962336bc3c7e7b662d41b3a20411c7cf7481": {
+			"epi": "110384713",
+			"hypo": "36901139",
+			"name": "Qingdom",
+			"reactors": 3
+		},
+		"0x81f1088ed450655bddfab444cdcff24d817cc897": {
+			"epi": "3650691",
+			"hypo": "7660",
+			"name": "Misteri Tal-Ferħ QING",
+			"reactors": 1
+		},
+		"0xa43f71ac277022a547c56706fbbc5d93f88c3467": {
+			"epi": "685557",
+			"hypo": "1985056",
+			"name": "enter teh QING",
+			"reactors": 7
+		},
+		"0xa5add4f8d0c60fd82e779e1c0505caef21df3452": {
+			"epi": "243950276",
+			"hypo": "53167639",
+			"name": "Qingston",
+			"reactors": 1
+		},
+		"0xae97e10b24d855c998d71beeeabae27b61e953b4": {
+			"epi": "180138104",
+			"hypo": "116688436",
+			"name": "W⓪⓪gie World",
+			"reactors": 3
+		},
+		"0xb0ba7d36b7f0505879179ece7401f24eb653c6e1": {
+			"epi": "9555878118",
+			"hypo": "287056819",
+			"name": "Zürich QING",
+			"reactors": 30
+		},
+		"0xb7ecdb308a92cf9837e677cc07da51b649a19fd6": {
+			"epi": "79264",
+			"hypo": "313544",
+			"name": "Noumenon QING",
+			"reactors": 2
+		},
+		"0xb998396be6bf0324c46c6b489390a411d7852b40": {
+			"epi": "2681778",
+			"hypo": "5760",
+			"name": "6️⃣1️⃣6️⃣ QING",
+			"reactors": 1
+		},
+		"0xba82a0119c32e8f86476b6077c72fb2699da75f0": {
+			"epi": "4009587",
+			"hypo": "12800",
+			"name": "Gorgons Irrumation of Squicker Disposition QING",
+			"reactors": 1
+		},
+		"0xc4a2994e5c1ccc3db0b5a8a30f2ba349aba8f037": {
+			"epi": "40966140",
+			"hypo": "12204087",
+			"name": "Shell City",
+			"reactors": 4
+		},
+		"0xcaea70828578ed9dc2d68d0aa1f3755edc153385": {
+			"epi": "2124738",
+			"hypo": "30107",
+			"name": "BURR ㉫ QING",
+			"reactors": 2
+		},
+		"0xd0eabe17031f975fbad155ae435d0708ed8572be": {
+			"epi": "137",
+			"hypo": "45",
+			"name": "Geoff QING",
+			"reactors": 1
+		},
+		"0xd11f6892e2d7df8422fba01680ec8c7cd7d28457": {
+			"epi": "365684",
+			"hypo": "18375",
+			"name": "PP4000 QING",
+			"reactors": 2
+		},
+		"0xd127839b83cbf537c29b7d268c135f745a0da2e8": {
+			"epi": "199257",
+			"hypo": "2704",
+			"name": "Illinois Coin QING",
+			"reactors": 10
+		},
+		"0xdd0118dffcccc1ce809b35b97a69dcd56a4a4a04": {
+			"epi": "70",
+			"hypo": "153",
+			"name": "minefullness QING",
+			"reactors": 2
+		},
+		"0xe39690a43c3f979a413192a8cb5965602fda826b": {
+			"epi": "45672",
+			"hypo": "16276",
+			"name": "ppFREEBIES QING",
+			"reactors": 1
+		},
+		"0xe4169cf239e2fdc6e6e4a3a6fa0a703058ce400b": {
+			"epi": "2670275403",
+			"hypo": "1140933587",
+			"name": "RatKing QING",
+			"reactors": 10
+		},
+		"0xeb83f838fd42b496409f996b2895e2ca415b3106": {
+			"epi": "352419725",
+			"hypo": "278212010",
+			"name": "Garden of Eedn",
+			"reactors": 3
+		},
+		"0xfbd0aa20acc2335bf29f6bf7f07881dc5300a391": {
+			"epi": "92671",
+			"hypo": "3108",
+			"name": "Ichi Dai QING",
+			"reactors": 1
+		}
+	}
+}

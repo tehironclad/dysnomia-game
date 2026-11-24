@@ -16,6 +16,8 @@ var state: TerritoryState
 var columns: BarColumns
 var development: DevelopmentSite
 var dev_tier := 0
+var dev_snapshot := {}   # the earlier measurement in use until the live read lands
+var dev_source := "—"
 var monolith: VoidMonolith
 var arcade: ArcadeFront
 var fair: FairSite
@@ -122,6 +124,7 @@ func _ready() -> void:
 		func(x, z): return terrain.get_height_at(x, z), DeepField.to_color(terrain.params["color"]), terrain.material,
 		[[Vector2(fair.position.x, fair.position.z), FairSite.RADIUS + 10.0]])
 	_add_landmark(core_y)
+	_apply_development_snapshot()
 	lattice = WorldLattice.new()
 	lattice.name = "WorldLattice"
 	core.add_child(lattice)
@@ -241,23 +244,54 @@ func _on_state_changed() -> void:
 	if state.total_hypobar.has_value():
 		columns.update_board(state.board, state.block, Session.wallet)
 		# Development: tier from the Hypobar total, energy from the Epibar total.
-		dev_tier = Development.tier_of(BigInt.coerce(state.total_hypobar.value))
-		var energy := Development.energy_of(BigInt.coerce(state.total_epibar.value)) if state.total_epibar.has_value() else 0.0
-		columns.set_energy(energy)
-		development.set_tier(dev_tier, energy)
-		if fair:
-			fair.set_dev_tier(dev_tier)
-		if landmark:
-			landmark.set_development(dev_tier, BigInt.coerce(state.total_hypobar.value), energy, state.board, state.block)
-		terrain.set_development(dev_tier, energy)
-		sky.set_aurora(energy if dev_tier >= 4 else 0.0)
+		var hypo := BigInt.coerce(state.total_hypobar.value)
+		var epi := BigInt.coerce(state.total_epibar.value) if state.total_epibar.has_value() else PackedInt64Array()
+		var energy := Development.energy_of(epi)
+		# Bars never shrink: a live total below the earlier measurement means some
+		# reads came back short, so the earlier (higher) block-labelled total stands.
+		if not dev_snapshot.is_empty() and BigInt.cmp(hypo, dev_snapshot["hypo"]) < 0:
+			print("[Development] live total at block %d is below the snapshot at block %d; keeping the snapshot" % [state.block, dev_snapshot["block"]])
+		else:
+			dev_snapshot = {}
+			dev_source = "live · block %d" % state.block
+			if state.block > 0 and not BigInt.is_zero(hypo):
+				DevelopmentSnapshot.remember(String(territory["address"]), BigInt.to_decimal(hypo), BigInt.to_decimal(epi),
+					int(state.reactors.value) if state.reactors.has_value() else 0, state.block)
+			_set_development(Development.tier_of(hypo), hypo, energy, state.board, state.block)
 	var model := player.get_node_or_null("PlayerModel")
 	if model and model.has_method("set_territory_power"):
 		model.set_territory_power(clampf(state.lit_bands() / 10.0, 0.0, 1.0))
 	Inspector.register(state, "Territory state (block %d)" % state.block,
 		"Development: %s (from the Hypobar total, a floor over known players; bars never shrink, so neither does the city).\nΩ, Hypobar per Su here: %s\nHypobar total %s · Epibar total %s\nReactors: %s\nLit bands on the ground: %d (one per power of ten of the Hypobar total).\nWells: Fornax %s · Eris %s · Tethys %s" % [
-			Development.describe(dev_tier), state.omega.display(), state.total_hypobar.display(_dec), state.total_epibar.display(_dec), state.reactors.display(),
+			Development.describe(dev_tier) + " (" + dev_source + ")", state.omega.display(), state.total_hypobar.display(_dec), state.total_epibar.display(_dec), state.reactors.display(),
 			int(state.lit_bands()), state.fornax.display(_tok), state.eris.display(_tok), state.tethys.display(_tok)])
+
+
+## Build the world at this territory's last measured development right away
+## (shipped snapshot or this machine's last live read, labelled with its block);
+## the live read replaces it when it lands. Same for every viewer, wallet or not.
+func _apply_development_snapshot() -> void:
+	var rec := DevelopmentSnapshot.lookup(String(territory["address"]))
+	if rec.is_empty():
+		return
+	var d := DevelopmentSnapshot.apply(rec)
+	dev_snapshot = d
+	dev_source = "measured at block %d, live read pending" % d["block"]
+	print("[Development] %s · tier %d (%s) from block %d (%s)" % [territory.get("name", ""), d["tier"],
+		Development.tier_name(d["tier"]), d["block"], rec.get("source", "")])
+	_set_development(d["tier"], d["hypo"], d["energy"], [], d["block"])
+
+
+func _set_development(tier: int, hypo: PackedInt64Array, energy: float, board: Array, block: int) -> void:
+	dev_tier = tier
+	columns.set_energy(energy)
+	development.set_tier(dev_tier, energy)
+	if fair:
+		fair.set_dev_tier(dev_tier)
+	if landmark:
+		landmark.set_development(dev_tier, hypo, energy, board, block)
+	terrain.set_development(dev_tier, energy)
+	sky.set_aurora(energy if dev_tier >= 4 else 0.0)
 
 
 static func _dec(v) -> String:
