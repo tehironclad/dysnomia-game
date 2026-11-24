@@ -164,7 +164,7 @@ static func painted(id: String, c: Color, uv_scale: float = 0.5, world: bool = f
 	var key := "painted|%s|%s|%.3f|%s" % [id, c.to_html(), uv_scale, world]
 	if _mats.has(key):
 		return _mats[key]
-	var m := pbr(id, uv_scale, c, world, 0.35).duplicate() as StandardMaterial3D
+	var m := pbr(id, uv_scale, c, world, 0.08).duplicate() as StandardMaterial3D
 	m.albedo_texture = null
 	m.albedo_color = c
 	_mats[key] = m
