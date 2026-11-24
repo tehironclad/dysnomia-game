@@ -97,7 +97,7 @@ const TEMPLATES := [
 	{"id": "invite", "cat": "social", "ev": "invite_sent", "t": [1, 1],
 		"text": "Invite a friend to this QING", "where": "Telegram invite (K)"},
 	{"id": "visit_qings", "cat": "explore", "ev": "visit_qing", "t": [2, 3], "d": "qing", "g": true,
-		"text": "Visit %d QINGs today", "where": "World map (M) / shuttle"},
+		"text": "Visit %d QINGs today", "where": "Walk a border + Join, or the Landing Pad shuttle"},
 	{"id": "terraform", "cat": "explore", "ev": "terraform", "t": [1, 1],
 		"text": "Terraform here at the Monument", "where": "Monument (T)"},
 	{"id": "beat", "cat": "explore", "ev": "beat", "t": [1, 1],

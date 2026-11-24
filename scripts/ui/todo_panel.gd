@@ -226,8 +226,8 @@ func rebuild() -> void:
 		_item(f["name"], why, have)
 	_item("Monument", "Terraform with AFFECTION (T) — builds this QING's XIE charge", true)
 	_item("Meta Resonance Array", "META.Beat(waat) — shake the ground", true)
-	_item("Landing Pad", "Shuttle to any QING you've joined · World map (M)", true)
-	_item("Guestbook & media boards", "Leave your mark (B)", true)
+	_item("Landing Pad", "Press E at the shuttle terminal to fly to any QING you've joined", true)
+	_item("Media boards", "One per wing · E at a board: post a picture for 24 h (1 AFFECTION)", true)
 
 	# Standing
 	_section("RAISE THIS QING'S STANDING", GOLD)
