@@ -192,11 +192,14 @@ static func block_param(block) -> Variant:
 	return block
 
 
-## eth_call. Pass `from` for tx.origin-keyed reads (Su, Beat, Eta, Yuan…).
-func eth_call(to: String, data: String, from: String = "", block = "latest") -> Dictionary:
+## eth_call. Pass `from` for tx.origin-keyed reads (Su, Beat, Eta, Yuan…), and
+## `value_wei` ("0x…") to simulate a payable call (e.g. a swap paid in PLS).
+func eth_call(to: String, data: String, from: String = "", block = "latest", value_wei: String = "") -> Dictionary:
 	var tx := {"to": to, "data": data}
 	if from != "":
 		tx["from"] = from
+	if value_wei != "" and value_wei != "0x0":
+		tx["value"] = value_wei
 	return await request("eth_call", [tx, block_param(block)])
 
 

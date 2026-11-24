@@ -51,6 +51,15 @@ const MATH := "0xb680f0cc810317933f234f67eb6a9e923407f05d"
 const MULTICALL3 := "0xca11bde05977b3631167028862be2a173976ca11"
 const WPLS := "0xa1077a294dde1b09bb078844df40758a5d0f9a27"
 const DYSNOMIA_DEPLOYER := "0x0474606332105a1da6fc8ef7de2470551d389cb9"
+
+## PulseX (PulseChain's main DEX), verified 2026-11-24 at block 28,136,888: each
+## has code (eth_getCode), each router's factory() returns its factory and its
+## WPLS() returns WPLS. V1 and V2 share the router bytecode; the fee is 0.29%
+## (getAmountOut(1e6, 1e30, 1e30) = 997,099 on both). LEARNINGS §17.
+const PULSEX_V1_ROUTER := "0x98bf93ebf5c380c0e6ae8e192a7e2ae08edacc02"
+const PULSEX_V1_FACTORY := "0x1715a3e4a142d8b698131108995174f37aeba10d"
+const PULSEX_V2_ROUTER := "0x165c3410fc91ef562c50559f7d2289febed552d9"
+const PULSEX_V2_FACTORY := "0x29ea7545def87022badc76323f373ea1e707c523"
 ## The deployer's nonce when WORLD was last confirmed absent. Movement past this
 ## is the WORLD launch signal (verify before trusting anything).
 const DEPLOYER_NONCE_BASELINE := 712
@@ -123,6 +132,28 @@ const SELECTORS := {
 	"Vitus()": "0xce29ab3c", "Water()": "0x6e69adcf", "Gwat(address,uint256)": "0x6912b95f",
 	"War()": "0x94573097", "World()": "0x2d67bb91", "Cheon()": "0x51d95507", "Meta()": "0xd2717183",
 	"Map()": "0xec557f40",
+	# PulseX (Uniswap-V2 style; the router names the wrapped coin WPLS())
+	"factory()": "0xc45a0155",
+	"WPLS()": "0xef8ef56f",
+	"getPair(address,address)": "0xe6a43905",
+	"getReserves()": "0x0902f1ac",
+	"token0()": "0x0dfe1681",
+	"getAmountsOut(uint256,address[])": "0xd06ca61f",
+	"getAmountOut(uint256,uint256,uint256)": "0x054d50d4",
+	"swapExactETHForTokens(uint256,address[],address,uint256)": "0x7ff36ab5",
+	"swapExactTokensForETH(uint256,uint256,address[],address,uint256)": "0x18cbafe5",
+	"swapExactTokensForTokens(uint256,uint256,address[],address,uint256)": "0x38ed1739",
+	"swapExactETHForTokensSupportingFeeOnTransferTokens(uint256,address[],address,uint256)": "0xb6f9de95",
+	"swapExactTokensForETHSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)": "0x791ac947",
+	"swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)": "0x5c11d795",
+	"getEthBalance(address)": "0x4d2301cc",  # Multicall3: an account's PLS
+	# YUE exchange desk (any YUE; LEARNINGS §17) and QING market rates
+	"Hong(address,address,uint256)": "0xb3bde122",  # YUE: buy QING tokens (SpendAsset, QingAsset, Amount)
+	"Hung(address,address,uint256)": "0x518945cd",  # YUE: sell QING tokens (QingAsset, ReceiveAsset, Amount)
+	"GetAssetRate(address,address)": "0x7f3c46c0",  # YUE (QingAsset, Asset)
+	"IsValidAsset(address,address)": "0xc7a68962",  # YUE (QingAsset, Asset)
+	"GetMarketRate(address)": "0x2b83b1fc",  # QING (Asset), set by AddMarketRate
+	"AddMarketRate(address,uint256)": "0x989ae288",  # QING owners only (listed, never called)
 }
 
 # --- Event topics ----------------------------------------------------------------
@@ -130,12 +161,18 @@ const TOPIC_ROOM_CHAT := "0xb916a3aaef1d0f80cd78f5fca0067f557f3db4a63748929d2e5e
 const TOPIC_VOID_CHAT := "0x6b81130c485ac9b98332fa40c2e57900867815b0fe1497e1a168caf930fc9c9d"  # LogEvent(uint64,uint64,string), on FOMALHAUTE
 const TOPIC_NEW_QING := "0x692bc76be0a4b0d71d90e36ee97b1f3c4141095ea3c22b01b9f620da2e4b5e2e"  # NewQing(address,address,uint256), on MAP
 const TOPIC_TRANSFER := "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+const TOPIC_APPROVAL := "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925"
+const TOPIC_WPLS_DEPOSIT := "0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c"  # Deposit(address,uint256), WPLS
+const TOPIC_WPLS_WITHDRAWAL := "0x7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65"  # Withdrawal(address,uint256), WPLS
 
 const TOPICS := {
 	"LogEvent(string,uint64,uint64,string)": TOPIC_ROOM_CHAT,
 	"LogEvent(uint64,uint64,string)": TOPIC_VOID_CHAT,
 	"NewQing(address,address,uint256)": TOPIC_NEW_QING,
 	"Transfer(address,address,uint256)": TOPIC_TRANSFER,
+	"Approval(address,address,uint256)": TOPIC_APPROVAL,
+	"Deposit(address,uint256)": TOPIC_WPLS_DEPOSIT,
+	"Withdrawal(address,uint256)": TOPIC_WPLS_WITHDRAWAL,
 }
 
 # --- Errors: selector → [name, argument types] ----------------------------------
@@ -155,6 +192,12 @@ const ERRORS := {
 	"0x3df42ef4": ["DysnomiaInsufficientBalance", ["address", "address", "address", "address", "address", "uint256", "uint256"]],
 	"0xe450d38c": ["ERC20InsufficientBalance", ["address", "uint256", "uint256"]],
 	"0x02e0f464": ["DysnomiaInsufficientAllowance", ["address", "address", "address", "address", "address", "uint256", "uint256"]],
+	"0xfb8f41b2": ["ERC20InsufficientAllowance", ["address", "uint256", "uint256"]],
+	# YUE.Hong / Hung (each seen live in a simulation, 2026-11-24; LEARNINGS §17)
+	"0xd9a764d9": ["InvalidPair", ["address", "address"]],
+	"0x464460b9": ["ExchangeRateNotFound", ["address", "address"]],
+	"0x90b23441": ["MarketRateNotFound", ["address"]],
+	"0xd65928ec": ["OnlyGameTokens", ["address"]],
 }
 
 ## Plain-language explanations for reverts players will actually hit.
@@ -168,6 +211,13 @@ const ERROR_HINTS := {
 	"ERC20InsufficientBalance": "The sender doesn't hold enough of this token (balance, needed); tokens on your LAU don't count until moved to the wallet.",
 	"Panic(0x12)": "Division by zero: one of the four holdings is missing (Fomalhaute and Fornax on your LAU, some Tethys, some qZů).",
 	"Panic(0x1)": "Assertion failed (for example a WITHOUT holder on Join/Enter).",
+	"ERC20InsufficientAllowance": "The spender is not approved for that much yet (spender, allowance, needed): approve first.",
+	"DysnomiaInsufficientAllowance": "The token has not been approved for that much yet: approve first.",
+	"DysnomiaInsufficientBalance": "Someone holds too little of this token: you, or the YUE desk's own stock.",
+	"InvalidPair": "That token is not on this territory's asset chain (YUE.IsValidAsset is false).",
+	"ExchangeRateNotFound": "This territory has set no market rate for that asset, so no YUE will exchange it.",
+	"MarketRateNotFound": "This contract sells for no such token.",
+	"OnlyGameTokens": "Only game tokens can leave a YUE that way.",
 }
 
 const PANIC_CODES := {

@@ -42,10 +42,24 @@ const SIGNATURES = {
     'totalSupply()', 'decimals()', 'name()', 'symbol()', 'allowance(address,address)',
     'maxSupply()', 'owner(address)', 'aggregate3((address,bool,bytes)[])', 'View()', 'Type()',
     'Vitus()', 'Water()', 'Gwat(address,uint256)', 'War()', 'World()', 'Cheon()', 'Meta()', 'Map()',
+    // PulseX router / factory / pair, Multicall3.getEthBalance
+    'factory()', 'WPLS()', 'getPair(address,address)', 'getReserves()', 'token0()',
+    'getAmountsOut(uint256,address[])', 'getAmountOut(uint256,uint256,uint256)',
+    'swapExactETHForTokens(uint256,address[],address,uint256)',
+    'swapExactTokensForETH(uint256,uint256,address[],address,uint256)',
+    'swapExactTokensForTokens(uint256,uint256,address[],address,uint256)',
+    'swapExactETHForTokensSupportingFeeOnTransferTokens(uint256,address[],address,uint256)',
+    'swapExactTokensForETHSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)',
+    'swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)',
+    'getEthBalance(address)',
+    // YUE exchange desk, QING market rates
+    'Hong(address,address,uint256)', 'Hung(address,address,uint256)', 'GetAssetRate(address,address)',
+    'IsValidAsset(address,address)', 'GetMarketRate(address)', 'AddMarketRate(address,uint256)',
   ],
   events: [
     'LogEvent(string,uint64,uint64,string)', 'LogEvent(uint64,uint64,string)',
     'NewQing(address,address,uint256)', 'Transfer(address,address,uint256)',
+    'Approval(address,address,uint256)', 'Deposit(address,uint256)', 'Withdrawal(address,uint256)',
   ],
   errors: [
     'Error(string)', 'Panic(uint256)', 'NotStarted(address)', 'ZeroHoldings(address)',
@@ -54,7 +68,9 @@ const SIGNATURES = {
     'PayCover(address,uint256)', 'OwnableUnauthorizedAccount(address,address,address)',
     'DysnomiaInsufficientBalance(address,address,address,address,address,uint256,uint256)',
     'DysnomiaInsufficientAllowance(address,address,address,address,address,uint256,uint256)',
-    'ERC20InsufficientBalance(address,uint256,uint256)',
+    'ERC20InsufficientBalance(address,uint256,uint256)', 'ERC20InsufficientAllowance(address,uint256,uint256)',
+    'InvalidPair(address,address)', 'ExchangeRateNotFound(address,address)', 'MarketRateNotFound(address)',
+    'OnlyGameTokens(address)',
   ],
 };
 

@@ -70,9 +70,10 @@ func _on_disconnected() -> void:
 	disconnected.emit()
 
 
-## eth_call from the connected wallet (or `from`). {ok, result} or the Rpc failure.
-func simulate(to: String, data: String, from: String = "") -> Dictionary:
-	return await Chain.rpc.eth_call(to, data, from if from != "" else address)
+## eth_call from the connected wallet (or `from`), with `value_wei` for payable
+## calls. {ok, result} or the Rpc failure.
+func simulate(to: String, data: String, from: String = "", value_wei: String = "") -> Dictionary:
+	return await Chain.rpc.eth_call(to, data, from if from != "" else address, "latest", value_wei)
 
 
 ## The full write pipeline. Returns:
@@ -84,7 +85,7 @@ func send(label: String, to: String, data: String, value_wei: String = "0x0") ->
 	if chain_id != Contracts.CHAIN_ID:
 		return _fail(label, "precondition", "The wallet is on chain %d; switch it to PulseChain (369)." % chain_id)
 	tx_stage.emit(label, "simulate", {})
-	var sim := await simulate(to, data)
+	var sim := await simulate(to, data, "", value_wei)
 	if not sim["ok"]:
 		var msg: String = sim["revert"]["message"] if sim.get("kind") == "revert" else String(sim.get("error", {}).get("message", "simulation failed"))
 		var out := _fail(label, "simulate", "Simulation says this would fail: " + msg)
