@@ -54,6 +54,7 @@ const SIGNATURES = {
     'PayCover(address,uint256)', 'OwnableUnauthorizedAccount(address,address,address)',
     'DysnomiaInsufficientBalance(address,address,address,address,address,uint256,uint256)',
     'DysnomiaInsufficientAllowance(address,address,address,address,address,uint256,uint256)',
+    'ERC20InsufficientBalance(address,uint256,uint256)',
   ],
 };
 

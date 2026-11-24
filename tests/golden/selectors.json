@@ -74,7 +74,8 @@
   "PayCover(address,uint256)": "0xac73eb51",
   "OwnableUnauthorizedAccount(address,address,address)": "0x0be6bab5",
   "DysnomiaInsufficientBalance(address,address,address,address,address,uint256,uint256)": "0x3df42ef4",
-  "DysnomiaInsufficientAllowance(address,address,address,address,address,uint256,uint256)": "0x02e0f464"
+  "DysnomiaInsufficientAllowance(address,address,address,address,address,uint256,uint256)": "0x02e0f464",
+  "ERC20InsufficientBalance(address,uint256,uint256)": "0xe450d38c"
  },
  "topics": {
   "LogEvent(string,uint64,uint64,string)": "0xb916a3aaef1d0f80cd78f5fca0067f557f3db4a63748929d2e5e8d0014549374",

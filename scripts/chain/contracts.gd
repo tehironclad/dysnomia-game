@@ -153,6 +153,7 @@ const ERRORS := {
 	"0xac73eb51": ["PayCover", ["address", "uint256"]],
 	"0x0be6bab5": ["OwnableUnauthorizedAccount", ["address", "address", "address"]],
 	"0x3df42ef4": ["DysnomiaInsufficientBalance", ["address", "address", "address", "address", "address", "uint256", "uint256"]],
+	"0xe450d38c": ["ERC20InsufficientBalance", ["address", "uint256", "uint256"]],
 	"0x02e0f464": ["DysnomiaInsufficientAllowance", ["address", "address", "address", "address", "address", "uint256", "uint256"]],
 }
 
@@ -164,6 +165,7 @@ const ERROR_HINTS := {
 	"UserNotEntered": "This wallet has no registered LAU (CHO.Enter).",
 	"NotAdmitted": "Not admitted to this room: Join first.",
 	"Forbidden": "This wallet holds WITHOUT and is banned here.",
+	"ERC20InsufficientBalance": "The sender doesn't hold enough of this token (balance, needed); tokens on your LAU don't count until moved to the wallet.",
 	"Panic(0x12)": "Division by zero: one of the four holdings is missing (Fomalhaute and Fornax on your LAU, some Tethys, some qZů).",
 	"Panic(0x1)": "Assertion failed (for example a WITHOUT holder on Join/Enter).",
 }

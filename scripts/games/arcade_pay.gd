@@ -69,6 +69,9 @@ static func pay(qing: String, place_name: String) -> Dictionary:
 static func transfer_to_qing(qing: String, label: String) -> Dictionary:
 	qing = qing.to_lower()
 	var wallet := Wallet.address
+	var funds := await ensure_funds()
+	if not funds["ok"]:
+		return funds
 	var data := Abi.encode_call("transfer(address,uint256)", [qing, FEE_WEI])
 	var res: Dictionary = await Wallet.send(label, Contracts.AFFECTION, data)
 	if not res["ok"]:
@@ -78,6 +81,57 @@ static func transfer_to_qing(qing: String, label: String) -> Dictionary:
 		return {"ok": false, "stage": "verify", "message": "Mined in block %d, but: %s" % [res["block"], v["message"]]}
 	var after := await read_balance(qing, res["block"])
 	return {"ok": true, "from": wallet, "hash": res["hash"], "block": res["block"], "qing_balance": after.get("balance", null)}
+
+
+const TOPUP_WEI := "10000000000000000000"  # moved from the LAU when the wallet is short: 10 plays
+
+
+## The wallet must hold the fee itself (AFFECTION.transfer spends msg.sender's
+## balance; ERC20InsufficientBalance otherwise). Many players keep their Ⓐ on
+## their LAU, so when the wallet is short and the session's LAU holds enough,
+## this moves up to TOPUP_WEI with LAU.Withdraw(AFFECTION, amount) (the LAU's
+## owner only; the LAU transfers to its owner) through the same write rule, and
+## checks AFFECTION's Transfer(LAU → wallet) in the receipt. {ok} or {ok:false, stage:"funds", message}.
+static func ensure_funds(fee_wei: String = FEE_WEI) -> Dictionary:
+	var wallet := Wallet.address
+	if wallet == "":
+		return {"ok": true}  # Wallet.send reports the missing wallet
+	var fee := BigInt.from_decimal(fee_wei)
+	var wb := await read_balance(wallet)
+	if not wb["ok"]:
+		return {"ok": true}  # can't tell: the simulation decides
+	if BigInt.cmp(wb["balance"], fee) >= 0:
+		return {"ok": true}
+	var ps = Session.player
+	var lau: String = ps.lau if ps != null and ps.has_lau() else ""
+	if lau == "":
+		return {"ok": false, "stage": "funds", "message": "This wallet holds %s and has no LAU to draw from; a play costs %s." % [fmt(wb["balance"]), fee_text()]}
+	var lb := await read_balance(lau)
+	var need := BigInt.sub(fee, wb["balance"])
+	if not lb["ok"]:
+		return {"ok": false, "stage": "funds", "message": "This wallet holds %s; your LAU's balance could not be read. A play costs %s." % [fmt(wb["balance"]), fee_text()]}
+	if BigInt.cmp(lb["balance"], need) < 0:
+		return {"ok": false, "stage": "funds", "message": "This wallet holds %s and your LAU %s holds %s; a play costs %s." % [
+			fmt(wb["balance"]), _lau_label(ps), fmt(lb["balance"]), fee_text()]}
+	var amount := BigInt.from_decimal(TOPUP_WEI)
+	if BigInt.cmp(lb["balance"], amount) < 0:
+		amount = lb["balance"]
+	if BigInt.cmp(amount, need) < 0:
+		amount = need
+	var data := Abi.encode_call("Withdraw(address,uint256)", [Contracts.AFFECTION, BigInt.to_decimal(amount)])
+	var res: Dictionary = await Wallet.send("Move %s from your LAU %s to this wallet (for 1 Ⓐ plays)" % [fmt(amount), _lau_label(ps)], lau, data)
+	if not res["ok"]:
+		res["stage"] = "funds · " + String(res.get("stage", ""))
+		return res
+	var v := verify_receipt(res["receipt"], lau, wallet, BigInt.to_decimal(amount))
+	if not v["ok"]:
+		return {"ok": false, "stage": "funds", "message": "Withdraw mined in block %d, but: %s" % [res["block"], v["message"]]}
+	return {"ok": true, "moved": amount, "block": res["block"]}
+
+
+static func _lau_label(ps) -> String:
+	var n := String(ps.lau_name) if ps != null else ""
+	return n if n != "" else ArcadeScores.short(String(ps.lau)) if ps != null else ""
 
 
 # --- The local credit ledger (one entry per verified payment) ---------------
