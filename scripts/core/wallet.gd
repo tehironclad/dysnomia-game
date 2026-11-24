@@ -91,9 +91,20 @@ func send(label: String, to: String, data: String, value_wei: String = "0x0") ->
 	var id: int = bridge.send_raw({"from": address, "to": to, "data": data, "value": value_wei})
 	if id < 0:
 		return _fail(label, "sign", "The wallet page is not linked; reopen it.")
+	# The approval opens from the wallet window; if the game is in front (fullscreen),
+	# the wallet's popup would sit hidden behind it. Raise the wallet window now,
+	# and again every 12 s while we wait.
+	if bridge.has_method("focus_wallet_page"):
+		bridge.focus_wallet_page()
 	var t0 := Time.get_ticks_msec()
+	var next_nudge := 12000
 	while not _results.has(id) and Time.get_ticks_msec() - t0 < SIGN_TIMEOUT_S * 1000.0:
 		await get_tree().create_timer(0.25).timeout
+		if Time.get_ticks_msec() - t0 > next_nudge and bridge.has_method("focus_wallet_page"):
+			next_nudge += 12000
+			bridge.focus_wallet_page()
+	# Signed or refused: bring the game back in front
+	DisplayServer.window_move_to_foreground()
 	var res: Dictionary = _results.get(id, {"error": "no answer from the wallet within %d s" % int(SIGN_TIMEOUT_S)})
 	_results.erase(id)
 	if res.has("error"):

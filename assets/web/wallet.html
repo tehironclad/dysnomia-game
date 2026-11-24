@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dysnomia — wallet</title>
+<title>Dysnomia Wallet Bridge</title>
 <!--
   The Dysnomia game's wallet relay (docs/REWORK_PLAN.md WP 4.1).
   - No external scripts: the game builds every transaction's calldata itself;
@@ -108,7 +108,11 @@
       if (String(tx.from || '').toLowerCase() !== account) throw { code: -2, message: 'the game expected ' + tx.from + ' but the wallet is ' + account };
       var req = { from: account, to: tx.to, data: tx.data };
       if (tx.value && tx.value !== '0x0') req.value = tx.value;
-      log('sign request #' + id + ' → ' + tx.to);
+      log('sign request #' + id + ' → ' + tx.to + ' — approve it in your wallet', 'ok');
+      // Wallet extensions (Rabby especially) attach the approval popup to the
+      // active window: bring this one forward first so the popup isn't hidden.
+      try { window.focus(); } catch (e) {}
+      await new Promise(function (r) { setTimeout(r, 150); });
       var hash = await eth().request({ method: 'eth_sendTransaction', params: [req] });
       send({ type: 'tx_result', id: id, hash: hash });
       log('sent #' + id + ': ' + hash + ' (the game verifies the receipt)', 'ok');

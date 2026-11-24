@@ -42,3 +42,7 @@ Before starting:
 | 3 | onboarded | A border whose neighbour charges a cover | Join shows its steps (approve cover + 1 wei, Join). After signing, it reads Admitted back: only then is Cross offered. Walking into that field afterwards also crosses. |
 | 4 | onboarded | Reject the Join signature | "Stopped at sign: …"; the field stays closed. |
 | 5 | either | The edge of the map (a side with no QING) | The prompt says so; nothing is drawn beyond the field. |
+
+## Approval popups (regression check)
+
+- [ ] With the game fullscreen, rent a vehicle and buy an arcade credit: the wallet window comes to the front and the wallet extension (Rabby/MetaMask) shows the approval without Alt+Tab. After signing or rejecting, the game comes back to the front.
