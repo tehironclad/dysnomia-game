@@ -596,7 +596,12 @@ func _spawn_media_boards() -> void:
 
 func _board_transform(host: Node3D, fallback_offset: Vector3) -> Transform3D:
 	if host.has_method("get_board_anchor"):
-		return host.global_transform * host.get_board_anchor()
+		var a: Transform3D = host.get_board_anchor()
+		# Anchors mark either the ground under the board or the board's centre (≈2.1 m up);
+		# MediaBoard's origin is the ground, so drop centre-style anchors to the ground.
+		if a.origin.y > 1.0:
+			a.origin.y -= MediaBoard.BOTTOM + MediaBoard.SCREEN_H * 0.5
+		return host.global_transform * a
 	# Fallback: stand beside the building, front (-Z) turned toward the spawn plaza
 	var p := host.global_position + fallback_offset
 	p.y = territory.get_height_at(p.x, p.z)
