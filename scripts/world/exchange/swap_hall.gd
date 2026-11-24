@@ -327,7 +327,7 @@ func _build_hall() -> void:
 	# Inside: the quote wall on the back wall
 	_box(Vector3(W - 3.0, 6.4, 0.1), Vector3(0, 4.45, BACK + 0.3), Landmark._glow(Color(0.02, 0.03, 0.05), 1.0))
 	_box(Vector3(W - 2.8, 0.08, 0.12), Vector3(0, 7.7, BACK + 0.32), glow)
-	_wall_board = _label("", Vector3(0, 4.6, BACK + 0.38), 0.0036, 64, DeepFieldTheme.INK)
+	_wall_board = _label("", Vector3(-W * 0.5 + 2.2, 4.6, BACK + 0.38), 0.0045, 64, DeepFieldTheme.INK)
 	_wall_board.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	# The hanging four-face board over the floor
 	var hang := Node3D.new()
@@ -358,7 +358,7 @@ func _build_hall() -> void:
 		var term := PlaceBase.load_piece("Prop_Computer")
 		term.position = Vector3(-3.4 + k * 3.4, 0.1, -5.5)
 		_built.add_child(term)
-	_label("SWAP COUNTER · PulseX", Vector3(0, 2.6, -3.75), 0.008, 56, DeepFieldTheme.ICE, false)
+	_label("SWAP COUNTER · PulseX", Vector3(0, 1.55, -3.75), 0.008, 56, DeepFieldTheme.ICE, false)
 	zones["swap"] = Vector3(0, 0, -3.1)
 	# The YUE counter (or the sign saying where the YUE Exchange is)
 	var yx := W * 0.5 - 1.6
@@ -391,7 +391,7 @@ func _build_lot() -> void:
 		_box(Vector3(0.12, 1.4, 0.12), Vector3(c.x, 0.7, c.y), stake)
 		var mid := (c + d) * 0.5
 		_box(Vector3(c.distance_to(d), 0.05, 0.03), Vector3(mid.x, 1.1, mid.y), Landmark._glow(_tint, 1.4, 0.8), -atan2(d.y - c.y, d.x - c.x))
-	_label("SWAP HALL · SURVEYED LOT\nopens at Outpost development (any Hypobar here)\nthe counters below already trade, live", Vector3(0, 3.2, SIDE_FRONT + BULGE + 0.5), 0.009, 56, DeepFieldTheme.INK, false)
+	_label("SWAP HALL · SURVEYED LOT\nopens at Outpost development (any Hypobar here)\nthe counters below already trade, live", Vector3(0, 6.4, -2.0), 0.009, 56, DeepFieldTheme.INK, false)
 	for k in 2:
 		var term := PlaceBase.load_piece("Prop_Computer")
 		term.position = Vector3(-2.0 + k * 4.0, 0.0, 3.0)
@@ -401,10 +401,11 @@ func _build_lot() -> void:
 	_yue_sign = _label("", Vector3(2.0, 2.1, 3.6), 0.007, 48, Color("#ffb8e6"), false)
 	zones["swap"] = Vector3(-2.0, 0, 4.4)
 	zones["yue"] = Vector3(2.0, 0, 4.4)
-	_wall_board = _label("", Vector3(0, 1.4, -2.0), 0.008, 40, DeepFieldTheme.INK)
+	_wall_board = _label("", Vector3(-3.8, 2.9, -1.9), 0.003, 64, DeepFieldTheme.INK)
 	_wall_board.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_wall_board.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-	_box(Vector3(14.0, 7.5, 0.1), Vector3(0, 1.4, -2.15), Landmark._metal(Color(0.02, 0.025, 0.035)))
+	_box(Vector3(8.0, 4.8, 0.1), Vector3(0, 2.9, -2.05), Landmark._glow(Color(0.02, 0.03, 0.05), 1.0))
+	for s in [-1.0, 1.0]:
+		_box(Vector3(0.12, 5.4, 0.12), Vector3(s * 4.05, 2.7, -2.05), Landmark._metal())
 
 
 func _update_yue_sign() -> void:

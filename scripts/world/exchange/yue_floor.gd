@@ -93,9 +93,9 @@ func build(spec: Dictionary, lift_info: Dictionary, player: CharacterBody3D, hud
 	title.outline_size = 10
 	_label("%s · %d m · Hong / Hung at the territory's fixed rate" % [tower_title, int(floor_y)], Vector3(0, POD_H - 1.75, z1 - 0.3), 0.0075, 48, DeepFieldTheme.INK, true, PI)
 	# Side boards: this territory's pair, and the territories that trade
-	_board = _label("reading the desk…", Vector3(-POD_W * 0.5 + 0.25, 2.4, zc), 0.0036, 64, DeepFieldTheme.INK, true, PI * 0.5)
+	_board = _label("reading the desk…", Vector3(-POD_W * 0.5 + 0.25, 2.4, zc + POD_D * 0.5 - 1.3), 0.0036, 64, DeepFieldTheme.INK, true, PI * 0.5)
 	_board.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_list = _label("", Vector3(POD_W * 0.5 - 0.25, 2.4, zc), 0.0036, 64, Color("#ffd27a"), true, -PI * 0.5)
+	_list = _label("", Vector3(POD_W * 0.5 - 0.25, 2.4, zc - POD_D * 0.5 + 1.3), 0.0036, 64, Color("#ffd27a"), true, -PI * 0.5)
 	_list.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	for s in [-1.0, 1.0]:
 		_box(Vector3(0.06, 3.2, POD_D - 2.0), Vector3(s * (POD_W * 0.5 - 0.15), 2.4, zc), Landmark._metal(Color(0.02, 0.02, 0.03)))
