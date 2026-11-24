@@ -553,7 +553,7 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
 15. **`AFFECTION.View()` returns 48 words**: the game's 50-word FAUNG parser always fails.
 16. **"374 territories"** is stale: there are 942 and counting. Read the count from the chain.
 
-## 14. Games in the rooms: the arcade, pool, Twenty-One (2026-11-23)
+## 14. Games in the rooms: the arcade, pool, Twenty-One, the fair (2026-11-23)
 
 - **AFFECTION** reads `symbol() = "Ⓐ"`, `name() = "AFFECTION™"`, `decimals() = 18` [live]. A plain
   `transfer(QING, 1e18)` to a QING simulates fine [live, eth_call from the AFFECTION reserve].
@@ -608,6 +608,37 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
 - **Cabinet titles:** a backlit marquee topper (1.16 × 0.66 m, wider than the body) whose text
   `ArcadeCabinet.marquee_fit` sets on one or two lines (never wrapping off the panel), the name on the
   screen's bottom bezel, and a floating title + "1 Ⓐ a play · press E" over the nearest cabinet within 3.4 m.
+- **The Affection Fair's mini games** (`scripts/world/funfair/`, 2026-11-24). The seven midway games
+  (Test Your Affection, Entropy Toss, Regolith Ring Toss, Crystal Shy, Motzkin Prime Shooter, Waat Wheel,
+  Saat Fortune Teller) play in first person at their stall: Use there → ticket → `MidwayPlay` (the
+  `TableSeat` glide and overlay) → the stall's `MidwayStage` (`minigame/*_stage.gd`) stages the round in 3D.
+  - **The rules are `MidwaySim`: pure, integers only** (mm, ticks at 60 Hz, 1/12000 turn, Bhaskara
+    `isin`, xorshift32 seeded by `MidwayGame.seed_from_tx(ticket)`). The only input is a log of presses
+    `[tick, ax, ay]`, aims quantised to [-640, 640]. `MidwaySim.replay(game, seed, log)` = the score, or -1
+    for a log the game couldn't have taken. The 3D only reads the sim. Changing a rule changes old scores:
+    bump `MidwaySim.VERSION` (lines carry `v1:`) and the recorded rounds in `tests/test_fair_minigames.gd`.
+  - **Tickets say which stall** they bought: `AFFECTION.transfer(QING, 1 Ⓐ + k wei)`, k = `MidwaySim.code`
+    (striker 1, entropy 2, regolith 3, crystal 4, motzkin 5, waat 6, saat 7); the screen still says 1 Ⓐ
+    (`ArcadePay.transfer_to_qing(…, fee_wei)`, `verify_receipt` takes ≥ fee). Practice (no wallet) is labelled.
+  - **Shared boards are room lines**: `🎪 <game> <score> <ticket tx> v1:<log>`; the log is per press the
+    tick delta in base 36 then each aim + 640 as two base-36 digits, joined by "." (the longest possible, Motzkin's 15
+    shots, is 204 characters, 207 bytes; the room line limit is 280). After a paid round `fair_post` (P) posts it with
+    `TableBook.post` (one approval: CHOA.Chat, so it also adds Ω Hypobar to the QING). `FairBoard.read` scans
+    the QING's room lines from `FairProgress.FROM_BLOCK` (28,136,000: the format can't be older) and keeps a
+    line only if (a) the ticket's receipt has AFFECTION `Transfer(line's tx.from → this QING, 1 Ⓐ + this
+    game's k)` and (b) the replay gives the claimed score; one ticket counts once (its first valid line).
+    Others count as "unverified". Each stall shows its top 10 on a board on its side wall, and the result
+    screen shows it next to this computer's board (`ArcadeScores`, `fair:<game>`).
+  - **The Upsilon Rocket unlocks** for a wallet at a QING when the chain shows all seven k's:
+    `eth_getLogs` on AFFECTION with topics `[Transfer, pad(wallet), pad(QING)]` from `FROM_BLOCK`
+    (`FairProgress.refresh`, cached in `user://fair_progress.cfg` with the block read to; only the tail is read
+    again, after every paid play). `RocketLights` by the booth lights a lamp per game; no wallet = the free
+    preview, as before. Measured 2026-11-24: that two-topic filter over **the whole chain** (block 0 → head)
+    answers in < 1 s when the pair has few transfers, but for a busy pair (hundreds of transfers a day) the
+    node cuts the body off after ~10 s (HTTP 200, 23 bytes of JSON); scan from `FROM_BLOCK`, never block 0.
+  - Shots: `screenshot.gd -- --qing=<Grand Fair QING> --fair=<game>|rocket [--fair-phase=aim|play|result]
+    [--fair-codes=1,2,3]` (practice, nothing paid or posted). `tools/probe_fair.gd [-- --wallet=0x…]` plays
+    all seven through, replays each score and checks the rocket's lock from the chain.
 
 ---
 

@@ -85,9 +85,12 @@
   The pub's room, regulars and bar menu are `scripts/places/pub/` (`PubRoom`, `PubLife`, `PubKit`,
   `BarMenu`; drinks = `scripts/games/bar_tab.gd`). Render it with
   `--scene=res://scenes/places/sunny_pub.tscn --view=street|bar|lounge|room|games|stools|menu`.
-- Affection Fair (`scripts/world/funfair/`): `FairSite` picks what Use does by distance (a ride's booth or anywhere
-  within its `reach_radius`; a midway game spot). Midway games: `MidwayGame` (pure rules, seeded by the ticket tx
-  hash) + `MidwayOverlay`. `tools/probe_fair.gd` walks into every booth and plays every game headlessly.
+- Affection Fair (`scripts/world/funfair/`, LEARNINGS §14): `FairSite` picks what Use does by distance (a ride's
+  booth or anywhere within its `reach_radius`; a midway game spot). Midway games are first-person 3D mini games:
+  `MidwaySim` (pure integer rules, replayable from the ticket + input log), `minigame/MidwayPlay` (seat glide,
+  input, result screen) and one `MidwayStage` per stall. Tickets are 1 Ⓐ + the game's code in wei; scores post
+  as `🎪` room lines checked by `FairBoard` (receipt + replay); `FairProgress` (Transfer logs) unlocks the rocket
+  (`RocketLights`). `tools/probe_fair.gd` plays all seven through. Shots: `--fair=<game>|rocket --fair-phase=aim|play|result`.
   The Upsilon Rocket is piloted after liftoff (`RocketVoyage`: W/S, mouse or A/D, Shift; slow climb to this world's
   light speed `C_MS`; past 0.97 c a wormhole opens on the flight line and leads to the Field; Esc returns to the pad).
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
