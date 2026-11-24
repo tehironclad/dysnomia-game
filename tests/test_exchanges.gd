@@ -2,7 +2,7 @@ extends TestCase
 ## The Swap Hall (PulseX) and the YUE exchange desk: calldata against an
 ## independent encoder (tools/golden: Node + the site's keccak), the router's
 ## own maths checked against live router answers, slippage, receipt checks,
-## and the decoded reverts seen live on 2026-11-24 (LEARNINGS §18).
+## and the decoded reverts seen live on 2026-11-24 (LEARNINGS §19).
 
 const WPLS := "0xa1077a294dde1b09bb078844df40758a5d0f9a27"
 const AFF := "0x24f0154c1dce548adf15da2098fdd8b8a3b8151d"

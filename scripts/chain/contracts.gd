@@ -55,7 +55,7 @@ const DYSNOMIA_DEPLOYER := "0x0474606332105a1da6fc8ef7de2470551d389cb9"
 ## PulseX (PulseChain's main DEX), verified 2026-11-24 at block 28,136,888: each
 ## has code (eth_getCode), each router's factory() returns its factory and its
 ## WPLS() returns WPLS. V1 and V2 share the router bytecode; the fee is 0.29%
-## (getAmountOut(1e6, 1e30, 1e30) = 997,099 on both). LEARNINGS §18.
+## (getAmountOut(1e6, 1e30, 1e30) = 997,099 on both). LEARNINGS §19.
 const PULSEX_V1_ROUTER := "0x98bf93ebf5c380c0e6ae8e192a7e2ae08edacc02"
 const PULSEX_V1_FACTORY := "0x1715a3e4a142d8b698131108995174f37aeba10d"
 const PULSEX_V2_ROUTER := "0x165c3410fc91ef562c50559f7d2289febed552d9"
@@ -147,7 +147,7 @@ const SELECTORS := {
 	"swapExactTokensForETHSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)": "0x791ac947",
 	"swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)": "0x5c11d795",
 	"getEthBalance(address)": "0x4d2301cc",  # Multicall3: an account's PLS
-	# YUE exchange desk (any YUE; LEARNINGS §18) and QING market rates
+	# YUE exchange desk (any YUE; LEARNINGS §19) and QING market rates
 	"Hong(address,address,uint256)": "0xb3bde122",  # YUE: buy QING tokens (SpendAsset, QingAsset, Amount)
 	"Hung(address,address,uint256)": "0x518945cd",  # YUE: sell QING tokens (QingAsset, ReceiveAsset, Amount)
 	"GetAssetRate(address,address)": "0x7f3c46c0",  # YUE (QingAsset, Asset)
@@ -193,7 +193,7 @@ const ERRORS := {
 	"0xe450d38c": ["ERC20InsufficientBalance", ["address", "uint256", "uint256"]],
 	"0x02e0f464": ["DysnomiaInsufficientAllowance", ["address", "address", "address", "address", "address", "uint256", "uint256"]],
 	"0xfb8f41b2": ["ERC20InsufficientAllowance", ["address", "uint256", "uint256"]],
-	# YUE.Hong / Hung (each seen live in a simulation, 2026-11-24; LEARNINGS §18)
+	# YUE.Hong / Hung (each seen live in a simulation, 2026-11-24; LEARNINGS §19)
 	"0xd9a764d9": ["InvalidPair", ["address", "address"]],
 	"0x464460b9": ["ExchangeRateNotFound", ["address", "address"]],
 	"0x90b23441": ["MarketRateNotFound", ["address"]],

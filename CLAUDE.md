@@ -90,13 +90,13 @@
   `MidwaySim` (pure integer rules, replayable from the ticket + input log), `minigame/MidwayPlay` (seat glide,
   input, result screen) and one `MidwayStage` per stall. Tickets are 1 Ⓐ + the game's code in wei; scores post
   as `🎪` room lines checked by `FairBoard` (receipt + replay); `FairProgress` (Transfer logs) unlocks the rocket
-  (`RocketLights`). `tools/probe_fair.gd` plays all seven through. Shots: `--fair=<game>|rocket --fair-phase=aim|play|result`.
+  (`RocketLights`). `tools/probe_fair.gd` plays all seven through. Shots: `--fair=<game>|rocket --fair-phase=aim|play|result|board`.
   The Upsilon Rocket is piloted after liftoff (`RocketVoyage`: W/S, mouse or A/D, Shift; slow climb to this world's
   light speed `C_MS`; past 0.97 c a wormhole opens on the flight line and leads to the Field; Esc returns to the pad).
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
   total; skyline towers per player (`bar_columns.gd`, `tower.gdshader`), structures (`development_site.gd`),
   city lights/roads (terrain shader), aurora (sky shader). `tools/live_development.gd` measures every territory.
-- Exchanges (`scripts/world/exchange/`, LEARNINGS §18): `SwapHall` (PLS ⇄ tokens on PulseX: `PulseX`,
+- Exchanges (`scripts/world/exchange/`, LEARNINGS §19): `SwapHall` (PLS ⇄ tokens on PulseX: `PulseX`,
   `SwapPanel`; a surveyed lot at Wild) and the YUE Exchange (`YueFloor`, a sky lobby stop of the tower's glass
   lift, else the hall's counter: `YueExchange`, `YuePanel`). Read-only checks: `tools/live_swaps.gd`,
   `tools/live_yue_exchange.gd`. Shots: `--view=swap|swap_in|swap_panel|yue|yue_panel [--session=0x…]`.
@@ -130,5 +130,12 @@
   - It renders on the CPU (lavapipe) in about 20 s. Look at the PNG with the Read tool.
   - `--view=aerial|ground|core|sky|hud` gives a fixed camera. With no `--view` you see the player's own
     third-person camera.
+
+- Online play (`scripts/net/`, `docs/SERVER.md`, LEARNINGS §18): `server.bat` / `tools/server.sh` run the
+  headless game server (laptop + free tunnel). The `Net` autoload API (`send_chat`, `chat_received`,
+  `top`, `submit`) stays single-player quietly when no server answers. Sign-in is a free `personal_sign`
+  checked by GDScript ecrecover. Test it: `godot --headless --path . -s res://tools/net_selftest.gd`.
+  Screenshot with a remote player: run the server and `tools/net_bot.gd -- --url=ws://127.0.0.1:N`,
+  then `screenshot.gd -- --net-url=ws://127.0.0.1:N` (no `--view`).
 
 **Research source:** `tehironclad/entropy-ai-pulse`. Attach it read-only when a WP says "port from …".

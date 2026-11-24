@@ -70,6 +70,36 @@ func _on_disconnected() -> void:
 	disconnected.emit()
 
 
+var _sigs := {}  # personal_sign request id → {signature} | {error}
+
+
+## personal_sign of `message` by the connected wallet (free; not a transaction).
+## {ok: true, signature} | {ok: false, error}. Used for the game server's sign-in.
+func sign_message(message: String) -> Dictionary:
+	if address == "":
+		return {"ok": false, "error": "No wallet connected."}
+	if not bridge.sign_result.is_connected(_on_sign_result):
+		bridge.sign_result.connect(_on_sign_result)
+		bridge.sign_failed.connect(func(id, err): _sigs[id] = {"error": err})
+	var id: int = bridge.personal_sign(message)
+	if id < 0:
+		return {"ok": false, "error": "The wallet page is not linked; reopen it."}
+	bridge.focus_wallet_page()
+	var t0 := Time.get_ticks_msec()
+	while not _sigs.has(id) and Time.get_ticks_msec() - t0 < SIGN_TIMEOUT_S * 1000.0:
+		await get_tree().create_timer(0.25).timeout
+	DisplayServer.window_move_to_foreground()
+	var r: Dictionary = _sigs.get(id, {"error": "no answer from the wallet"})
+	_sigs.erase(id)
+	if r.has("error"):
+		return {"ok": false, "error": String(r["error"])}
+	return {"ok": true, "signature": String(r["signature"])}
+
+
+func _on_sign_result(id: int, sig: String) -> void:
+	_sigs[id] = {"signature": sig}
+
+
 ## eth_call from the connected wallet (or `from`), with `value_wei` for payable
 ## calls. {ok, result} or the Rpc failure.
 func simulate(to: String, data: String, from: String = "", value_wei: String = "") -> Dictionary:
