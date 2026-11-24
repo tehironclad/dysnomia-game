@@ -167,7 +167,7 @@ void fragment() {
 		on_road = 1.0 - smoothstep(road_half_w - aa, road_half_w + aa, rd);
 		float edge = 1.0 - smoothstep(0.0, 0.12 + aa, abs(rd - (road_half_w - 0.45)));
 		albedo = mix(albedo, vec3(0.085, 0.09, 0.105) * grain, on_road * 0.85);
-		light += mix(vec3(0.66, 0.9, 1.0), color, 0.35) * edge * road_lit * 0.6 * glow;
+		light += mix(vec3(0.66, 0.9, 1.0), color, 0.35) * edge * road_lit * 0.4 * glow;
 	}
 	// Regolith detail: two scales blended, multiplied into the dark ground and
 	// fading out at distance (where the Julia pattern is what should read).
