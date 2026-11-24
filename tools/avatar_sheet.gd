@@ -2,7 +2,9 @@ extends SceneTree
 ## Renders the avatar in a lit studio: every head in a line-up, or one head in
 ## a strip of animation poses. Needs a renderer (Xvfb + lavapipe):
 ##   xvfb-run … godot --path . --resolution 1600x900 -s res://tools/avatar_sheet.gd -- \
-##       --out=/abs/sheet.png [--mode=heads|poses|closeup] [--head=rat] [--acc=crown,halo]
+##       --out=/abs/sheet.png [--mode=heads|poses|closeup|outfits] [--head=rat] [--acc=crown,halo]
+##       [--body=male|female] [--outfit=pilot] [--seed=3] [--pose=idle|run|walk] [--wallet=0x…]
+## `outfits`: every design (Outfits.KINDS), male and female, in one line-up.
 ## Nothing here touches the chain.
 
 var _out := ""
@@ -10,6 +12,12 @@ var _mode := "heads"
 var _head := "bear"
 var _acc: Array = []
 var _body := "male"
+var _outfit := ""
+var _seed := 0
+var _pose := "idle"
+var _wallet := ""
+var _only: Array = []
+var _civilian := false
 
 
 func _initialize() -> void:
@@ -22,6 +30,18 @@ func _initialize() -> void:
 			_head = a.substr(7)
 		elif a.begins_with("--body="):
 			_body = a.substr(7)
+		elif a.begins_with("--outfit="):
+			_outfit = a.substr(9)
+		elif a.begins_with("--seed="):
+			_seed = int(a.substr(7))
+		elif a.begins_with("--pose="):
+			_pose = a.substr(7)
+		elif a == "--civilian":
+			_civilian = true  # off duty: no badge, patch or jetpack (as NPCs)
+		elif a.begins_with("--only="):
+			_only = Array(a.substr(7).split(",", false))
+		elif a.begins_with("--wallet="):
+			_wallet = a.substr(9)
 		elif a.begins_with("--acc="):
 			_acc = Array(a.substr(6).split(",", false))
 	_run.call_deferred()
@@ -65,9 +85,14 @@ func _studio() -> Node3D:
 func _model(kind: String, acc: Array, at: Vector3) -> Node3D:
 	var m := Node3D.new()
 	m.set_script(load("res://scripts/player/human_avatar.gd"))
+	m.set("civilian", _civilian)
 	m.position = at
 	current_scene.add_child(m)
 	m.set_body(_body)
+	if _wallet != "":
+		m.wear_identity(_wallet)
+	elif _outfit != "":
+		m.set_outfit(_outfit, _seed)
 	m.set_head(kind, acc)
 	return m
 
@@ -101,6 +126,24 @@ func _run() -> void:
 		cam.fov = 40
 		cam.position = Vector3(0, 1.4, 13.5)
 		cam.look_at(Vector3(0, 1.05, 0))
+	elif _mode == "outfits":
+		var kinds: Array = Outfits.KINDS if _only.is_empty() else _only
+		var vel: Vector3 = {"idle": Vector3.ZERO, "walk": Vector3(0, 0, 1.7), "run": Vector3(0, 0, 6.0)}.get(_pose, Vector3.ZERO)
+		for row in 2:
+			_body = "male" if row == 0 else "female"
+			for i in kinds.size():
+				var x := (i - (kinds.size() - 1) * 0.5) * 1.05
+				_outfit = kinds[i]
+				var m := _model(_head, _acc, Vector3(x + row * 0.5, 0, -row * 1.4))
+				m.rotation_degrees.y = 25 if _pose == "idle" else 90
+				m.set_meta("pose", [_pose, vel, true, false])
+				m.set_meta("phase", i * 0.21 + row * 0.1)
+				models.append(m)
+				if row == 0:
+					_label(String(kinds[i]), Vector3(x, 2.15, 0.3))
+		cam.fov = 38
+		cam.position = Vector3(0.25, 1.5, 1.2 + kinds.size() * 1.15)
+		cam.look_at(Vector3(0.25, 0.9, -0.7))
 	elif _mode == "closeup":
 		models.append(_model(_head, _acc, Vector3(-0.55, 0, 0)))
 		var side := _model(_head, _acc, Vector3(0.75, 0, 0))

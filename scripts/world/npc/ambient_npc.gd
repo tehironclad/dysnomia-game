@@ -1,7 +1,8 @@
 class_name AmbientNPC
 extends Node3D
-## A background citizen built from the game's own teddy-astronaut model (player_model.gd),
-## so locals look like players. Purely visual: no physics body, no chain state.
+## A background citizen on the players' own avatar (HumanAvatar), so locals look like
+## players, each in a seeded outfit (Outfits.for_npc: crowds lean casual).
+## Purely visual: no physics body, no chain state.
 ##
 ##   var npc := AmbientNPC.new()
 ##   parent.add_child(npc)
@@ -10,24 +11,12 @@ extends Node3D
 ##
 ## Points are in the parent's local space; y is the floor height there.
 ##
-## Locals get a seeded suit colour (the player keeps PulseChain purple), can sit or lean
-## (set_pose), and cull themselves beyond CULL_DISTANCE so crowds stay cheap.
+## Locals get a seeded outfit and colours, can sit or lean (set_pose), and cull
+## themselves beyond CULL_DISTANCE so crowds stay cheap (off duty: no jetpack or badge).
 
 const HumanAvatarScript = preload("res://scripts/player/human_avatar.gd")
 
 const CULL_DISTANCE := 70.0
-## Work and leisure suits seen around a QING — seeded per local
-const SUIT_COLORS := [
-	Color(0.22, 0.14, 0.38),  # PulseChain purple
-	Color(0.20, 0.24, 0.30),  # slate
-	Color(0.85, 0.42, 0.10),  # hi-vis orange (crew)
-	Color(0.82, 0.83, 0.86),  # classic white
-	Color(0.10, 0.36, 0.40),  # teal
-	Color(0.48, 0.10, 0.14),  # crimson
-	Color(0.30, 0.34, 0.18),  # olive
-	Color(0.12, 0.16, 0.34),  # navy
-]
-
 @export var walk_speed: float = 1.4
 @export var pause_range: Vector2 = Vector2(1.5, 6.0)  # Seconds to linger at each point
 
@@ -46,11 +35,13 @@ func setup(seed_value: int, points: Array = [], facing: Vector3 = Vector3.FORWAR
 	_model = HumanAvatarScript.new()
 	_model.name = "Model"
 	_model.body_kind = "female" if _rng.randf() < 0.5 else "male"
+	var o := Outfits.for_npc(seed_value)
+	_model.outfit_kind = o["kind"]
+	_model.outfit_seed = o["seed"]
+	_model.civilian = true
 	_model.rotation.y = PI  # avatar faces +Z; we steer with -Z forward like the player
 	add_child(_model)
 	_model.apply_appearance(PlayerAppearance.generate([_rng.randi(), _rng.randi(), _rng.randi()]))
-	var suit: Color = SUIT_COLORS[_rng.randi() % SUIT_COLORS.size()]
-	set_suit_color(suit)
 	_apply_culling(_model)
 	walk_speed *= _rng.randf_range(0.8, 1.2)
 	if _points.size() > 0:
@@ -98,6 +89,7 @@ func go_to(point: Vector3, linger: float = 4.0) -> void:
 	pause_range = Vector2(linger, linger)
 
 
+## Overrides the outfit's main colour (e.g. a uniform for staff).
 func set_suit_color(c: Color) -> void:
 	if _model and _model.has_method("set_suit_colors"):
 		_model.set_suit_colors(c, c.darkened(0.35))
