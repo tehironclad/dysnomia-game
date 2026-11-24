@@ -98,8 +98,11 @@
   Walk-through on purpose: the Heart, beacon/spire (sky), well basins, landing pads, floor lamps.
 - Borders (`scripts/world/border/`): `Neighbours` picks the nearest QING in each quarter of the raw HECKE
   plane (BigInt, LEARNINGS §6); `BorderRing` draws force fields (`border_field.gdshader`), the neighbours'
-  ground at 129² and their names, and runs the crossing (Admitted(LAU) read back; Join if not admitted).
+  ground at 181² and their names, and runs the crossing (Admitted(LAU) read back; Join if not admitted).
   Terrain relief model: LEARNINGS §11 "Relief". Shots: `--view=relief` and `--view=border_n|e|s|w`.
+- Size and layout: a territory is 724 m square (`JuliaHeightfield.SIZE_M`; LEARNINGS §11 "Size"). Place
+  new buildings with `LandmarkPlan.find_site` inside `TerritoryLayout.BORDER_KEEP_M`, clear of the sites
+  already placed, and add them to `territory_v2._road_places()` so a road (`scripts/world/roads/`) reaches them.
 - Automatic graphics (`Config.recommend/decide`): on first launch the GPU (name and type), cores and RAM pick
   the level and renderer; a software or old Intel GPU relaunches the game itself with
   `--rendering-method gl_compatibility` (an explicit `--rendering-method`/`--quality=` on the command line is
