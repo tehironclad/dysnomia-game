@@ -1,7 +1,8 @@
 class_name FarProxy
 extends RefCounted
-## Far LOD for the fair (perf, 2026-11-24): a ride, a stall or a corner of the fair is
-## many small meshes, each one object (and one more per shadow cascade). Past BEGIN_M
+## Far LOD (perf, 2026-11-24), made for the fair and used by the garage's vehicles too: a ride,
+## a stall, a corner of the fair or a rover is many small meshes, each one object (and one
+## more per shadow cascade). Past BEGIN_M
 ## from the camera a rigid group of them is drawn as ONE stand-in mesh with one surface
 ## per material (the same geometry and materials, merged in the group's space), plus one
 ## single-surface shadow caster; the parts themselves hide (each part's visibility_parent
@@ -28,7 +29,8 @@ const MIN_PART_M := 0.3      ## parts smaller than this (world size, m) are drop
                              ## (≈ 5 px at BEGIN_M; DetailCull ends a 0.3 m prop at 72 m at High)
 const SHADOW_MIN_M := 1.8    ## parts this big cast from the stand-in's shadow caster (20 × 1.8 = BEGIN_M)…
 const SHADOW_FAR_M := 72.0   ## …and past this distance only parts of SHADOW_FAR_MIN_M or more
-const SHADOW_FAR_MIN_M := 3.6
+const SHADOW_FAR_MIN_M := 4.8
+const SHADOW_LOD_BIAS := 0.2   ## shadow casters take coarser LODs (a shadow 36 m+ away is a few texels)
 const LOD_MERGE_ANGLE := 25.0  ## ImporterMesh.generate_lods: the stand-ins get automatic LODs
 const LOD_SPLIT_ANGLE := 60.0
 const KEEP_META := "far_keep"  ## a material animated at runtime (a flashing beacon): never collapsed
@@ -46,6 +48,7 @@ static var build_ms := 0.0    ## main-thread time spent merging
 static var lod_ms := 0.0      ## worker time generating LODs
 static var _queue: Array = []    ## jobs not started
 static var _pending: Array = []  ## jobs whose LODs are on a worker
+static var _off := -1
 
 
 ## Queues the stand-ins for several rigid groups: [[Node3D, Array stop_at, cache_key], …].
@@ -53,6 +56,8 @@ static var _pending: Array = []  ## jobs whose LODs are on a worker
 ## frames by pump() (the merge on the main thread, a group per pump; the LODs on a worker
 ## thread), so a fair loads no slower: until its stand-in lands a group just draws its parts.
 static func enqueue_groups(groups: Array, begin_m: float = BEGIN_M) -> void:
+	if off():
+		return
 	var all: Array = []
 	for g in groups:
 		all.append(g[0])
@@ -68,11 +73,20 @@ static func enqueue_groups(groups: Array, begin_m: float = BEGIN_M) -> void:
 ## kiosks, lamps, rocks…): each of `members` (children of root) falls in a cell_m × cell_m
 ## cell by its position, and each cell gets one stand-in.
 static func enqueue_cells(root: Node3D, members: Array, cell_m: float, begin_m: float = BEGIN_M) -> void:
+	if off():
+		return
 	_queue.append({"cells": root, "members": members, "cell": cell_m, "begin": begin_m})
 
 
+## --no-far-proxy (user arg): no stand-ins at all, for before/after shots and A/B perf.
+static func off() -> bool:
+	if _off < 0:
+		_off = 1 if OS.get_cmdline_user_args().has("--no-far-proxy") else 0
+	return _off == 1
+
+
 ## Runs queued work for about `budget_ms` (at least one job), and lands finished stand-ins.
-## Call every frame from the fair.
+## DetailCull calls it every frame (and the fair, for scenes without one).
 static func pump(budget_ms: float = 4.0) -> void:
 	_land(false)
 	var t0 := Time.get_ticks_usec()
@@ -237,6 +251,7 @@ static func attach(parent: Node3D, parts: Array, meshes: Array, begin_m: float, 
 		caster.mesh = sh
 		caster.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		caster.custom_aabb = vis.get_aabb()  # same centre as the stand-in: they swap together
+		caster.lod_bias = SHADOW_LOD_BIAS
 		caster.set_meta(META, true)
 		if tier == 0:
 			_range(caster, begin_m)

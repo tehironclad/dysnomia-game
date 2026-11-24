@@ -112,6 +112,8 @@ func _flush() -> void:
 
 
 func _process(delta: float) -> void:
+	if FarProxy.busy():
+		FarProxy.pump()  # far stand-ins (the fair, the garage) land over the first frames
 	_update_shadows()
 	if _retry.is_empty():
 		return

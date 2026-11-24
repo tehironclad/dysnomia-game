@@ -264,6 +264,12 @@ func _frame(view: String) -> void:
 		camera.position = Vector3(8.0, core_h + 6.0, 24.0)
 		camera.look_at(Vector3(0.0, core_h + 15.0, -38.0))
 		camera.fov = 60.0
+	elif view == "fair_near" and fair:
+		# Inside the fair's edge: near rides in full, the far side as FarProxy stand-ins
+		var f2 := fair.global_position
+		camera.position = f2 + Vector3(4.0, 7.0, -42.0)
+		camera.look_at(f2 + Vector3(0.0, 6.0, 0.0))
+		camera.fov = 65.0
 	elif view == "fair" and fair:
 		# Looking at the Affection Fair from its arrival side
 		var f := fair.global_position

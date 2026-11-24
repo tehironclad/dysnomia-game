@@ -3,6 +3,7 @@ extends SceneTree
 ## primitives, process time, and whether the object count grows per frame
 ## (per-frame allocations of Nodes/Resources). Needs a renderer (xvfb + lavapipe):
 ##   xvfb-run … godot --path . -s res://tools/perf.gd -- [--qing=0x…] [--frames=300] [--scene=res://…tscn] [--view=…]
+##       [--hide=<name part>] (profiling: what those nodes cost)
 ## Absolute FPS under a CPU rasteriser means little; the counts are what to budget.
 ## Budgets for a mid-range GPU at High. Frame time under lavapipe is not one of
 ## them (a CPU rasteriser); headless wall time minus the empty-scene floor
@@ -11,6 +12,7 @@ const BUDGET := {"draw_calls": 900, "objects": 1500, "primitives": 1500000, "obj
 
 var _frames := 300
 var _disable: Array = []
+var _hide: Array = []  ## profiling: hide every node whose name contains one of these (what does it cost?)
 var _scene := "res://scenes/territory/territory_v2.tscn"
 
 
@@ -26,6 +28,8 @@ func _run() -> void:
 			_scene = a.substr(8)  # e.g. res://scenes/places/sunny_pub.tscn (the scene reads --qing/--view itself)
 		elif a.begins_with("--disable="):
 			_disable.append(a.substr(10))  # profiling: a node path under the scene
+		elif a.begins_with("--hide="):
+			_hide.append(a.substr(7))
 	change_scene_to_file(_scene)
 	for i in 180:
 		await process_frame
@@ -33,6 +37,12 @@ func _run() -> void:
 		var nd := current_scene.get_node_or_null(path)
 		if nd:
 			nd.process_mode = Node.PROCESS_MODE_DISABLED
+	for pat in _hide:
+		var n := 0
+		for nd in current_scene.find_children("*" + pat + "*", "Node3D", true, false):
+			(nd as Node3D).visible = false
+			n += 1
+		print("hidden %d nodes named *%s*" % [n, pat])
 	var obj0 := Performance.get_monitor(Performance.OBJECT_COUNT)
 	var dc := 0.0
 	var ob := 0.0

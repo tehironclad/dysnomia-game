@@ -186,6 +186,24 @@ static func sphere_mesh(r: float, segs: int = 16) -> Mesh:
 		return s)
 
 
+const BULB_R := 0.032  ## the bulb mesh's modelled radius (instances scale to theirs)
+
+
+static func bulb_mesh() -> Mesh:
+	## A festoon bulb at its real size with automatic LODs (perf, 2026-11-24). In a MultiMesh
+	## the LOD is chosen for the mesh as modelled: a unit sphere scaled down per instance never
+	## left LOD 0, so the fair's ~4,000 bulbs drew 64 triangles each from any distance.
+	return cached_mesh("bulb_lod", func() -> Mesh: return with_lods(sphere_mesh(BULB_R, 8)))
+
+
+static func with_lods(m: Mesh) -> Mesh:
+	## `m` (one surface) as an ArrayMesh with automatic LODs.
+	var im := ImporterMesh.new()
+	im.add_surface(Mesh.PRIMITIVE_TRIANGLES, m.surface_get_arrays(0))
+	im.generate_lods(25.0, 60.0, [])
+	return im.get_mesh()
+
+
 static func torus_mesh(inner: float, outer: float, rings: int = 48, ring_segs: int = 8) -> Mesh:
 	return cached_mesh("tor:%s:%s:%d" % [inner, outer, rings], func() -> Mesh:
 		var t := TorusMesh.new()
@@ -532,10 +550,10 @@ class Batch:
 
 	func flush(parent: Node3D) -> void:
 		if bulbs.size() > 0:
-			var mm := _mm(FairKit.sphere_mesh(1.0, 8), bulbs.size(), true, true)
+			var mm := _mm(FairKit.bulb_mesh(), bulbs.size(), true, true)
 			for i in bulbs.size():
 				var e: Array = bulbs[i]
-				mm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3.ONE * float(e[3])), e[0]))
+				mm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3.ONE * float(e[3]) / FairKit.BULB_R), e[0]))
 				mm.set_instance_color(i, e[1])
 				mm.set_instance_custom_data(i, Color(float(e[2]), 0, 0, 0))
 			_add(parent, mm, FairKit.bulb_mat(), false, "Bulbs")

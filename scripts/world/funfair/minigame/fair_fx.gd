@@ -262,11 +262,11 @@ func bulb_frame(c: Vector3, w: float, h: float, spacing: float = 0.2) -> void:
 	_bulb_mm = MultiMesh.new()
 	_bulb_mm.transform_format = MultiMesh.TRANSFORM_3D
 	_bulb_mm.use_colors = true
-	_bulb_mm.mesh = FairKit.sphere_mesh(0.032, 8)
+	_bulb_mm.mesh = FairKit.bulb_mesh()  # 0.032 m, with LODs
 	_bulb_mm.instance_count = pts.size()
 	var sockets := MultiMesh.new()
 	sockets.transform_format = MultiMesh.TRANSFORM_3D
-	sockets.mesh = FairKit.cyl_mesh(0.02, 0.024, 0.03, 8)
+	sockets.mesh = FairKit.cached_mesh("socket_lod", func() -> Mesh: return FairKit.with_lods(FairKit.cyl_mesh(0.02, 0.024, 0.03, 8)))
 	sockets.instance_count = pts.size()
 	var up := Basis(Vector3.RIGHT, PI * 0.5)
 	for i in pts.size():
