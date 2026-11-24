@@ -283,7 +283,7 @@ func quote() -> void:
 		PulseX.fmt(out, dec_out, 6), sym_out, blk(board["block"]), PulseX.fmt(local[local.size() - 1], dec_out, 6)])
 	lines.append("Price impact %.2f%% (includes PulseX's 0.29%% fee per hop) · slippage %.1f%% → you get at least %s %s · deadline: 20 min" % [impact, slip / 100.0, PulseX.fmt(minimum, dec_out, 6), sym_out])
 	if impact > 5.0:
-		lines.append("⚠ This moves the pool by more than 5%%: the pool is thin for this size.")
+		lines.append("⚠ This moves the pool by more than 5%: the pool is thin for this size.")
 	var need_approve := false
 	if wallet != "":
 		var bal = board["pls"] if kind == "buy" else t["balance"]

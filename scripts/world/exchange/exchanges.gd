@@ -142,7 +142,18 @@ func frame(view: String, camera: Camera3D) -> void:
 	else:
 		camera.global_transform = hall.preview_transform("in")
 		camera.fov = 72.0
-	if view == "swap_panel":
-		swap_panel.open()
-	elif view == "yue_panel":
-		yue_panel.open()
+	if view.ends_with("_panel"):
+		_open_later(swap_panel if view == "swap_panel" else yue_panel)
+
+
+## Previews: open a panel once the screenshot tool has set --session's wallet.
+func _open_later(panel: ExchangePanel) -> void:
+	await get_tree().create_timer(2.0).timeout
+	if panel == swap_panel:
+		await swap_panel.open()
+		swap_panel._amount.text = "1000"
+		swap_panel.quote()
+	else:
+		await yue_panel.open()
+		yue_panel._amount.text = "0.0001"
+		yue_panel._plan_trade()

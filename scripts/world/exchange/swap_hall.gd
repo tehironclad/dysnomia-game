@@ -251,9 +251,9 @@ static func _front_z(x: float) -> float:
 
 
 func _build_hall() -> void:
-	var wall := Landmark._metal(Color(0.16, 0.17, 0.2))
-	wall.metallic = 0.7
-	wall.roughness = 0.35
+	var wall := Landmark._metal(Color(0.3, 0.32, 0.37))
+	wall.metallic = 0.45
+	wall.roughness = 0.4
 	var dark := Landmark._metal(Color(0.07, 0.075, 0.09))
 	dark.metallic = 0.4
 	dark.roughness = 0.15
@@ -324,13 +324,13 @@ func _build_hall() -> void:
 	_pylon = _label("", Vector3(px, 10.5, pz + 0.85), 0.008, 64, Color("#ffd27a"))
 	_label("S\nW\nA\nP", Vector3(px, 5.4, pz + 0.85), 0.016, 96, _tint.lerp(Color.WHITE, 0.5), false)
 	# Inside: the quote wall on the back wall
-	_box(Vector3(W - 3.0, 5.4, 0.1), Vector3(0, 4.6, BACK + 0.3), Landmark._metal(Color(0.02, 0.025, 0.035)))
-	_box(Vector3(W - 2.8, 0.08, 0.12), Vector3(0, 7.35, BACK + 0.32), glow)
-	_wall_board = _label("", Vector3(0, 4.6, BACK + 0.38), 0.0105, 40, DeepFieldTheme.INK)
+	_box(Vector3(W - 3.0, 6.4, 0.1), Vector3(0, 4.45, BACK + 0.3), Landmark._glow(Color(0.02, 0.03, 0.05), 1.0))
+	_box(Vector3(W - 2.8, 0.08, 0.12), Vector3(0, 7.7, BACK + 0.32), glow)
+	_wall_board = _label("", Vector3(0, 4.6, BACK + 0.38), 0.0058, 40, DeepFieldTheme.INK)
 	_wall_board.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	# The hanging four-face board over the floor
 	var hang := Node3D.new()
-	hang.position = Vector3(0, 5.6, -0.5)
+	hang.position = Vector3(0, 5.9, 2.6)
 	_built.add_child(hang)
 	_box(Vector3(4.2, 2.2, 4.2), Vector3.ZERO, Landmark._metal(Color(0.03, 0.03, 0.04)), 0.0, false, hang)
 	_box(Vector3(4.3, 0.08, 4.3), Vector3(0, 1.12, 0), glow, 0.0, false, hang)
@@ -349,7 +349,7 @@ func _build_hall() -> void:
 		hang.add_child(l)
 		_hang.append(l)
 	for s in [-1.0, 1.0]:
-		_box(Vector3(0.04, H - 6.7, 0.04), Vector3(s * 1.8, 6.7 + (H - 6.7) * 0.5 - 0.0, -0.5), Landmark._metal())
+		_box(Vector3(0.04, H - 7.0, 0.04), Vector3(s * 1.8, 7.0 + (H - 7.0) * 0.5, 2.6), Landmark._metal())
 	# The swap counter: a long desk with three terminals behind it
 	_box(Vector3(10.0, 1.1, 1.2), Vector3(0, 0.55, -4.4), wall, 0.0, true)
 	_box(Vector3(10.1, 0.06, 1.3), Vector3(0, 1.13, -4.4), gold)
@@ -369,8 +369,8 @@ func _build_hall() -> void:
 		var o := OmniLight3D.new()
 		o.position = p
 		o.light_color = Color(1.0, 0.96, 0.9).lerp(_tint, 0.25)
-		o.light_energy = 2.4
-		o.omni_range = 16.0
+		o.light_energy = 4.0
+		o.omni_range = 18.0
 		_built.add_child(o)
 	var sign_l := OmniLight3D.new()
 	sign_l.position = Vector3(0, H - 2.0, _front_z(0) + 2.5)
@@ -484,9 +484,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func preview_transform(view: String) -> Transform3D:
 	var t := Transform3D()
 	if view == "in":
-		var eye := to_global(Vector3(-7.5, 2.4, 5.0))
-		t.origin = eye
-		return t.looking_at(to_global(Vector3(1.0, 4.4, -7.0)), Vector3.UP)
-	var e2 := to_global(Vector3(-17.0, 6.5, 30.0))
-	t.origin = e2
-	return t.looking_at(to_global(Vector3(0.5, 4.0, 0.0)), Vector3.UP)
+		t.origin = to_global(Vector3(-2.5, 1.8, 4.6))
+		return t.looking_at(to_global(Vector3(0.6, 4.0, BACK)), Vector3.UP)
+	t.origin = to_global(Vector3(-9.0, 4.0, 27.0))
+	return t.looking_at(to_global(Vector3(0.5, 4.5, 0.0)), Vector3.UP)
