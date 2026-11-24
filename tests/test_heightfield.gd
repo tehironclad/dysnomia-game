@@ -4,7 +4,7 @@ extends TestCase
 const ILLINOIS := "0xd127839b83cbf537c29b7d268c135f745a0da2e8"
 ## Pinned at n=33. If the mapping changes on purpose, bump
 ## JuliaHeightfield.VERSION (invalidates caches) and update this.
-const PINNED := {"0xd127839b83cbf537c29b7d268c135f745a0da2e8": 4414673690696439422}
+const PINNED := {"0xd127839b83cbf537c29b7d268c135f745a0da2e8": 2150460801384600463}
 
 
 func _q(addr: String) -> Dictionary:
@@ -53,3 +53,61 @@ func test_cache_roundtrip() -> void:
 	check(FileAccess.file_exists(path), "cached to disk")
 	var cached := JuliaHeightfield.for_territory(q, 33)
 	eq(cached.fingerprint(), fresh.fingerprint(), "cache returns identical heights")
+
+
+# --- Relief v2: landforms from the territory's own numbers ---------------------------
+
+func test_relief_params_are_pure_and_in_range() -> void:
+	var all: Array = Registry.all()
+	for i in range(0, all.size(), maxi(1, all.size() / 60)):
+		var a := JuliaHeightfield.relief_params(DeepField.for_territory(all[i]))
+		eq(a, JuliaHeightfield.relief_params(DeepField.for_territory(all[i])), "same numbers, same landforms")
+		var r := float(a["relief"])
+		check(r >= 10.0 and r <= 27.0, "relief %f m" % r)
+		check(float(a["terrace"]) >= 2.0 and float(a["terrace"]) <= 3.5, "terrace step")
+		check(float(a["crater"]) >= 0.08 and float(a["crater"]) <= 0.2, "crater reach")
+		check(int(a["rays"]) >= 3, "canyon rays")
+		check(float(a["canyon"]) >= 5.0 and float(a["canyon"]) <= 10.0, "canyon depth")
+
+
+func test_terraces_have_flat_treads() -> void:
+	near(JuliaHeightfield.terrace(2.2, 2.0), 2.0, 1e-9, "on a tread")
+	near(JuliaHeightfield.terrace(3.2, 2.0), 2.0, 1e-9, "still the same tread")
+	near(JuliaHeightfield.terrace(4.0, 2.0), 4.0, 1e-9, "next step")
+	var last := -1.0
+	for i in 200:
+		var h := JuliaHeightfield.terrace(i * 0.05, 2.5)
+		check(h >= last - 1e-9, "never goes down")
+		last = h
+
+
+func test_ground_has_real_relief_not_flat() -> void:
+	# Several territories: land rises well above the Core's plain, canyons stay
+	# bounded, the Core stays on the plateau, and every border sits at 0 m.
+	var all: Array = Registry.all()
+	for a in [ILLINOIS, all[1]["address"], all[7]["address"], all[200]["address"]]:
+		var q := _q(a)
+		var hf := JuliaHeightfield.compute(DeepField.for_territory(q), a, 65)
+		var lo := INF
+		var hi := -INF
+		for h in hf.heights:
+			lo = minf(lo, h)
+			hi = maxf(hi, h)
+		check(hi - hf.core_height >= 4.0, "%s: highlands rise %.1f m over the Core" % [q["name"], hi - hf.core_height])
+		check(hi <= JuliaHeightfield.PLATEAU_M + 40.0, "%s: bounded (%.1f m)" % [q["name"], hi])
+		check(lo >= -12.0, "%s: canyons bounded (%.1f m)" % [q["name"], lo])
+		near(hf.core_height, JuliaHeightfield.PLATEAU_M, 0.5, "the Core sits on the plateau's plain")
+		for i in hf.n:
+			near(hf.heights[i], 0.0, 1e-6, "north border at 0 m")
+			near(hf.heights[(hf.n - 1) * hf.n + i], 0.0, 1e-6, "south border at 0 m")
+			near(hf.heights[i * hf.n], 0.0, 1e-6, "west border at 0 m")
+			near(hf.heights[i * hf.n + hf.n - 1], 0.0, 1e-6, "east border at 0 m")
+
+
+func test_external_angle_matches_arg_far_away() -> void:
+	# Far from the set Böttcher's coordinate is ≈ z, so the angle is ≈ arg z.
+	var p := DeepField.for_territory(_q(ILLINOIS))
+	for k in 8:
+		var a := -PI + 0.3 + k * 0.75
+		var g := JuliaHeightfield.external_angle(p, 40.0 * cos(a), 40.0 * sin(a), 3)
+		near(angle_difference(g, a), 0.0, 0.01, "angle %f" % a)

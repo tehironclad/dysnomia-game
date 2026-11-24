@@ -11,6 +11,7 @@ uniform int power = 2;
 uniform float extent = 1.5;
 uniform float rotation = 0.0;
 uniform float half_size = 256.0;     // metres from centre to edge
+uniform vec2 centre = vec2(0.0);     // the territory's centre in world XZ (a neighbour beyond the border is offset)
 uniform vec3 color : source_color = vec3(0.5, 0.8, 1.0);
 uniform vec3 color2 : source_color = vec3(1.0, 0.6, 0.9);
 uniform float hue = 0.0;
@@ -32,6 +33,7 @@ uniform float dev_energy = 0.0;      // Epibar total, 0..1
 uniform float detail_scale = 0.18;   // tiles per metre (≈ 5.5 m tiles)
 uniform float detail_strength = 1.0;
 uniform float ground_lift = 1.0;     // >1 on the Compatibility renderer, which lights darker
+uniform float relief_light = 1.0;   // faint light on cliffs and terrace risers, so the relief reads at night
 
 varying vec3 world_pos;
 
@@ -66,7 +68,7 @@ void vertex() {
 
 void fragment() {
 	// world → complex plane (JuliaHeightfield.world_to_z)
-	vec2 u = world_pos.xz / half_size * extent;
+	vec2 u = (world_pos.xz - centre) / half_size * extent;
 	float ca = cos(rotation);
 	float sa = sin(rotation);
 	vec2 z = vec2(u.x * ca - u.y * sa, u.x * sa + u.y * ca);
@@ -159,6 +161,12 @@ void fragment() {
 	vec3 nm = mix(texture(regolith_normal, uv1).rgb, texture(regolith_normal, uv2).rgb, 0.35);
 	NORMAL_MAP = mix(vec3(0.5, 0.5, 1.0), nm, near_f);
 	NORMAL_MAP_DEPTH = 1.2;
+	// Relief: risers, cliffs and canyon walls catch a faint edge light in the
+	// territory's colour (from the geometry only), so the land's shape reads at night.
+	vec3 wn = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	float steep = smoothstep(0.12, 0.55, 1.0 - wn.y);
+	light += mix(color, color2, 0.5) * steep * 0.05 * relief_light * glow;
+	albedo *= 1.0 - 0.35 * steep;
 	ALBEDO = albedo * ground_lift;
 	ROUGHNESS = mix(0.92, texture(regolith_rough, uv1).r, near_f * 0.6);
 	SPECULAR = 0.05;

@@ -84,6 +84,10 @@
 - Collision: `scripts/world/solid.gd` (`Solid.box/cylinder/wrap`). Solid: the Core's room walls (doorway
   open), pylons, skyline towers (resized with them), the monolith, the World plinth, development props.
   Walk-through on purpose: the Heart, beacon/spire (sky), well basins, landing pads, floor lamps.
+- Borders (`scripts/world/border/`): `Neighbours` picks the nearest QING in each quarter of the raw HECKE
+  plane (BigInt, LEARNINGS §6); `BorderRing` draws force fields (`border_field.gdshader`), the neighbours'
+  ground at 129² and their names, and runs the crossing (Admitted(LAU) read back; Join if not admitted).
+  Terrain relief model: LEARNINGS §11 "Relief". Shots: `--view=relief` and `--view=border_n|e|s|w`.
 - Automatic graphics (`Config.recommend/decide`): on first launch the GPU (name and type), cores and RAM pick
   the level and renderer; a software or old Intel GPU relaunches the game itself with
   `--rendering-method gl_compatibility` (an explicit `--rendering-method`/`--quality=` on the command line is

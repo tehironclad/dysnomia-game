@@ -9,6 +9,9 @@ const MOTZKIN_PRIME: int = Contracts.MOTZKIN_PRIME
 var territory_address: String = ""
 var territory_name: String = ""
 var is_chain_sourced: bool = false
+## A border crossing in progress (BorderRing): {address (destination), side
+## (the border crossed out of), along (metres along it)}; read once on arrival.
+var arrival: Dictionary = {}
 
 ## Player view modes.
 var is_flying: bool = false

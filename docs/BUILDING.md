@@ -54,6 +54,8 @@ VK_ICD_FILENAMES=/opt/lavapipe/lvp_icd.json xvfb-run -a -s "-screen 0 1280x720x2
 - `--view` sets the camera: `aerial`, `ground`, `core`, `sky`, `hud`, `fair` or `garage`.
 - `--drive=<kind>` (no `--view`): gets into that pad vehicle if the viewed wallet's real unlocks allow it and
   holds the throttle (`--drive-s=N`, `--steer=left|right`).
+- `--view` sets the camera: `aerial`, `ground`, `core`, `sky`, `hud`, `relief` (from the highest ground back over
+  the terraces) or `border_n|e|s|w` (across that force field at the neighbouring QING).
 - `--session` views a wallet read-only.
 - `--open` opens a move's panel (preview only).
 - `--dive=<catalog id>` (with `--scene=res://scenes/places/arcade_place.tscn`) dives into that cabinet:
@@ -79,6 +81,10 @@ The budgets are for a mid-range GPU at High:
 | primitives | ≤ 1.5 M | 0.16 M / 0.40 M |
 | object growth per frame | ≤ 0.05 | 0.0 |
 | script cost | — | ≈ 0.4 ms/frame |
+
+With the borders (four fields, three or four neighbour grounds at 129²), RatKing, `perf.gd` default
+camera, 500 frames: 164 draw calls, 520 objects, 0.30 M primitives, object growth 0.04 (a one-off:
+the fair opening mid-sample; 200 frames read 0.12 for the same reason).
 
 Script cost is measured headless: wall time minus the empty-scene floor (`--disable=.`).
 

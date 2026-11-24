@@ -32,3 +32,13 @@ Before starting:
 | 8 | onboarded | The monolith (E): the Void | Fomalhaute lines load with badges. A posted line (LAU.Chat) is read back from the chain. |
 | 9 | none | Any panel with no wallet connected | The preview needs a wallet. Ω (the same for everyone) is still shown, and nothing can be signed. |
 | 10 | `--session` view | Any panel | Previews are simulated from that wallet, and the panel shows "View only". |
+
+## Borders: crossing into a neighbouring QING
+
+| # | Wallet | Do | Expect |
+|---|---|---|---|
+| 1 | none | Walk to a border field, press E | The panel names the neighbour, its Δlat/Δlon and the MAP check, and says a LAU is needed. "Join to cross" is disabled. You cannot walk through. |
+| 2 | onboarded | A border whose neighbour has no cover | "QING.Admitted(your LAU) is true at block N (no cover…)". "Cross into …" warps you to the neighbour, arriving just inside its matching edge, facing in. |
+| 3 | onboarded | A border whose neighbour charges a cover | Join shows its steps (approve cover + 1 wei, Join). After signing, it reads Admitted back: only then is Cross offered. Walking into that field afterwards also crosses. |
+| 4 | onboarded | Reject the Join signature | "Stopped at sign: …"; the field stays closed. |
+| 5 | either | The edge of the map (a side with no QING) | The prompt says so; nothing is drawn beyond the field. |

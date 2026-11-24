@@ -270,8 +270,16 @@ which is **rewritten on every CHO lookup**, so it moves within a single transact
   territories" on the degree map share nothing. A WORLD range of ±Yeo **raw units** is microscopic at
   degree scale, so draw WORLD as a **local lattice around each territory's centre**, scaled to
   max(Yeo, largest claimed offset), as `world.html:421-437` does.
+- **Borders use the raw plane, not the degree map** (2026-11-24). The raw words are a geometric
+  function of the Waat (Compliment above has no hash), they key MAP's cells, and WORLD measures range
+  in them. 942 territories fill ≈ ±1.18e72 (lat) × ±3.6e72 (lon); the median nearest-neighbour gap is
+  ≈ 6.6e70 raw units, so ±1 cells are always empty and "adjacent cell" means nothing. The game's
+  neighbour on each side (`scripts/world/border/neighbours.gd`) is the **nearest QING in that side's
+  quarter** (N: Δlat > 0, |Δlat| ≥ |Δlon|; E: Δlon > 0, |Δlon| > |Δlat|; …) by WORLD's square
+  distance, BigInt only. A quarter with no QING is the edge of the map. **[live]** RatKing's and
+  Illinois's four neighbours each read back from `GetMapQing(lat_word, lon_word)` at block 28,135,981.
 - **Argument order:**
-  - `GetMapQing(lat, lon)` takes (word1, word0).
+  - `GetMapQing(lat, lon)` takes (word1, word0). **[live]** confirmed 2026-11-24 (above).
   - The site passes `Code(word0, word1, Q)` for the centre cell, flagged "confirm on first real Code".
     When WORLD deploys, simulate both orders once and keep the one that passes the range check.
 - The game currently has **three disagreeing coordinate transforms**: HUD (low 64 bits, sign lost),
@@ -451,6 +459,20 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   - outside: distance estimate `de = .5|z|ln|z|/|dz|` gives a bright filament core `e^{−de/1.6px}` and a
     halo `e^{−de/22px}`, plus style bands from the smooth iteration `ν`.
   - The GLSL ports almost one-to-one to Godot shaders.
+- **Relief** (the ground, `JuliaHeightfield` v2, 2026-11-24). Every landform is a function of the
+  territory's Deep Field numbers (`relief_params`), never of the viewer:
+  - inside the set: the plateau (22 m) rises into **terraced mesas** with distance from the coast
+    (`1 − e^{−coast/mesa_w}`), plus a **dome over the orbit trap** s; a **summit crater** where s → 0
+    (the orbit passes through the critical point). Mix by family: spiral = mesas, period bulbs =
+    domes + deep craters, star (D > 2) = sharp peaks. Relief 10–22 m (+5 Legendary/Mythic), terrace
+    step 2–3.5 m from (arms + turn) mod 4;
+  - outside: the flank falls with the distance estimate in terraces, a crest on the boundary, and
+    **canyons along the external rays** at angles j/rays turns. The angle is Böttcher's, branch-tracked
+    (`Θ ← D·Θ + arg(1 + c/z^D)`, angle = Θ/D^n); the arg of the last iterate alone draws D^n combs;
+  - the Core keeps a flat plain to 90 m (relief full from 160 m), so landmarks, towers and the fair
+    have flat land; the outer 40 m of every border eases to 0 m, so neighbours meet level at the wall.
+  - Heights 0–55 m, slope p95 30–39°, > 40° on 1–5 % of the ground. Previews: `preview_terrain.gd`
+    writes `relief.png` (height-tinted hillshade, contour every 2 m).
 - **Identity art:** Aura = `uint160(addr) % P` drawn the same way. YI icon = a Rod/Cone Lissajous from SHA
   registers (`yi.html:193-374`).
 - **Player creature gear from chain facts** (`lib/avatar.js`):
