@@ -42,6 +42,9 @@ var site_api_enabled: bool = true
 
 # Wallet relay (local HTTP + WebSocket)
 var wallet_bridge_port: int = 38420
+## The browser the wallet window opens in (full path to its .exe); blank = automatic:
+## the default browser when it is Chrome/Brave/Edge, else the default browser itself.
+var wallet_browser: String = ""
 
 const SETTINGS_PATH := "user://settings.cfg"
 const QUALITY_NAMES := ["Potato (no GPU)", "Low", "Medium", "High", "Ultra"]
@@ -338,6 +341,7 @@ func save_settings() -> void:
 	c.set_value("chain", "site_api_base", site_api_base)
 	c.set_value("chain", "site_api_enabled", site_api_enabled)
 	c.set_value("wallet", "bridge_port", wallet_bridge_port)
+	c.set_value("wallet", "browser", wallet_browser)
 	c.save(SETTINGS_PATH)
 
 
@@ -363,3 +367,4 @@ func load_settings() -> void:
 	site_api_base = String(c.get_value("chain", "site_api_base", site_api_base))
 	site_api_enabled = bool(c.get_value("chain", "site_api_enabled", site_api_enabled))
 	wallet_bridge_port = int(c.get_value("wallet", "bridge_port", wallet_bridge_port))
+	wallet_browser = String(c.get_value("wallet", "browser", wallet_browser))

@@ -50,6 +50,9 @@
   the tool's parse time the autoloads aren't registered yet, so it fails with "Identifier not found".
   Use `load("res://…").new()` inside a deferred function instead. Godot's stdout is buffered when piped:
   redirect to a file to see errors from killed runs.
+- `GODOT=godot tools/e2e_wallet.sh` runs the payment path end to end (real bridge + real `wallet.html` in
+  Playwright Chromium with a mock EIP-1193 wallet; real receipts; nothing broadcast). Payment failures print
+  `[Pay]`; the HUD `WalletChip` shows wallet state + stage; F2 → "Test my wallet" is `WalletDiagnosis.run()`.
 - `godot --headless --path . -s res://tools/live_readiness.gd [-- --n=12]` prints identity + WORLD
   readiness for real players (read-only).
 - `screenshot.gd -- --session=<wallet>` views any wallet's identity read-only. Nothing is signed.

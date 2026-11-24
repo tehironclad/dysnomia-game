@@ -8,12 +8,17 @@
   The Dysnomia game's wallet relay (docs/REWORK_PLAN.md WP 4.1).
   - No external scripts: the game builds every transaction's calldata itself;
     this page only relays {from, to, data, value} to the browser wallet
-    (EIP-1193: eth_requestAccounts, eth_chainId, wallet_switchEthereumChain,
-    wallet_addEthereumChain, eth_sendTransaction, personal_sign for the game
-    server's free sign-in).
-  - It authenticates to the game with a per-session token ({{TOKEN}}).
+    (EIP-1193: eth_requestAccounts, eth_accounts, eth_chainId,
+    wallet_switchEthereumChain, wallet_addEthereumChain, eth_sendTransaction,
+    personal_sign for the game server's free sign-in). EIP-6963 is used to list
+    every wallet the browser has, so the right one can be picked.
+  - It authenticates to the game with a per-session token ({{TOKEN}}). A window
+    left open from an earlier game session reloads itself to get the new token.
   - It never claims a transaction succeeded: it reports the hash, and the game
     reads the receipt from the chain itself.
+  - Answers to signing requests are queued until the game has them: a dropped
+    link (sleep, reload of the game's socket) never loses a hash.
+  Tested end to end by tools/e2e_wallet.sh (a mock EIP-1193 wallet in Chromium).
 -->
 <style>
   :root { --black:#030407; --ink:#e9edf4; --muted:#8e97a9; --ice:#a8e6ff; --hair:rgba(190,210,255,.22); }
@@ -26,8 +31,9 @@
   p { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
   .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; word-break: break-all; }
   button { width: 100%; padding: 10px; background: transparent; color: var(--ice);
-           border: 1px solid var(--ice); border-radius: 6px; font: inherit; cursor: pointer; }
+           border: 1px solid var(--ice); border-radius: 6px; font: inherit; cursor: pointer; margin-top: 6px; }
   button:disabled { opacity: .4; cursor: default; }
+  #ask { display: none; margin-top: 12px; padding: 10px; border: 1px solid #ffd27a; border-radius: 6px; color: #ffd27a; }
   #log { margin-top: 14px; max-height: 180px; overflow: auto; color: var(--muted); white-space: pre-wrap; }
   .ok { color: #64e3a8; } .bad { color: #ff8fa0; }
 </style>
@@ -36,9 +42,10 @@
 <main>
   <h1>DYSNOMIA</h1>
   <p>This window connects your browser wallet to the game. Every transaction the game asks for is
-     simulated by the game first, then shown here for you to sign. Keep this window open.</p>
+     simulated by the game first, then shown in your wallet for you to sign. Keep this window open.</p>
   <div class="mono" id="status">Connecting to the game…</div>
-  <div style="height:12px"></div>
+  <div class="mono" id="ask"></div>
+  <div id="pick"></div>
   <button id="connect" disabled>Connect wallet</button>
   <div class="mono" id="log"></div>
 </main>
@@ -53,7 +60,10 @@
     nativeCurrency: { name: 'Pulse', symbol: 'PLS', decimals: 18 },
     rpcUrls: ['https://rpc.pulsechain.com'], blockExplorerUrls: ['https://scan.pulsechain.com'],
   };
-  var ws = null, account = '';
+  var ws = null, linked = false, account = '', superseded = false;
+  var outbox = [];          // answers to signing requests, kept until the game has them
+  var providers = [];       // EIP-6963 announcements: {info:{name,rdns,uuid}, provider}
+  var chosen = null;        // the provider in use (null = window.ethereum)
   var $ = function (id) { return document.getElementById(id); };
 
   function log(msg, cls) {
@@ -63,22 +73,96 @@
     $('log').prepend(line);
   }
   function status(msg) { $('status').textContent = msg; }
-  function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
-  function eth() { return window.ethereum; }
+  function ask(msg) { $('ask').textContent = msg || ''; $('ask').style.display = msg ? 'block' : 'none'; }
+  function send(obj) {
+    if (ws && ws.readyState === 1 && linked) { ws.send(JSON.stringify(obj)); return true; }
+    return false;
+  }
+  // Answers to signing requests: queued, and flushed again after every (re)link.
+  function reply(obj) { outbox.push(obj); flush(); }
+  function flush() {
+    while (outbox.length && ws && ws.readyState === 1 && linked) ws.send(JSON.stringify(outbox.shift()));
+  }
+
+  // --- Which wallet ---------------------------------------------------------
+  function remembered() { try { return localStorage.getItem('dys.wallet.rdns') || ''; } catch (e) { return ''; } }
+  function eth() {
+    if (chosen) return chosen.provider;
+    var want = remembered();
+    for (var i = 0; i < providers.length; i++) if (providers[i].info.rdns === want) return providers[i].provider;
+    // Brave's built-in wallet can hold window.ethereum while the player's own wallet
+    // (Rabby, MetaMask…) is an extension announced over EIP-6963: prefer the extension.
+    if (window.ethereum && window.ethereum.isBraveWallet) {
+      for (var j = 0; j < providers.length; j++) if (!providers[j].provider.isBraveWallet && providers[j].info.rdns !== 'com.brave.wallet') return providers[j].provider;
+    }
+    if (window.ethereum) return window.ethereum;
+    return providers.length ? providers[0].provider : null;
+  }
+  function walletName() {
+    var p = eth();
+    for (var i = 0; i < providers.length; i++) if (providers[i].provider === p) return providers[i].info.name;
+    if (!p) return '';
+    if (p.isRabby) return 'Rabby';
+    if (p.isBraveWallet) return 'Brave Wallet';
+    if (p.isMetaMask) return 'MetaMask';
+    return 'browser wallet';
+  }
+  function pageInfo() {
+    return { type: 'page_info', hasProvider: !!eth(), wallet: walletName(),
+             wallets: providers.map(function (p) { return p.info.name; }), ua: navigator.userAgent };
+  }
+  window.addEventListener('eip6963:announceProvider', function (ev) {
+    var d = ev.detail;
+    if (!d || !d.provider || !d.info) return;
+    for (var i = 0; i < providers.length; i++) if (providers[i].info.uuid === d.info.uuid) return;
+    providers.push(d);
+    if (eth() !== bound) bindEvents();
+    drawPicker();
+    send(pageInfo());
+  });
+  function drawPicker() {
+    var box = $('pick');
+    box.textContent = '';
+    if (providers.length < 2) return;
+    providers.forEach(function (d) {
+      var b = document.createElement('button');
+      b.textContent = 'Use ' + d.info.name + (eth() === d.provider ? ' ✓' : '');
+      b.addEventListener('click', function () {
+        chosen = d;
+        try { localStorage.setItem('dys.wallet.rdns', d.info.rdns); } catch (e) {}
+        account = '';
+        bindEvents();
+        drawPicker();
+        send(pageInfo());
+        connectWallet();
+      });
+      box.appendChild(b);
+    });
+  }
+
+  function errText(e) {
+    var code = e && e.code;
+    if (code === 4001) return 'rejected in the wallet';
+    if (code === 4100) return 'the wallet has not authorised this page (unlock it and connect)';
+    if (code === -32002) return 'the wallet already has a request open: finish it in the wallet window';
+    return (e && (e.message || e.reason)) || String(e);
+  }
 
   async function chainId() {
     return parseInt(await eth().request({ method: 'eth_chainId' }), 16);
   }
 
-  // Switch to PulseChain (adding it on error 4902). Returns the chain id the
-  // wallet actually reports afterwards — never an assumed 369.
+  // Switch to PulseChain (adding it when the wallet doesn't know it). Returns the chain
+  // id the wallet actually reports afterwards — never an assumed 369.
   async function ensureChain() {
     var cid = await chainId();
     if (cid === CHAIN_ID) return cid;
+    log('asking the wallet to switch to PulseChain (369)…');
     try {
       await eth().request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CHAIN_HEX }] });
     } catch (e) {
-      if (e && e.code === 4902) {
+      var code = e && (e.code === 4902 ? 4902 : (e.data && e.data.originalError && e.data.originalError.code));
+      if (code === 4902 || /unrecognized chain|not been added|unknown chain/i.test(String(e && e.message))) {
         await eth().request({ method: 'wallet_addEthereumChain', params: [PULSECHAIN] });
       } else { throw e; }
     }
@@ -86,64 +170,116 @@
   }
 
   async function connectWallet() {
-    if (!eth()) { status('No browser wallet found (install MetaMask, Rabby, …)'); return; }
+    if (!eth()) {
+      status('No browser wallet in this browser. Install MetaMask or Rabby here, or set the game\'s wallet browser (F2) to the browser that has it.');
+      send(pageInfo());
+      return;
+    }
     try {
       var accts = await eth().request({ method: 'eth_requestAccounts' });
-      account = (accts && accts[0] || '').toLowerCase();
-      var cid = await ensureChain().catch(function () { return chainId(); });
-      send({ type: 'connected', address: account, chainId: cid });
+      account = String(accts && accts[0] || '').toLowerCase();
+      var cid = await ensureChain().catch(function (e) { log('switch refused: ' + errText(e), 'bad'); return chainId(); });
+      send({ type: 'connected', address: account, chainId: cid, wallet: walletName() });
       status(account ? 'Connected: ' + account + (cid === CHAIN_ID ? ' · PulseChain' : ' · wrong chain (' + cid + ')') : 'No account');
       $('connect').disabled = !!account;
-      log('wallet ' + account + ' on chain ' + cid, cid === CHAIN_ID ? 'ok' : 'bad');
+      log(walletName() + ' ' + account + ' on chain ' + cid, cid === CHAIN_ID ? 'ok' : 'bad');
     } catch (e) {
-      log('connect refused: ' + (e && e.message || e), 'bad');
+      log('connect refused: ' + errText(e), 'bad');
+      send({ type: 'connect_error', error: errText(e), code: e && e.code });
       $('connect').disabled = false;
     }
   }
 
-  async function sendRaw(id, tx) {
+  // A JSON-RPC QUANTITY: "0x" + lowercase hex without leading zeros. Accepts "0x…",
+  // a decimal string or a safe integer; never goes through a float for big values.
+  function quantity(v) {
+    if (v === undefined || v === null || v === '') return '';
+    var s = String(v).trim();
+    var n;
+    if (/^0x[0-9a-f]*$/i.test(s)) n = BigInt(s === '0x' ? '0x0' : s);
+    else if (/^[0-9]+$/.test(s)) n = BigInt(s);
+    else throw { code: -3, message: 'bad quantity ' + s };
+    return '0x' + n.toString(16);
+  }
+
+  // Wait (up to ms) until this window has the focus: the game raises it before a
+  // request, and the wallet's approval window must open in front of it, not under it.
+  function waitFocus(ms) {
+    return new Promise(function (res) {
+      if (document.hasFocus()) return res(true);
+      var t0 = Date.now();
+      (function poll() {
+        if (document.hasFocus()) return res(true);
+        if (Date.now() - t0 > ms) return res(false);
+        setTimeout(poll, 100);
+      })();
+    });
+  }
+
+  async function sendRaw(id, tx, raise) {
     try {
+      if (!eth()) throw { code: -4, message: 'no browser wallet in this browser window' };
       if (!account) await connectWallet();
       var cid = await ensureChain();
       if (cid !== CHAIN_ID) throw { code: -1, message: 'wallet is on chain ' + cid + ', not PulseChain (369)' };
       if (String(tx.from || '').toLowerCase() !== account) throw { code: -2, message: 'the game expected ' + tx.from + ' but the wallet is ' + account };
-      var req = { from: account, to: tx.to, data: tx.data };
-      if (tx.value && tx.value !== '0x0') req.value = tx.value;
-      log('sign request #' + id + ' → ' + tx.to + ' — approve it in your wallet', 'ok');
+      var req = { from: account, to: String(tx.to || '').toLowerCase(), data: tx.data || '0x', chainId: CHAIN_HEX };
+      var value = quantity(tx.value);
+      if (value && value !== '0x0') req.value = value;
+      if (tx.gas) req.gas = quantity(tx.gas);
+      ask('Approve request #' + id + ' in ' + walletName() + ' (to ' + req.to + ')');
+      log('sign request #' + id + ' → ' + req.to + ' — approve it in your wallet', 'ok');
       // Wallet extensions (Rabby especially) attach the approval popup to the
-      // active window: bring this one forward first so the popup isn't hidden.
+      // active window: when the game is raising this one, wait until it is in front.
+      if (raise) await waitFocus(4000);
       try { window.focus(); } catch (e) {}
-      await new Promise(function (r) { setTimeout(r, 150); });
       var hash = await eth().request({ method: 'eth_sendTransaction', params: [req] });
-      send({ type: 'tx_result', id: id, hash: hash });
+      if (typeof hash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(hash)) throw { code: -5, message: 'the wallet answered without a transaction hash: ' + JSON.stringify(hash) };
+      reply({ type: 'tx_result', id: id, hash: hash.toLowerCase() });
       log('sent #' + id + ': ' + hash + ' (the game verifies the receipt)', 'ok');
     } catch (e) {
-      var code = e && e.code;
-      var msg = code === 4001 ? 'rejected in the wallet' : (e && (e.message || e.reason)) || String(e);
-      send({ type: 'tx_error', id: id, error: msg, code: code });
+      var msg = errText(e);
+      reply({ type: 'tx_error', id: id, error: msg, code: e && e.code });
       log('#' + id + ' failed: ' + msg, 'bad');
     }
+    ask('');
   }
 
-  // personal_sign (EIP-191) for the game server's sign-in: a free signature of a
-  // text the game shows (it names the server and a one-time nonce). Not a
-  // transaction: nothing is sent to the chain and nothing can be spent with it.
-  async function personalSign(id, message, address) {
+  // personal_sign (EIP-191) for the game server's sign-in and the wallet test: a free
+  // signature of a text the game shows. Not a transaction: nothing is sent to the chain.
+  async function personalSign(id, message, address, raise) {
     try {
+      if (!eth()) throw { code: -4, message: 'no browser wallet in this browser window' };
       if (!account) await connectWallet();
       if (String(address || '').toLowerCase() !== account) throw { message: 'the game expected ' + address + ' but the wallet is ' + account };
       var bytes = new TextEncoder().encode(String(message));
       var hex = '0x' + Array.prototype.map.call(bytes, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+      ask('Approve signature #' + id + ' in ' + walletName() + ' (free, not a transaction)');
       log('sign-in request #' + id + ' (free, not a transaction) — approve it in your wallet', 'ok');
+      if (raise) await waitFocus(4000);
       try { window.focus(); } catch (e) {}
       var sig = await eth().request({ method: 'personal_sign', params: [hex, account] });
-      send({ type: 'sign_result', id: id, signature: sig });
+      reply({ type: 'sign_result', id: id, signature: sig });
       log('signed #' + id, 'ok');
     } catch (e) {
-      var msg = (e && e.code === 4001) ? 'rejected in the wallet' : (e && (e.message || e.reason)) || String(e);
-      send({ type: 'sign_error', id: id, error: msg });
+      var msg = errText(e);
+      reply({ type: 'sign_error', id: id, error: msg });
       log('#' + id + ' not signed: ' + msg, 'bad');
     }
+    ask('');
+  }
+
+  // The wallet test (F2): what the wallet says right now, without any popup.
+  async function statusQuery(id) {
+    var out = { type: 'status_result', id: id, hasProvider: !!eth(), wallet: walletName(),
+                wallets: providers.map(function (p) { return p.info.name; }), accounts: [], chainId: 0, error: '' };
+    try {
+      if (eth()) {
+        out.accounts = ((await eth().request({ method: 'eth_accounts' })) || []).map(function (a) { return String(a).toLowerCase(); });
+        out.chainId = await chainId();
+      }
+    } catch (e) { out.error = errText(e); }
+    send(out);
   }
 
   // Chain reads relayed for the game when its own connection to the RPC fails
@@ -167,27 +303,68 @@
     }
     send({ type: 'rpc_result', id: id, ok: false, status: 0, body: '' });
   }
+
   function open() {
+    if (superseded) return;
+    linked = false;
     ws = new WebSocket('ws://127.0.0.1:' + PORT);
-    ws.onopen = function () { send({ type: 'hello', token: TOKEN }); status('Linked to the game.'); $('connect').disabled = false; };
-    ws.onclose = function () { status('Game link closed — retrying…'); setTimeout(open, 2000); };
+    ws.onopen = function () { ws.send(JSON.stringify({ type: 'hello', token: TOKEN })); status('Linking to the game…'); };
+    ws.onclose = function () {
+      linked = false;
+      if (superseded) return;
+      status('Game link closed — retrying…');
+      setTimeout(open, 2000);
+    };
     ws.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
-      if (m.type === 'request_accounts') connectWallet();
-      else if (m.type === 'send_raw') sendRaw(m.id, m.tx || {});
-      else if (m.type === 'personal_sign') personalSign(m.id, m.message, m.address);
-      else if (m.type === 'switch_chain') ensureChain().then(function (cid) { send({ type: 'chain_changed', chainId: cid }); });
+      if (m.type === 'welcome') {
+        linked = true;
+        try { sessionStorage.removeItem('dys.reloads'); } catch (e) {}
+        status(account ? 'Linked to the game · ' + account : 'Linked to the game.');
+        $('connect').disabled = !!account;
+        send(pageInfo());
+        flush();
+      }
+      else if (m.type === 'stale') {
+        // This window was opened by an earlier game session (its token is old): reload
+        // from the game to get the new page. At most a few times in a row.
+        var n = 0; try { n = +(sessionStorage.getItem('dys.reloads') || 0); sessionStorage.setItem('dys.reloads', String(n + 1)); } catch (e) {}
+        superseded = n >= 3;
+        status(superseded ? 'This window is from an earlier game session: close it.' : 'Reloading for the new game session…');
+        if (!superseded) setTimeout(function () { location.reload(); }, 200);
+      }
+      else if (m.type === 'superseded') {
+        superseded = true;
+        document.title = 'Dysnomia Wallet Bridge (closed)';
+        status('Another wallet window is already linked to the game: use that one. You can close this one.');
+        $('connect').disabled = true;
+        try { window.close(); } catch (e) {}
+      }
+      else if (m.type === 'request_accounts') connectWallet();
+      else if (m.type === 'send_raw') sendRaw(m.id, m.tx || {}, !!m.raise);
+      else if (m.type === 'personal_sign') personalSign(m.id, m.message, m.address, !!m.raise);
+      else if (m.type === 'status') statusQuery(m.id);
+      else if (m.type === 'switch_chain') ensureChain().then(function (cid) { send({ type: 'chain_changed', chainId: cid }); },
+        function (e) { log('switch refused: ' + errText(e), 'bad'); chainId().then(function (cid) { send({ type: 'chain_changed', chainId: cid }); }); });
       else if (m.type === 'ping') send({ type: 'pong' });
       else if (m.type === 'rpc') relayRpc(m.id, m.body);
-      else if (m.type === 'focus') window.focus();
+      else if (m.type === 'focus') { try { window.focus(); } catch (e) {} }
     };
   }
 
-  $('connect').addEventListener('click', connectWallet);
-  if (eth() && eth().on) {
-    eth().on('accountsChanged', function (a) { account = (a && a[0] || '').toLowerCase(); send({ type: 'accounts_changed', address: account }); });
-    eth().on('chainChanged', function (c) { send({ type: 'chain_changed', chainId: parseInt(c, 16) }); });
+  var bound = null;
+  function onAccounts(a) { account = String(a && a[0] || '').toLowerCase(); send({ type: 'accounts_changed', address: account }); }
+  function onChain(c) { send({ type: 'chain_changed', chainId: parseInt(c, 16) }); }
+  function bindEvents() {
+    var p = eth();
+    if (bound && bound.removeListener) { try { bound.removeListener('accountsChanged', onAccounts); bound.removeListener('chainChanged', onChain); } catch (e) {} }
+    bound = p;
+    if (p && p.on) { p.on('accountsChanged', onAccounts); p.on('chainChanged', onChain); }
   }
+
+  $('connect').addEventListener('click', connectWallet);
+  window.dispatchEvent(new Event('eip6963:requestProvider'));
+  bindEvents();
   open();
 })();
 </script>
