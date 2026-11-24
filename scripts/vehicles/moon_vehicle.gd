@@ -18,6 +18,11 @@ var kind := "rover"
 var spec: Dictionary = {}
 var tint := Color(0.6, 0.8, 1.0)
 var driver: CharacterBody3D = null
+## Stepping in: the driver swings from where they stood onto the seat.
+const BOARD_S := 0.45
+var _board := 1.0  ## 0 → 1 while boarding
+var _board_from := Vector3.ZERO
+var _board_yaw := 0.0
 var bay := Transform3D()  ## where it parks at the garage (global)
 var parts: Dictionary = {}
 var body: Node3D
@@ -206,6 +211,9 @@ func park(xform: Transform3D) -> void:
 
 func mount(p: CharacterBody3D) -> void:
 	driver = p
+	_board = 0.0
+	_board_from = p.global_position
+	_board_yaw = p.global_rotation.y
 	_ray_exclude = [get_rid(), p.get_rid()]
 	add_collision_exception_with(p)
 	set_physics_process(true)
@@ -534,8 +542,15 @@ func _seat_driver() -> void:
 		return
 	var seat: Vector3 = spec["seat"]
 	var t := body.global_transform.orthonormalized()
-	driver.global_position = t * seat
-	driver.global_rotation = Vector3(0.0, rotation.y, 0.0)
+	var at := t * seat
+	var yaw := rotation.y
+	if _board < 1.0:  # a short hop up and in, turning to face forward
+		_board = minf(1.0, _board + get_physics_process_delta_time() / BOARD_S)
+		var e := _board * _board * (3.0 - 2.0 * _board)
+		at = _board_from.lerp(at, e) + Vector3.UP * sin(e * PI) * 0.35
+		yaw = lerp_angle(_board_yaw, yaw, e)
+	driver.global_position = at
+	driver.global_rotation = Vector3(0.0, yaw, 0.0)
 	driver.velocity = Vector3.ZERO
 	var model := driver.get_node_or_null("PlayerModel") as Node3D
 	if model:
