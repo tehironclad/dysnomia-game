@@ -23,6 +23,7 @@ signal global_chat_received(messages: Array)
 signal guest_list_loaded(guests: Array)
 signal admitted_territories_loaded(territories: Array)
 signal token_balances_updated(balances: Dictionary)
+signal chat_sent(message: String)
 signal qing_activity_updated(qing_address: String, messages: int, unique_visitors: int)
 signal keeper_bars_loaded(qing_address: String, hypobar: int, epibar: int)
 signal qing_stats_loaded(qing_address: String, stats: Dictionary)
@@ -1075,6 +1076,7 @@ func send_chat(message: String) -> int:
 	chat_messages_received.emit(_chat_messages.duplicate())
 	_global_chat_messages.append(local_msg)
 	global_chat_received.emit(_global_chat_messages.duplicate())
+	chat_sent.emit(message)
 
 	return _wallet_bridge.send_transaction(CHOA_ADDRESS, "Chat", [GameManager.territory_address, message])
 

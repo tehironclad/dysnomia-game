@@ -157,6 +157,9 @@ func _ready() -> void:
 	_init_standing()
 	_spawn_funfair(_standing.current()["tier"])
 	_init_attractions()
+	# Y "Things to do" panel, daily quests pill, Cantina table records, visit tracking
+	TodoPanel.install(hud, _standing, _pub_building)
+	_wire_quests()
 
 	# Position player at center, above terrain (after flattening)
 	var spawn_height: float = territory.get_height_at(0.0, 0.0) + 2.0
@@ -479,6 +482,21 @@ func _open_shuttle_map() -> void:
 	hud.open_world_map(true)
 
 
+# ─── Daily quests ───────────────────────────────────────────────────────
+
+func _wire_quests() -> void:
+	if _attraction_director:
+		_attraction_director.ride_boarded.connect(func(item: Dictionary) -> void:
+			QuestBoard.report("ride", item)
+			if str(item.get("id", "")) == "rocket":
+				QuestBoard.report("rocket_watched"))
+		_attraction_director.drink_served.connect(func(item: Dictionary) -> void: QuestBoard.report("drink", item))
+		_attraction_director.board_posted.connect(func(wing: String, caption: String) -> void:
+			QuestBoard.report("board_post", {"wing": wing, "caption": caption}))
+	ChainManager.chat_sent.connect(func(message: String) -> void: QuestBoard.report("chat", {"text": message}))
+	ChainManager.beat_confirmed.connect(func(_id: int) -> void: QuestBoard.report("beat"))
+
+
 # ─── Community moments ──────────────────────────────────────────────────
 
 func _wire_community() -> void:
@@ -493,6 +511,10 @@ func _wire_community() -> void:
 	_attraction_director.board_posted.connect(func(wing: String, _caption: String) -> void:
 		hub.announce("board_post", {"board": wing}))
 	hub.moment_received.connect(func(kind: String, data: Dictionary, _from: String) -> void:
+		# Watching someone else's rocket launch here counts for the daily quest
+		if kind == "ride" and data.get("here", false) and not data.get("self", false) \
+				and str(data.get("ride", "")).contains("Rocket"):
+			QuestBoard.report("rocket_watched")
 		# Someone else bought a round in this QING — the whole Cantina cheers
 		if kind == "house_round" and data.get("here", false) and not data.get("self", false) \
 				and _pub_building and _pub_building.has_method("play_house_cheer"):
@@ -526,6 +548,7 @@ func share_invite_to_telegram() -> void:
 	var url := "https://t.me/share/url?url=%s&text=%s" % [
 		str(Config.invite_url).uri_encode(), invite_text().uri_encode()]
 	OS.shell_open(url)
+	QuestBoard.report("invite_sent")
 	if _attraction_ui:
 		_attraction_ui.toast("Opening Telegram — invite your group to this QING", AttractionUI.PULSE, 4.0)
 
