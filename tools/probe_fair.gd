@@ -134,7 +134,11 @@ func _run() -> void:
 		var prompt: String = fair._hud.prompt.text
 		print("rocket prompt: ", prompt)
 		await _press("interact")
-		_check(not rocket.is_riding() and not fair._paying, "a locked rocket sells no ticket and doesn't start")
+		_check(not fair._paying and (rocket.is_riding() or not locked), "a locked rocket sells no ticket and flies a free practice flight")
+		if rocket.is_riding():
+			rocket.end_ride()
+			for i in 5:
+				await process_frame
 		wallet_node.address = ""
 		fair.refresh_progress()
 	print("\n%d failed" % _fails)

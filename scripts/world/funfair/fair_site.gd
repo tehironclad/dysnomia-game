@@ -200,7 +200,7 @@ func _process(_delta: float) -> void:
 	var paid := Wallet.address != ""
 	var price := ("%s to this QING" % ArcadePay.fee_text()) if paid else "free practice (no wallet)"
 	if _focus != null and _rocket_locked(_focus):
-		_hud.show_prompt("%s  UPSILON ROCKET · %s" % [ControlsHelp.key_of("interact"), _progress_line()])
+		_hud.show_prompt("%s  UPSILON ROCKET · practice flight (free) · %s" % [ControlsHelp.key_of("interact"), _progress_line()])
 	elif _focus != null:
 		_hud.show_prompt("%s  RIDE %s · %s" % [ControlsHelp.key_of("interact"), String(_focus.item.get("name", "Ride")).to_upper(), price])
 	elif _focus_game != "":
@@ -220,9 +220,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	_focus_key = ""
 	if ride and _rocket_locked(ride):
 		# The rocket opens once the chain shows a ticket for every game here (checked again now)
+		# Locked: a free practice flight, labelled; the paid launch still needs every game's ticket
 		_hud.ticker("%s · each game's 1 Ⓐ ticket at this QING lights a lamp by the rocket" % _progress_line(), Color("#ffd27a"), 8.0)
-		_hud.show_prompt("UPSILON ROCKET · " + _progress_line())
 		refresh_progress()
+		_start(ride, "PRACTICE FLIGHT · nothing paid · " + _progress_line())
 		return
 	if Wallet.address == "":
 		if ride:
@@ -341,6 +342,7 @@ func _show_progress() -> void:
 
 
 ## Locked: the rocket, a wallet connected, and not every game played here (or not read yet).
+## A locked rocket still flies a free practice flight (labelled, nothing paid).
 func _rocket_locked(ride: RideBase) -> bool:
 	if ride == null or ride.ride_id != "rocket" or Wallet.address == "":
 		return false
