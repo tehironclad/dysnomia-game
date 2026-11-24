@@ -25,7 +25,7 @@ func _check(ok: bool, what: String) -> void:
 
 
 func _run() -> void:
-	Travel.go(self, _qing)
+	load("res://scripts/core/travel.gd").go(self, _qing)  # by path: Travel uses autoloads (parse time)
 	var t0 := Time.get_ticks_msec()
 	var fair = null
 	while Time.get_ticks_msec() - t0 < 90000:
@@ -49,7 +49,17 @@ func _run() -> void:
 		await _press("interact")
 		print("%-22s booth %s focus=%s riding=%s" % [r.item.get("name", r.ride_id), booth, focus_ok, r.is_riding()])
 		if r.is_riding():
+			var t_b := Time.get_ticks_msec()
+			while r.is_boarding() and Time.get_ticks_msec() - t_b < 4000:
+				await process_frame
+			var seat_d: float = player.global_position.distance_to(r.get_seat_transform(r._t).origin)
 			r.end_ride()
+			var t_a := Time.get_ticks_msec()
+			while r.is_alighting() and Time.get_ticks_msec() - t_a < 4000:
+				await process_frame
+			var off_d: float = player.global_position.distance_to(r.to_global(r.exit_local_position))
+			_check(seat_d < 0.5 and off_d < 0.5 and fair._riding == null and player.is_physics_processing(),
+				"%-22s boarded by a step (seat %.2f m), stepped off to the exit (%.2f m), walks again" % [r.item.get("name", r.ride_id), seat_d, off_d])
 			for i in 5:
 				await process_frame
 	# Every midway game: walk up, Use, play it through in first person
@@ -81,6 +91,13 @@ func _run() -> void:
 				presses += 1
 			await process_frame
 		var sc: int = mp.sim.score
+		var crowd: int = mp.stage.crowd.count() if mp.stage.crowd else 0
+		if mp.phase == "celebrate":  # a good round: the wide shot, the crowd, the prize
+			_check(crowd >= 3 and mp.prize_kind != "", "game %-9s celebrates: %d onlookers cheer, prize %s" % [g["id"], crowd, mp.prize_kind])
+			await _press("interact")
+		else:
+			print("     %-9s no celebration (score %d, prize \"%s\", %d onlookers)" % [g["id"], sc, mp.prize_kind, crowd])
+		_check(mp.stage.fx != null and mp.stage.shelf != null, "game %-9s has its effects and a prize shelf" % g["id"])
 		var rep := MidwaySim.replay(mp.game, mp.sim.seed_v, mp.sim.events)
 		var log := MidwaySim.encode_log(mp.game, mp.sim.events)
 		_check(mp.phase == "result" and rep == sc, "game %-9s played: %d presses, %d ticks, score %d, replay %d, log %d chars \"%s\"" % [

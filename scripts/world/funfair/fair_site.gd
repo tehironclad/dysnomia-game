@@ -146,6 +146,8 @@ func set_dev_tier(dev_tier: int) -> void:
 	if t > 0 and not _fair.game_spots.is_empty():
 		refresh_boards()
 		refresh_progress()
+		for g in _fair.game_spots:
+			g["stage"].refresh_shelf(_qing)  # the prize shelves: what's left today, and yours
 
 
 static func _compass(v: Vector2) -> String:
@@ -354,7 +356,7 @@ func _progress_line() -> String:
 
 
 ## Previews (screenshot.gd --fair=<game>|rocket): first person at a stall, a scripted round of
-## practice (nothing is paid or posted), held at `phase`: aim | play | result; `board`: the stall's
+## practice (nothing is paid or posted), held at `phase`: aim | play | hit (a big hit, mid-effects) | cheer (the celebration) | howto | result; `board`: the stall's
 ## room board close up.
 func preview_game(id: String, phase: String, codes: Array = []) -> void:
 	_preview = true
@@ -388,9 +390,16 @@ func preview_game(id: String, phase: String, codes: Array = []) -> void:
 	await get_tree().create_timer(1.3).timeout
 	g.begin_play()
 	g.hold = true
-	var plan: Dictionary = {"striker": [[96 + 46, 0, 0]], "entropy": [[30, -120, 0]], "regolith": [[20, 0, 0], [130, -300, 200]],
-		"crystal": [[10, 200, 0], [90, -200, 400]], "motzkin": [[260, 0, 0], [420, 300, 200]], "waat": [[20, 0, 0]], "saat": [[0, 0, 0], [40, 0, 0]]}
-	var stop := {"striker": 96 + 46 + 16 + 30, "entropy": 30 + 30, "regolith": 130 + 20, "crystal": 90 + 14, "motzkin": 424, "waat": 60, "saat": 70}
+	if phase != "howto":
+		g.skip_tutorial()
+	else:
+		return
+	if phase in ["hit", "cheer"]:
+		await _preview_auto(g, phase)
+		return
+	var plan: Dictionary = {"striker": [[90 + 44, 0, 0]], "entropy": [[30, -120, 0]], "regolith": [[20, 0, 0], [110, -300, 200]],
+		"crystal": [[10, 200, 0], [70, -200, 400]], "motzkin": [[260, 0, 0], [420, 300, 200]], "waat": [[20, 0, 0]], "saat": [[20, 300, 0], [70, -300, 0]]}
+	var stop := {"striker": 90 + 44 + 12 + 30, "entropy": 30 + 26, "regolith": 110 + 18, "crystal": 70 + 12, "motzkin": 424, "waat": 60, "saat": 70 + 10}
 	var presses: Array = plan.get(id, [])
 	var i := 0
 	var until: int = stop.get(id, 60)
@@ -398,7 +407,7 @@ func preview_game(id: String, phase: String, codes: Array = []) -> void:
 		until = MidwaySim.MAX_TICKS
 	elif phase == "aim":  # still aiming: the sight (and the meter) before the first press
 		var aims := {"striker": [40, 0, 0], "entropy": [40, 250, 0], "regolith": [40, -330, 190], "crystal": [40, 120, 300],
-			"motzkin": [300, -200, 150], "waat": [40, 0, 0], "saat": [10, 0, 0]}
+			"motzkin": [300, -200, 150], "waat": [40, 0, 0], "saat": [30, 300, 0]}
 		var a: Array = aims.get(id, [40, 0, 0])
 		presses = [[MidwaySim.MAX_TICKS, a[1], a[2]]]
 		until = int(a[0])
@@ -408,19 +417,59 @@ func preview_game(id: String, phase: String, codes: Array = []) -> void:
 			g.set_aim(Vector2(presses[i][1], presses[i][2]))
 			g.press()
 			i += 1
-		elif phase == "result" and id == "motzkin" and g.sim.accepts():
-			for k in g.sim.schedule.size():  # the preview shoots the primes it sees
-				var e: Array = g.sim.schedule[k]
-				if g.sim.target_up(k, g.sim.tick) and g.sim.tick - int(e[1]) > 12 and MidwaySim.is_prime(int(e[3])):
-					g.set_aim(Vector2(int(MidwaySim.SLOTS_X[int(e[0]) % 4]) * MidwaySim.AIM / 1800, (int(MidwaySim.SLOTS_Y[int(e[0]) / 4]) - 1825) * MidwaySim.AIM / 700))
-					g.press()
-					break
-		elif phase == "result" and id != "motzkin" and g.sim.accepts() and g.sim.phase_t > 20:
-			g.press()
+		elif phase == "result":
+			var c = MidwayAuto.choose(g.sim)
+			if c is Array:
+				g.set_aim(Vector2(c[0], c[1]))
+				g.press()
 		g.sim.step()
 	if presses.size() > 0:
 		g.set_aim(Vector2(presses[-1][1], presses[-1][2]))
 	g.hold = phase != "result"
+
+
+## Previews "hit" (a skilled round up to a big hit, its effects caught mid-air) and "cheer" (a
+## skilled round to the end: the celebration, held). Practice: nothing is paid, posted or kept.
+func _preview_auto(g: MidwayPlay, phase: String) -> void:
+	var want_hits := {"striker": 3, "entropy": 3, "regolith": 3, "crystal": 4, "motzkin": 5, "waat": 2, "saat": 3}
+	var target: int = want_hits.get(g.game, 3) if phase == "hit" else 1 << 30
+	# A dry run finds the tick of the target hit's result; the live round stops just before it
+	var stop_at := MidwaySim.MAX_TICKS
+	if phase == "hit":
+		var dry := MidwaySim.new(g.game, g.sim.seed_v)
+		var hits := 0
+		var seen := -1
+		while not dry.done and dry.tick < MidwaySim.MAX_TICKS:
+			var c0 = MidwayAuto.choose(dry)
+			if c0 is Array:
+				dry.press(int(c0[0]), int(c0[1]))
+			dry.step()
+			if dry.last_tick != seen and dry.last_tick >= 0:
+				seen = dry.last_tick
+				hits += 1 if dry.last_points > 0 else 0
+				if hits >= target:
+					stop_at = dry.last_tick
+					break
+	while not g.sim.done and g.sim.tick < stop_at:
+		var c = MidwayAuto.choose(g.sim)
+		if c is Array:
+			g.set_aim(Vector2(c[0], c[1]))
+			g.press()
+		g.sim.step()
+	g.mark_seen()
+	if phase == "hit":
+		await get_tree().create_timer(1.0).timeout  # just before the capture (screenshot.gd: 2.5 s, then --frames)
+		var c1 = MidwayAuto.choose(g.sim)
+		if c1 is Array:
+			g.set_aim(Vector2(c1[0], c1[1]))
+			g.press()
+		g.sim.step()
+		g.stage.render()
+		return
+	g.hold = true
+	if g.stage.crowd:
+		g.stage.crowd.gather(6, 7)
+		g.stage.crowd.settle()
 
 
 func _start(ride: RideBase, note: String) -> void:

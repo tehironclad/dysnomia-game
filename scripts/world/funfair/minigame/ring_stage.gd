@@ -12,6 +12,10 @@ var _b := Vector3(0.0, 0.9, -1.1).normalized()  ## up the board
 var _n := Vector3(0.0, 1.1, 0.9).normalized()   ## out of the board
 var _rings: Array = []
 var _seen_round := -1
+var _tops: Array = []          ## per peg (u + 3 v): its glowing cap
+var _tops_mat: Array = []
+var _gold_mat: Material
+var _halo: MeshInstance3D
 
 
 func board_point(u: float, v: float) -> Vector3:
@@ -31,14 +35,19 @@ func build() -> void:
 		var top := board_point(sx * 1000.0, 1000) - _n * 0.05
 		FairKit.box(self, Vector3(0.05, top.y - 0.12, 0.05), Vector3(top.x, (top.y + 0.12) * 0.5, top.z), frame)
 	var rock := FairKit.pbr("asphalt_02", Color(0.85, 0.85, 0.9), 2.0)
-	var k := 0
-	for u in MidwaySim.PEGS_U:
-		for v in MidwaySim.PEGS_V:
-			var p := board_point(float(u), float(v))
+	_tops.resize(9)
+	_tops_mat.resize(9)
+	for vi in 3:
+		for ui in 3:
+			var k := ui + 3 * vi
+			var p := board_point(float(MidwaySim.PEGS_U[ui]), float(MidwaySim.PEGS_V[vi]))
 			var peg := FairKit.cyl(self, 0.03, 0.045, 0.24, Vector3.ZERO, rock, 8)
 			peg.transform = Transform3D(Basis(Vector3.RIGHT, _n, -_b), p + _n * 0.12)
-			FairKit.mesh(self, FairKit.sphere_mesh(0.035, 8), p + _n * 0.25, FairKit.glow(FairKit.CRYSTAL_COLORS[k % 4], 4.0, 1.5), Vector3.ZERO, false)
-			k += 1
+			_tops_mat[k] = FairKit.glow(FairKit.CRYSTAL_COLORS[k % 4], 4.0, 1.5)
+			_tops[k] = FairKit.mesh(self, FairKit.sphere_mesh(0.035, 8), p + _n * 0.25, _tops_mat[k], Vector3.ZERO, false)
+	_gold_mat = FairKit.glow(Color(1.0, 0.8, 0.3), 9.0, 5.0)
+	_halo = FairKit.mesh(self, FairKit.torus_mesh(0.09, 0.115, 24, 4), Vector3.ZERO, FairKit.glow(Color(1.0, 0.85, 0.35), 5.0, 3.0), Vector3.ZERO, false)
+	_halo.visible = false
 	for i in MidwaySim.rounds("regolith"):
 		var r := FairKit.mesh(self, FairKit.torus_mesh(0.07, 0.1, 16, 6), Vector3.ZERO, FairKit.glow(FairKit.NEON_CYAN if i % 2 == 0 else FairKit.NEON_VIOLET, 1.3, 0.8))
 		_rings.append(r)
@@ -58,6 +67,9 @@ func _begin() -> void:
 
 func _idle() -> void:
 	_begin()
+	_halo.visible = false
+	for k in 9:
+		_tops[k].material_override = _tops_mat[k]
 
 
 func eye() -> Transform3D:
@@ -78,12 +90,22 @@ func render() -> void:
 	var i := mini(sim.round_i, _rings.size() - 1)
 	var cur: MeshInstance3D = _rings[i]
 	_reticle.visible = sim.phase == "ready"
+	# The gold peg of this ring
+	for k in 9:
+		var want: Material = _gold_mat if k == sim.gold_peg else _tops_mat[k]
+		if _tops[k].material_override != want:
+			_tops[k].material_override = want
+	var gp := board_point(float(MidwaySim.PEGS_U[sim.gold_peg % 3]), float(MidwaySim.PEGS_V[sim.gold_peg / 3]))
+	_halo.visible = true
+	_halo.transform = Transform3D(Basis(Vector3.RIGHT, _n, -_b).rotated(_n, sim.tick * 0.05), gp + _n * (0.18 + 0.03 * sin(sim.tick * 0.15)))
 	match sim.phase:
 		"ready":
 			var s := sim.sway()
 			var u := clampf(aim.x, -MidwaySim.AIM, MidwaySim.AIM) * 900.0 / MidwaySim.AIM + s.x
 			var v := 500.0 + clampf(aim.y, -MidwaySim.AIM, MidwaySim.AIM) * 500.0 / MidwaySim.AIM + s.y
 			_reticle.transform = _on_board(u, v, 0.26)
+			_sight = Vector2(u, v)
+			_reticle_feedback()
 			cur.transform = Transform3D(Basis(Vector3.RIGHT, 0.6), HAND)
 		"fly":
 			var t := float(sim.phase_t) / sim.shot_t
@@ -94,7 +116,7 @@ func render() -> void:
 				_seen_round = sim.round_i
 				var near := _nearest_peg(sim.shot_to)
 				# A ringer drops down its peg; anything else lies on the board
-				var at := _on_board(near.x, near.y, 0.03) if sim.last_points == 100 else _on_board(sim.shot_to.x, sim.shot_to.y, 0.04)
+				var at := _on_board(near.x, near.y, 0.03) if sim.last_text.to_lower().contains("ringer") else _on_board(sim.shot_to.x, sim.shot_to.y, 0.04)
 				_rings[mini(sim.round_i - 1, _rings.size() - 1)].transform = at
 
 
@@ -108,3 +130,30 @@ func _nearest_peg(p: Vector2i) -> Vector2:
 				bd = d
 				best = Vector2(u, v)
 	return best
+
+
+var _sight := Vector2.ZERO
+
+
+## The sight (aim + sway) is on a peg: a ringer if you throw now.
+func aim_hot() -> bool:
+	if sim == null or sim.phase != "ready":
+		return false
+	for u in MidwaySim.PEGS_U:
+		for v in MidwaySim.PEGS_V:
+			if Vector2(float(u), float(v)).distance_to(_sight) <= 45.0:
+				return true
+	return false
+
+
+func impact_pos() -> Vector3:
+	return board_point(sim.shot_to.x, sim.shot_to.y) + _n * 0.25 if sim else board_point(0, 500)
+
+
+func on_result() -> void:
+	var r: Node3D = _rings[mini(sim.round_i - 1, _rings.size() - 1)]
+	if sim.hit_peg >= 0:
+		FairFx.squash(r, 0.4, Vector3.UP)
+		fx.sparks(impact_pos(), Color(1.0, 0.85, 0.4) if sim.last_bonus else Color(0.5, 0.95, 1.0), 1.2 if sim.last_bonus else 0.7, _n)
+		if sim.last_bonus:
+			kick(0.07, 0.1)

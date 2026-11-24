@@ -632,13 +632,24 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
     `isin`, xorshift32 seeded by `MidwayGame.seed_from_tx(ticket)`). The only input is a log of presses
     `[tick, ax, ay]`, aims quantised to [-640, 640]. `MidwaySim.replay(game, seed, log)` = the score, or -1
     for a log the game couldn't have taken. The 3D only reads the sim. Changing a rule changes old scores:
-    bump `MidwaySim.VERSION` (lines carry `v1:`) and the recorded rounds in `tests/test_fair_minigames.gd`.
+    bump `MidwaySim.VERSION` (lines carry `v2:` now; v1 lines show as unverified) and the recorded rounds in
+    `tests/test_fair_minigames.gd`.
+  - **v2 rules (2026-11-24, "make it fun")**, all in the sim: a streak of good results multiplies (×1, ×2, ×3…,
+    capped per game; any other result ends it and scores ×1); every throw is harder than the last (faster
+    meters, stronger drift and sliding rings, more sway, rails that speed up per crystal, shorter pop-ups,
+    faster wheels); bonus targets (PERFECT swing 150, bullseye 150, the gold peg ×2, gold crystals 250,
+    Mersenne primes 3/7/31 250, the 500 jackpot); the last throw(s) (Motzkin: the last 8 s) are a FRENZY ×2;
+    `last_near` flags a near miss. Results stay up 32 ticks (was 50). Rounds: striker 5, entropy 5, regolith 6,
+    crystal 8, motzkin 20 shots, waat 5, saat 7. **Saat is now Higher or Lower** (axes 1: aim < 0 = lower)
+    with a deck from the ticket; it scores and posts like the others, and the fortune is still read.
+    `MidwaySim.max_score` is the rules' bound (every throw perfect at full streak and frenzy); prizes are tiers
+    of `MidwaySim.par` (the grand prize's score), not of the bound.
   - **Tickets say which stall** they bought: `AFFECTION.transfer(QING, 1 Ⓐ + k wei)`, k = `MidwaySim.code`
     (striker 1, entropy 2, regolith 3, crystal 4, motzkin 5, waat 6, saat 7); the screen still says 1 Ⓐ
     (`ArcadePay.transfer_to_qing(…, fee_wei)`, `verify_receipt` takes ≥ fee). Practice (no wallet) is labelled.
   - **Shared boards are room lines**: `🎪 <game> <score> <ticket tx> v1:<log>`; the log is per press the
     tick delta in base 36 then each aim + 640 as two base-36 digits, joined by "." (the longest possible, Motzkin's 15
-    shots, is 204 characters, 207 bytes; the room line limit is 280). After a paid round `fair_post` (P) posts it with
+    shots, is ~230 characters at v2's 20 shots; the room line limit is 280, checked by the tests). After a paid round `fair_post` (P) posts it with
     `TableBook.post` (one approval: CHOA.Chat, so it also adds Ω Hypobar to the QING). `FairBoard.read` scans
     the QING's room lines from `FairProgress.FROM_BLOCK` (28,136,000: the format can't be older) and keeps a
     line only if (a) the ticket's receipt has AFFECTION `Transfer(line's tx.from → this QING, 1 Ⓐ + this
@@ -652,7 +663,22 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
     preview, as before. Measured 2026-11-24: that two-topic filter over **the whole chain** (block 0 → head)
     answers in < 1 s when the pair has few transfers, but for a busy pair (hundreds of transfers a day) the
     node cuts the body off after ~10 s (HTTP 200, 23 bytes of JSON); scan from `FROM_BLOCK`, never block 0.
-  - Shots: `screenshot.gd -- --qing=<Grand Fair QING> --fair=<game>|rocket [--fair-phase=aim|play|result|board]
+  - **Game feel** (`minigame/fair_fx.gd`, `fair_sfx.gd`, `fair_crowd.gd`): MidwayPlay watches the sim (presses,
+    `last_tick`, the frenzy) and dresses each event: bursts, sparks, rising score pop-ups, a flash light, chase
+    bulbs round the back wall (still / idle / win / grand), squash-and-stretch, camera shake (`Camera3D.h/v_offset`)
+    and a hit-stop (the sim's ticks pause a beat: replay is unaffected). Sounds are synthesised into
+    AudioStreamWAV on first use (no sample files). Onlookers (AmbientNPC, walked by FairCrowd) gather as the
+    streak grows and dance on a good round; a prize of a moon or better (or a pennant with a streak of 3) gets a
+    3.4 s celebration (wide shot, confetti, the prize spinning over the counter). A how-to card shows the first
+    time per game on this computer (`user://fair_seen.cfg`). `MidwayAuto` is a skilled player for previews only.
+  - **Prizes** (`fair_prizes.gd`): crystal trophy / toy Upsilon rocket / plush moon / pennant, one merged mesh
+    each. Local keepsakes like ArcadeScores (`user://fair_prizes.cfg`, with the ticket tx); each stall's shelf
+    shows today's stock (1/2/4/3, a sold-out tier gives the next one down) and "yours". Practice wins show the
+    prize but keep nothing.
+  - **Rides board and alight with a short walk/step** (RideBase: `step_seconds` at DoorWalk's pace, a small hop
+    onto/off the seat, the Walk clip via `hold_clip`); `ride_finished` fires once the rider is down. A rider over
+    30 m from the exit (back from the voyage) is set down directly; `paused` still skips seating.
+  - Shots: `screenshot.gd -- --qing=<Grand Fair QING> --fair=<game>|rocket [--fair-phase=aim|play|hit|cheer|howto|result|board]
     [--fair-codes=1,2,3]` (practice, nothing paid or posted). `tools/probe_fair.gd [-- --wallet=0x…]` plays
     all seven through, replays each score and checks the rocket's lock from the chain.
 

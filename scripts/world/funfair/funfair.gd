@@ -452,6 +452,7 @@ func _stall(pos: Vector3, facing: Vector3, kind: String, pair: Array) -> void:
 		var stage := MidwayStage.create(kind)
 		root.add_child(stage)
 		stage.build()
+		stage.dress()
 		game_spots.append({"id": kind, "pos": root.transform * Vector3(0, 0, d * 0.5 + 1.3), "face": root.transform.basis * Vector3.BACK,
 			"stage": stage, "board": _score_board(root, Vector3(w * 0.5 + 0.07, 1.65, 0.1), PI * 0.5)})
 	FairKit.solid_box(root, Vector3(w, h, d - 0.2), Vector3(0, h * 0.5, -0.1))
@@ -897,6 +898,7 @@ func _high_striker(pos: Vector3, facing: Vector3) -> void:
 	var stage := MidwayStage.create("striker")
 	root.add_child(stage)
 	stage.build()
+	stage.dress()
 	var bp := Node3D.new()
 	bp.position = Vector3(1.75, 0, 0.7)
 	bp.rotation.y = -0.35

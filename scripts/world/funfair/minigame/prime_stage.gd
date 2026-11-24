@@ -15,6 +15,10 @@ var _tracer: MeshInstance3D
 var _rim_idle: Material
 var _rim_good: Material
 var _rim_bad: Material
+var _rim_gold: Material
+var _muzzle: OmniLight3D
+var _flash_t := 0
+var _shot_sight := Vector3.ZERO
 var _slot_entry: PackedInt32Array = PackedInt32Array([-1, -1, -1, -1, -1, -1, -1, -1])
 var _scan_from := 0
 var _shown: PackedInt32Array = PackedInt32Array([-2, -2, -2, -2, -2, -2, -2, -2])  ## entry whose number a slot shows
@@ -25,6 +29,9 @@ func build() -> void:
 	_rim_idle = FairKit.glow(Color(1.0, 0.85, 0.35), 3.0, 1.2)
 	_rim_good = FairKit.glow(Color(0.35, 1.0, 0.55), 6.0, 3.0)
 	_rim_bad = FairKit.glow(Color(1.0, 0.25, 0.3), 6.0, 3.0)
+	_rim_gold = FairKit.glow(Color(1.0, 0.78, 0.2), 9.0, 5.0)
+	_muzzle = FairKit.omni(self, MUZZLE + Vector3(0, 0.05, -0.2), Color(1.0, 0.7, 0.4), 0.0, 3.0)
+	_muzzle.visible = false
 	var steel := FairKit.paint(Color(0.3, 0.32, 0.36), 0.4, 0.8)
 	for row in 2:
 		FairKit.box(self, Vector3(3.6, 0.05, 0.12), Vector3(0, float(MidwaySim.SLOTS_Y[row]) / 1000.0 - 0.3, WALL_Z + 0.02), steel)
@@ -96,7 +103,8 @@ func render() -> void:
 			if _shown[s] != e:
 				_shown[s] = e
 				_numbers[s].text = str(int(ent[3]))
-			_rims[s].material_override = (_rim_good if MidwaySim.is_prime(int(ent[3])) else _rim_bad) if shot >= 0 else _rim_idle
+			var gold := int(ent[3]) in MidwaySim.MERSENNE
+			_rims[s].material_override = (_rim_good if MidwaySim.is_prime(int(ent[3])) else _rim_bad) if shot >= 0 else (_rim_gold if gold else _rim_idle)
 		_pivots[s].rotation.x = PI * 0.5 * (1.0 - up)
 	_reticle.visible = not sim.done
 	# The sight floats in front of the fallen targets, on the line from your eye to the wall point
@@ -105,6 +113,12 @@ func render() -> void:
 	_reticle.position = EYE.lerp(wall, 0.75)
 	_reticle.scale = Vector3.ONE * 0.75
 	_reticle.rotation = Vector3(PI * 0.5, 0, 0)
+	_shot_sight = wall
+	_reticle_feedback()
+	_reticle.scale *= 0.75
+	_flash_t = maxi(0, _flash_t - 1)
+	_muzzle.visible = _flash_t > 0
+	_muzzle.light_energy = 3.0 * _flash_t
 	var since := t - sim.last_tick
 	_tracer.visible = sim.last_tick >= 0 and since < 5
 	if _tracer.visible:
@@ -113,3 +127,42 @@ func render() -> void:
 		var b := Basis.looking_at(d, Vector3.UP)
 		b.z = b.z * d.length()
 		_tracer.transform = Transform3D(b, (MUZZLE + hit) * 0.5)
+
+
+## The sight is on a target that's up now.
+func aim_hot() -> bool:
+	if sim == null:
+		return false
+	var x := int(_shot_sight.x * 1000.0)
+	var y := int(_shot_sight.y * 1000.0)
+	for i in range(maxi(0, _scan_from - 12), _scan_from):
+		if sim.target_up(i, sim.tick):
+			var e: Array = sim.schedule[i]
+			var dx := int(MidwaySim.SLOTS_X[int(e[0]) % 4]) - x
+			var dy := int(MidwaySim.SLOTS_Y[int(e[0]) / 4]) - y
+			if dx * dx + dy * dy <= MidwaySim.PRIME_HIT * MidwaySim.PRIME_HIT:
+				return true
+	return false
+
+
+func impact_pos() -> Vector3:
+	return Vector3(sim.target.x / 1000.0, sim.target.y / 1000.0, WALL_Z + 0.15) if sim else Vector3(0, 1.8, -1.0)
+
+
+func press_sound() -> String:
+	return "bang"
+
+
+func result_sound() -> String:
+	return "smash" if sim.last_points > 0 else ""
+
+
+func on_press() -> void:
+	_flash_t = 4
+	kick(0.02)
+	fx.sparks(MUZZLE + Vector3(0, 0.03, -0.15), Color(1.0, 0.7, 0.35), 0.5, Vector3(0, 0.3, -1.0))
+
+
+func on_result() -> void:
+	if sim.last_points > 0:
+		fx.sparks(impact_pos(), Color(1.0, 0.8, 0.3) if sim.last_bonus else Color(0.5, 1.0, 0.6), 1.2, Vector3(0, 0.4, 1.0))
