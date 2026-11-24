@@ -187,6 +187,13 @@ func _ready() -> void:
 	roads.name = "Roads"
 	add_child(roads)
 	_build_roads()
+	# --- Online (Net): other players here, free chat and voice; nothing when offline.
+	if view == "":
+		var presence := NetPresence.new()
+		presence.name = "NetPresence"
+		add_child(presence)
+		presence.setup(String(territory["address"]), player, hud)
+	# --- end Online
 	view_mode = view
 	if view == "":
 		# Play: the player's camera. (With no current camera, Godot would pick

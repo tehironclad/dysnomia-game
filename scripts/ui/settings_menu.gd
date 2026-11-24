@@ -86,6 +86,10 @@ func _ready() -> void:
 	close_btn.text = "Close"
 	close_btn.pressed.connect(func(): settings_closed.emit())
 	row.add_child(close_btn)
+	var net_btn := Button.new()  # Online & voice (Net): the game server, sign-in, mic, mutes
+	net_btn.text = "Online & voice…"
+	net_btn.pressed.connect(_open_net)
+	row.add_child(net_btn)
 	_load_from_config()
 
 
@@ -166,6 +170,19 @@ func _apply() -> void:
 	Config.apply()
 	Chain.apply_config()
 	_note.text = "Applied and saved."
+
+
+var _net: NetSettingsPanel
+
+
+func _open_net() -> void:
+	if _net == null:
+		_net = NetSettingsPanel.new()
+		add_child(_net)
+		_net.top_level = true
+	_net.visible = true
+	await get_tree().process_frame
+	_net.global_position = ((get_viewport_rect().size - _net.size) * 0.5).max(Vector2.ZERO)
 
 
 func show_menu() -> void:

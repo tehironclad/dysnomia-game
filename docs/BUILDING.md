@@ -36,6 +36,8 @@ that fails to parse makes `-s` tools hang, so run `check.sh` first.
 | `tools/live_chat.gd [-- --qing=0x… --player=0x…]` | the HUD feed for a room; the chat bar with no wallet, a fake wallet and a real player read-only (each stops at its precondition); one-line and 3-line batch simulations and gas |
 | `tools/boot_territory.gd` | loads a territory headlessly and prints the HUD card; should show no errors |
 | `tools/update_snapshot.gd` | refreshes `assets/data/territories.json` from the chain |
+| `tools/net_selftest.gd [-- --url=ws://…]` | game server end to end with scripted clients (no chain; local only) |
+| `tools/net_bot.gd -- --url=ws://…` | a scripted remote player (signs in with a test key, walks up, chats) |
 
 Run each with `godot --headless --path . -s res://<tool>`.
 
@@ -119,6 +121,7 @@ Other performance measures in the build:
 - `node tools/golden/gen.js <entropy-ai-pulse> <qing-registry.json>` writes the selectors and topics.
   Add `--snapshot` to also write the territory snapshot.
 - `node tools/golden/deepfield.js <entropy-ai-pulse>` writes the Deep Field params from the site's JS.
+- `node tools/golden/ecrecover.js <dir with node_modules/ethers>` writes the Keccak/ecrecover/personal_sign goldens.
 - `node tools/golden/creates.js <entropy-ai-pulse> [from] [to]` writes the deployer's CREATE addresses
   for World watch. Nonce 132 reproduces MAP.
 
