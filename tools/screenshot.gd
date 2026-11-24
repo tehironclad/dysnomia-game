@@ -5,6 +5,7 @@ extends SceneTree
 ##       [--scene=res://scenes/main.tscn] [--qing=0x…] [--frames=90] [--quality=0..3]
 ##       [--session=0x…] [--open=su|room|beat|void|world] (with --view=hud: a move's panel, previewed only)
 ##       [--toggle=guide|help] (with --view=hud: show that panel)
+##       (the front door: --open=void|identity|guide|opps shows that panel on the right)
 ##       [--dive=<arcade catalog id> --dive-phase=push|warp|inside|menu --classic] (an arcade place:
 ##       dive into that cabinet; the attract demo plays, nothing is paid)
 ##       [--seat=pool|cards --seat-phase=aim|roll|overhead|seated|enter] (an arcade place or the pub:
@@ -13,6 +14,10 @@ extends SceneTree
 ##       [--fair=<midway game id>|rocket --fair-phase=aim|play|result|board] (a territory: play that fair game
 ##       in first person, a scripted practice round held mid-play or on its result screen; rocket: the
 ##       rocket's 7-light board, with --fair-codes=1,2,3 lit as a preview. Nothing is paid or posted)
+##       [--field-search=<text> --field-filter=mine,joined,fair,yue,near,tier:N] (the Field: the finder
+##       with that search and those filters, the top result selected and hovered)
+##       [--access=<AccessGates goal> --access-fee=<wei>] (any scene: the AccessSteps overlay for that
+##       goal, read live: e.g. fair_ticket, room_post; with --qing the room/fair is that QING's)
 ## With --qing, the territory is loaded from the chain first (read-only).
 
 var _out := ""
@@ -37,6 +42,10 @@ var _fair_codes: Array = []
 var _chat := ""  # bar | history: the chat bar open (with --chat-text) or the history panel
 var _chat_text := ""
 var _chat_replay := 0  # replay the room's last N real lines as new (bubbles, echoes rising, feed rows)
+var _field_search := ""
+var _field_filter: Array = []
+var _access := ""
+var _access_fee := ""
 var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
@@ -75,6 +84,14 @@ func _initialize() -> void:
 			_chat_text = a.substr(12)
 		elif a.begins_with("--chat-replay="):
 			_chat_replay = int(a.substr(14))
+		elif a.begins_with("--field-search="):
+			_field_search = a.substr(15)
+		elif a.begins_with("--field-filter="):
+			_field_filter = Array(a.substr(15).split(",", false))
+		elif a.begins_with("--access="):
+			_access = a.substr(9)
+		elif a.begins_with("--access-fee="):
+			_access_fee = a.substr(13)
 		elif a == "--classic":
 			_classic = true
 		elif a == "--flashlight":
@@ -106,9 +123,6 @@ func _run() -> void:
 		var t0 := Time.get_ticks_msec()
 		while root.get_node("Session").readiness == null and Time.get_ticks_msec() - t0 < 60000:
 			await process_frame
-		var door = current_scene
-		if door and door.get("_onboarding") != null:
-			door._onboarding.visible = true
 	if _warp != "":
 		for i in 5:
 			await process_frame
@@ -117,7 +131,9 @@ func _run() -> void:
 		for i in 30:
 			await process_frame
 		var acts = current_scene.get("actions") if current_scene else null
-		if _open == "steward" and current_scene and current_scene.get("act_loop"):
+		if current_scene and current_scene.has_method("open_panel"):
+			current_scene.open_panel(_open)  # the front door: void | identity | guide | opps
+		elif _open == "steward" and current_scene and current_scene.get("act_loop"):
 			current_scene.act_loop.open_steward()  # the Steward's words (ActLoop)
 		elif acts:
 			acts.call("open_" + _open)
@@ -170,6 +186,35 @@ func _run() -> void:
 			await create_timer(2.5).timeout
 	if _chat != "" or _chat_replay > 0:
 		await _chat_preview()
+	if _field_search != "" or not _field_filter.is_empty():
+		for i in 10:
+			await process_frame
+		if current_scene and current_scene.has_method("preview"):
+			current_scene.preview(_field_search, _field_filter)
+			var t1 := Time.get_ticks_msec()
+			while Time.get_ticks_msec() - t1 < 30000 and (current_scene.get("yue_state") == "reading" or current_scene.get("joined_state") == "reading"):
+				await process_frame
+			current_scene.preview(_field_search, [])
+	if _access != "":
+		for i in 10:
+			await process_frame
+		var ctx := {}
+		var q := _qing if _qing != "" else String(root.get_node("GameManager").territory_address)
+		if q != "":
+			ctx["qing"] = q
+			ctx["room_name"] = String(root.get_node("Registry").get_territory(q).get("name", ""))
+		if _access_fee != "":
+			ctx["fee_wei"] = _access_fee
+		var steps = load("res://scripts/ui/access/access_steps.gd").popup(current_scene, _access, ctx)
+		var t2 := Time.get_ticks_msec()
+		while Time.get_ticks_msec() - t2 < 20000:
+			var busy := false
+			for s in steps.result.get("steps", []):
+				if s["status"] == "checking":
+					busy = true
+			if not busy and not steps.result.is_empty():
+				break
+			await process_frame
 	for i in _frames:
 		await process_frame
 	await RenderingServer.frame_post_draw

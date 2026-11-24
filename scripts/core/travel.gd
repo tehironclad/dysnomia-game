@@ -32,8 +32,17 @@ static func _go(tree: SceneTree, address: String) -> bool:
 	gm.territory_address = String(q["address"])
 	gm.territory_name = String(q.get("name", ""))
 	gm.is_chain_sourced = true
+	remember_visit(String(q["address"]))
 	tree.change_scene_to_file(TERRITORY_SCENE)
 	return true
+
+
+## The front door's "Continue to my QING" (this machine only; a choice, not chain data).
+static func remember_visit(address: String) -> void:
+	var c := ConfigFile.new()
+	c.load("user://travel.cfg")
+	c.set_value("travel", "last_qing", address.to_lower())
+	c.save("user://travel.cfg")
 
 
 ## A territory by name/symbol search, or by its founding index ("#12").

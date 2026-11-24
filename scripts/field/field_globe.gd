@@ -37,12 +37,18 @@ func _init() -> void:
 	sm.rings = 48
 	moon.mesh = sm
 	var mat := StandardMaterial3D.new()
-	var tex_path := "res://assets/textures/polyhaven/moon_dusted_02/moon_dusted_02_diff_1k.jpg"
+	var tex_path := "res://assets/textures/polyhaven/moon_meteor_01/moon_meteor_01_diff_1k.jpg"
+	var nor_path := "res://assets/textures/polyhaven/moon_meteor_01/moon_meteor_01_nor_gl_1k.jpg"
 	if ResourceLoader.exists(tex_path):
 		mat.albedo_texture = load(tex_path)
 		mat.uv1_triplanar = true
-		mat.uv1_scale = Vector3(1.6, 1.6, 1.6)
-		mat.albedo_color = Color(0.32, 0.33, 0.37)
+		mat.uv1_triplanar_sharpness = 2.0
+		mat.uv1_scale = Vector3(1.3, 1.3, 1.3)
+		if ResourceLoader.exists(nor_path):
+			mat.normal_enabled = true
+			mat.normal_texture = load(nor_path)
+			mat.normal_scale = 1.4
+		mat.albedo_color = Color(0.16, 0.17, 0.2)
 	else:
 		mat.albedo_color = Color(0.09, 0.1, 0.13)
 	mat.roughness = 0.97
@@ -129,6 +135,14 @@ func _billboard(tex: Texture2D, additive: bool) -> Mesh:
 	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
 	q.material = mat
 	return q
+
+
+## How light the regolith reads (albedo multiplier): dim on the Field, so the dots
+## lead; brighter under the front door's low sun.
+func set_moon_tone(v: float) -> void:
+	var mat: StandardMaterial3D = moon.material_override
+	if mat.albedo_texture != null:
+		mat.albedo_color = Color(v, v * 1.03, v * 1.12)
 
 
 ## Registry records and their FieldIndex rows (same order).
