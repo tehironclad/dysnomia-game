@@ -4,12 +4,14 @@ extends SceneTree
 ## their surfaces and shadow casters, grouped by node path (first --depth levels
 ## under the scene root), plus how many sit inside the camera's frustum.
 ##   xvfb-run … godot --path . -s res://tools/perf_breakdown.gd -- [--qing=0x…] [--view=…] [--scene=…] [--depth=3]
-## Instances past their visibility range don't count as in view. Also prints the renderer's
+## Instances past their visibility range don't count as in view. "sun-casters": shadow casters
+## within the sun's shadow reach of the camera, in or out of view (--by-shadow sorts by them). Also prints the renderer's
 ## own visible/shadow split for the frame.
 
 var _scene := "res://scenes/territory/territory_v2.tscn"
 var _depth := 3
 var _cam_pos := Vector3.ZERO
+var _shadow_d := 0.0  ## the sun's shadow reach (0: no sun shadows)
 
 
 func _initialize() -> void:
@@ -29,16 +31,20 @@ func _run() -> void:
 	var planes: Array[Plane] = cam.get_frustum() if cam else []
 	if cam:
 		_cam_pos = cam.global_position
+	for l in current_scene.find_children("*", "DirectionalLight3D", true, false):
+		if (l as DirectionalLight3D).shadow_enabled and l.is_visible_in_tree():
+			_shadow_d = maxf(_shadow_d, (l as DirectionalLight3D).directional_shadow_max_distance)
 	var groups := {}
-	var total := [0, 0, 0, 0]
+	var total := [0, 0, 0, 0, 0]
 	_walk(current_scene, current_scene, planes, groups, total)
 	var keys := groups.keys()
-	keys.sort_custom(func(a, b): return groups[a][1] > groups[b][1])
-	print("group                                                     nodes  in-view surf  shadow")
+	var col := 4 if OS.get_cmdline_user_args().has("--by-shadow") else 1
+	keys.sort_custom(func(a, b): return groups[a][col] > groups[b][col])
+	print("group                                                     nodes  in-view surf  shadow  sun-casters")
 	for k in keys.slice(0, 45):
 		var g: Array = groups[k]
-		print("%-56s %6d %6d %5d %6d" % [String(k).left(56), g[0], g[1], g[2], g[3]])
-	print("TOTAL nodes %d, in view %d, surfaces in view %d, shadow casters in view %d" % total)
+		print("%-56s %6d %6d %5d %6d %6d" % [String(k).left(56), g[0], g[1], g[2], g[3], g[4]])
+	print("TOTAL nodes %d, in view %d, surfaces in view %d, shadow casters in view %d, sun casters in reach %d" % total)
 	var vp := root.get_viewport_rid()
 	for t in [["visible", RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE], ["shadow", RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW]]:
 		print("render %s: objects %d, draw calls %d, primitives %d" % [t[0],
@@ -57,11 +63,17 @@ func _walk(n: Node, top: Node, planes: Array[Plane], groups: Dictionary, total: 
 		var gi := n as GeometryInstance3D
 		var key := _key(gi, top)
 		if not groups.has(key):
-			groups[key] = [0, 0, 0, 0]
+			groups[key] = [0, 0, 0, 0, 0]
 		var g: Array = groups[key]
 		g[0] += 1
 		total[0] += 1
 		var inside := _in_view(gi, planes)
+		if _shadow_d > 0.0 and gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			var c := (gi.global_transform * gi.get_aabb()).get_center()
+			var dc := _cam_pos.distance_to(c)
+			if dc < _shadow_d and (gi.visibility_range_end <= 0.0 or dc < gi.visibility_range_end):
+				g[4] += 1
+				total[4] += 1
 		if inside:
 			var surf := 1
 			if gi is MeshInstance3D and (gi as MeshInstance3D).mesh:

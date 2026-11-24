@@ -13,10 +13,16 @@ extends Node
 
 ## K per quality level (Potato … Ultra): with a 60° FOV a prop of size s metres is
 ## ≈ 620·s/d pixels tall at 720p, so K = 250 ends it at ≈ 2.5 px.
-const K_BY_QUALITY := [120.0, 170.0, 240.0, 320.0, 420.0]
+const K_BY_QUALITY := [120.0, 170.0, 220.0, 260.0, 400.0]
+## Shadow LOD: a prop casts into the sun's shadow maps only while the camera is within
+## SHADOW_K × its size (a 2 m prop: 40 m at High, a 5 m stall wall 100 m). Past that its shadow is a few pixels, but it
+## would still be drawn once per cascade; the fair behind you at the Core was ~900 casters.
+const SHADOW_K_BY_QUALITY := [12.0, 15.0, 16.0, 20.0, 50.0]
+const SHADOW_CHUNK := 300     ## casters re-checked per frame
 const MIN_END := 24.0
 const SKIP_SIZE := 24.0       ## a prop this big (m) or bigger is never culled by size
-const NO_SHADOW_SIZE := 0.3   ## props smaller than this cast no shadow
+const NO_SHADOW_SIZE := 1.2   ## props smaller than this cast no shadow (bulbs, prizes, crates, heads:
+                              ## their shadows are a few pixels; each caster is redrawn per cascade)
 const META := "dc_size"
 
 var _roots: Array[Node] = []
@@ -24,12 +30,16 @@ var _skip: Array[Node] = []
 var _pending: Array[GeometryInstance3D] = []
 var _retry: Array[GeometryInstance3D] = []
 var _retry_t := 0.0
+var _casters: Array = []      ## [GeometryInstance3D, size, its own shadow setting, on now]
+var _caster_i := 0
+var _shadow_k := 40.0
 var _k := 240.0
 var culled := 0  ## instances with a range set (for perf notes)
 
 
 func _ready() -> void:
 	_k = _k_now()
+	_shadow_k = _shadow_k_now()
 	get_tree().node_added.connect(_on_added)
 	var cfg := get_node_or_null("/root/Config")
 	if cfg and cfg.has_signal("applied"):
@@ -47,6 +57,12 @@ func watch(root: Node) -> void:
 func skip(node: Node) -> void:
 	if node and not _skip.has(node):
 		_skip.append(node)
+
+
+func _shadow_k_now() -> float:
+	var cfg := get_node_or_null("/root/Config")
+	var q: int = int(cfg.graphics_quality) if cfg else 2
+	return SHADOW_K_BY_QUALITY[clampi(q, 0, SHADOW_K_BY_QUALITY.size() - 1)]
 
 
 func _k_now() -> float:
@@ -94,6 +110,7 @@ func _flush() -> void:
 
 
 func _process(delta: float) -> void:
+	_update_shadows()
 	if _retry.is_empty():
 		return
 	_retry_t += delta
@@ -144,10 +161,44 @@ func _apply(gi: GeometryInstance3D, retried: bool = false) -> void:
 	gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 	if size < NO_SHADOW_SIZE:
 		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	elif gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+		_casters.append([gi, size, gi.cast_shadow, true])
 	culled += 1
 
 
+## Pure: does a prop of `size` metres at distance `d` cast into the shadow maps?
+static func casts_at(size: float, d: float, shadow_k: float) -> bool:
+	return d < size * shadow_k
+
+
+## A slice of the casters per frame: shadows on near the camera, off far from it.
+func _update_shadows() -> void:
+	if _casters.is_empty():
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var at := cam.global_position
+	var n := mini(SHADOW_CHUNK, _casters.size())
+	for j in n:
+		if _caster_i >= _casters.size():
+			_caster_i = 0
+		var e: Array = _casters[_caster_i]
+		var gi: GeometryInstance3D = e[0] if is_instance_valid(e[0]) else null
+		if gi == null:
+			_casters.remove_at(_caster_i)
+			if _casters.is_empty():
+				return
+			continue
+		var on := casts_at(float(e[1]), at.distance_to(gi.global_position), _shadow_k)
+		if on != bool(e[3]):
+			e[3] = on
+			gi.cast_shadow = e[2] if on else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_caster_i += 1
+
+
 func _on_quality() -> void:
+	_shadow_k = _shadow_k_now()
 	var k := _k_now()
 	if is_equal_approx(k, _k):
 		return
