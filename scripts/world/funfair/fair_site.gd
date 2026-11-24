@@ -17,6 +17,7 @@ const HALF := 40.0                ## the fair builds within ±38 m
 const RADIUS := 42.0              ## round terrace that carries it
 const KEEP_CLEAR := [Vector2(0, 0), Vector2(26, 18), Vector2(-26, 18), Vector2(0, -11.5), Vector2(0, 16)]  ## Core, arcade, monolith, plinth, arrival
 const CLEAR_M := 62.0             ## how far the fair's centre stays from those
+const MIN_CORE := 78.0 * TerritoryLayout.SCALE  ## and from the Core itself (≈110 m): out beyond the Core's ring road
 
 var _qing := ""
 var _hud: Node
@@ -49,7 +50,7 @@ static func find_site(height_fn: Callable, land_floor: float = -2.5) -> Dictiona
 	for gx in range(-g, g + 1):
 		for gz in range(-g, g + 1):
 			var c := Vector2(gx * 16.0, gz * 16.0)
-			if c.length() > REACH or not TerritoryLayout.inside(c, RADIUS):
+			if c.length() > REACH or c.length() < MIN_CORE or not TerritoryLayout.inside(c, RADIUS):
 				continue
 			var clear := true
 			for k in KEEP_CLEAR:

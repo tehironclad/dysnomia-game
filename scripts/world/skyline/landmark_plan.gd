@@ -21,7 +21,7 @@ const LIFT_HALF := 2.0         ## the glass lift shaft is 4 × 4 m
 const LIFT_GAP := 1.5          ## clearance between the shaft and the tower's face
 const PREFER := Vector2(0.0, -150.0 * TerritoryLayout.SCALE)  ## north (≈212 m), beyond the skyline: seen ahead on arrival
 const KEEP_CLEAR := [Vector2(0, 0), Vector2(26, 18), Vector2(-26, 18), Vector2(0, -11.5), Vector2(0, 16)]
-const CORE_CLEAR := 84.0       ## skyline ring (≤ 46 m) + plaza + margin
+const CORE_CLEAR := 84.0 * TerritoryLayout.SCALE  ## skyline ring (≤ 46 m) + plaza + room to walk (≈119 m)
 const JUMP_MIN_M := 24.0       ## the least drop that is a base jump
 const BORDER_KEEP := TerritoryLayout.BORDER_KEEP_M  ## footprints stay inside |x|, |z| ≤ this (338 m; the force fields stand at 362 m)
 

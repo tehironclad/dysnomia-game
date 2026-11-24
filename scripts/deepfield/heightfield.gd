@@ -17,7 +17,7 @@ extends RefCounted
 ##                            terraces, cut by canyons along the external rays
 ##                            (the arg of the escaping orbit);
 ## - the centre             → the Core's plain: a flat disc, relief fades in
-##                            between 40 m and 120 m from the Core;
+##                            between PLAIN_IN_M and PLAIN_OUT_M from the Core;
 ## - the border             → the land eases down to 0 m over the outer 40 m,
 ##                            so neighbours meet level at the force-field wall.
 ## What sets each landform: relief_params().
@@ -36,11 +36,11 @@ const FALLOFF_W_M := 46.0  ## how fast land drops outside the set
 const COAST_W_M := 34.0  ## highlands reach full height this far inside the coast
 const CORE_RADIUS_M := 24.0
 const CORE_BLEND_M := 14.0
-const PLAIN_IN_M := 90.0  ## relief starts this far from the Core…
-const PLAIN_OUT_M := 160.0  ## …and is full from here
+const PLAIN_IN_M := 120.0  ## relief starts this far from the Core… (90 on the 512 m map)
+const PLAIN_OUT_M := 190.0  ## …and is full from here (160 on the 512 m map): room for the fair and the landmark
 const EDGE_BLEND_M := 40.0  ## land eases to 0 m over the border's outer metres
 const CACHE_DIR := "user://cache/terrain"
-const VERSION := 3  ## bump when the mapping changes (invalidates caches). 3: SIZE_M 512 → 724
+const VERSION := 4  ## bump when the mapping changes (invalidates caches). 3: SIZE_M 512 → 724; 4: the Core plain 120/190 m
 
 var n := 257  ## samples per side
 var heights := PackedFloat32Array()  ## row-major, n*n, metres

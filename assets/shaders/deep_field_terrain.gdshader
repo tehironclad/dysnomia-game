@@ -34,6 +34,13 @@ uniform float detail_scale = 0.18;   // tiles per metre (≈ 5.5 m tiles)
 uniform float detail_strength = 1.0;
 uniform float ground_lift = 1.0;     // >1 on the Compatibility renderer, which lights darker
 uniform float relief_light = 1.0;   // faint light on cliffs and terrace risers, so the relief reads at night
+// Roads (TerritoryRoads): distance to the nearest road, 0..1 = 0..road_field_m metres,
+// over the territory square. Routed from the territory's own ground and places.
+uniform bool has_roads = false;
+uniform sampler2D road_field : hint_default_white, filter_linear, repeat_disable;
+uniform float road_field_m = 12.0;
+uniform float road_half_w = 4.5;
+uniform float road_lit = 0.25;      // edge-line light: faint markers when Wild, brighter from Settlement
 
 varying vec3 world_pos;
 
@@ -150,6 +157,18 @@ void fragment() {
 			}
 		}
 	}
+	// Roads: compacted, smoother regolith between two hairline edges (ice + the
+	// territory's colour), lit by the Development tier.
+	float on_road = 0.0;
+	if (has_roads) {
+		vec2 ruv = (world_pos.xz - centre) / (2.0 * half_size) + 0.5;
+		float rd = texture(road_field, ruv).r * road_field_m;
+		float aa = max(fwidth(rd), 0.04);
+		on_road = 1.0 - smoothstep(road_half_w - aa, road_half_w + aa, rd);
+		float edge = 1.0 - smoothstep(0.0, 0.12 + aa, abs(rd - (road_half_w - 0.45)));
+		albedo = mix(albedo, vec3(0.085, 0.09, 0.105) * grain, on_road * 0.85);
+		light += mix(vec3(0.66, 0.9, 1.0), color, 0.35) * edge * road_lit * 0.6 * glow;
+	}
 	// Regolith detail: two scales blended, multiplied into the dark ground and
 	// fading out at distance (where the Julia pattern is what should read).
 	vec2 uv1 = world_pos.xz * detail_scale;
@@ -168,7 +187,7 @@ void fragment() {
 	light += mix(color, color2, 0.5) * steep * 0.05 * relief_light * glow;
 	albedo *= 1.0 - 0.35 * steep;
 	ALBEDO = albedo * ground_lift;
-	ROUGHNESS = mix(0.92, texture(regolith_rough, uv1).r, near_f * 0.6);
+	ROUGHNESS = mix(mix(0.92, texture(regolith_rough, uv1).r, near_f * 0.6), 0.7, on_road);
 	SPECULAR = 0.05;
 	EMISSION = light;
 }

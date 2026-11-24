@@ -6,8 +6,9 @@ const ILLINOIS := "0xd127839b83cbf537c29b7d268c135f745a0da2e8"
 ## JuliaHeightfield.VERSION (invalidates caches) and update this.
 ## v3 (2026-11-24): SIZE_M 512 → 724 m. The chain → shape mapping (Deep Field
 ## params, relief_params, the Julia frame) is unchanged; the frame is drawn over
-## the larger square, so the same samples land on different metres.
-const PINNED := {"0xd127839b83cbf537c29b7d268c135f745a0da2e8": 3309458385701477657}
+## the larger square, so the same samples land on different metres. v4: the
+## Core's flat plain 120/190 m (was 90/160), room for the spread-out places.
+const PINNED := {"0xd127839b83cbf537c29b7d268c135f745a0da2e8": -5627870978467576679}
 
 
 func _q(addr: String) -> Dictionary:

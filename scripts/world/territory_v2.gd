@@ -32,6 +32,7 @@ var guide: GuidePanel
 var opportunities: OpportunitiesPanel
 var score: TerritoryScore
 var border: BorderRing
+var roads: TerritoryRoads  # the Core's ring road and roads to every place (scripts/world/roads/)
 var _settings: PanelContainer
 var _monitor: Control
 var _near := ""
@@ -177,6 +178,10 @@ func _ready() -> void:
 	if view == "":
 		border.place_arrival()
 	# --- end Borders
+	roads = TerritoryRoads.new()
+	roads.name = "Roads"
+	add_child(roads)
+	_build_roads()
 	view_mode = view
 	if view == "":
 		# Play: the player's camera. (With no current camera, Godot would pick
@@ -293,6 +298,8 @@ func _set_development(tier: int, hypo: PackedInt64Array, energy: float, board: A
 		landmark.set_development(dev_tier, hypo, energy, board, block)
 	terrain.set_development(dev_tier, energy)
 	sky.set_aurora(energy if dev_tier >= 4 else 0.0)
+	if roads:
+		_build_roads()
 
 
 static func _dec(v) -> String:
@@ -301,6 +308,32 @@ static func _dec(v) -> String:
 
 static func _tok(v) -> String:
 	return TokenFormat.wei_to_tokens(BigInt.coerce(v))
+
+
+# --- Roads (scripts/world/roads/) ------------------------------------------------
+
+## The places a road reaches (Core-relative = world x, z: the Core stands at the
+## origin). A new building adds itself here: {name, at, r[, from]}.
+func _road_places() -> Array:
+	var out: Array = [
+		{"name": "vehicle pad", "at": Vector2(garage.position.x, garage.position.z), "r": GarageSite.RADIUS},
+		{"name": "Affection Fair", "at": Vector2(fair.position.x, fair.position.z), "r": FairSite.RADIUS},
+	]
+	if landmark and not LandmarkPlan.spec(dev_tier, 0.0).is_empty():  # the landmark stands from Settlement up
+		var t := Vector2(landmark.position.x, landmark.position.z)
+		var r := landmark.ring_local()
+		out.append({"name": "skyline landmark", "at": t, "r": LandmarkPlan.PLAZA_R})
+		out.append({"name": "landing ring", "at": Vector2(r.x, r.z), "r": LandmarkPlan.RING_R, "from": t})
+	return out
+
+
+func _build_roads() -> void:
+	var gates: Array = []
+	for side in Neighbours.SIDES:
+		if border and border.sides.has(side):  # a road to every border with a QING beyond it
+			gates.append(Neighbours.outward(side) * (JuliaHeightfield.SIZE_M * 0.5))
+	roads.build(func(x, z): return terrain.get_height_at(x, z), terrain.material, _road_places(), gates,
+		dev_tier, DeepField.to_color(terrain.params["color"]))
 
 
 # --- Skyline landmark + base jumping (scripts/world/skyline/) ------------------
