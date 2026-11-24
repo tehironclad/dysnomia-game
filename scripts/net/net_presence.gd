@@ -35,7 +35,9 @@ func setup(p_qing: String, p_player: Node3D, p_hud: CanvasLayer) -> void:
 	for id in c.peers:
 		_on_peer(id, c.peers[id])
 	Net.enter_room(qing)
-	Net.start()
+
+
+var _frames := 0
 
 
 func _exit_tree() -> void:
@@ -93,6 +95,11 @@ func _process(_delta: float) -> void:
 	var c := Net.client
 	if c == null:
 		return
+	# Connect once the territory has finished loading (its first frames are long:
+	# a handshake waiting behind them could time out).
+	_frames += 1
+	if _frames == 20:
+		Net.start()
 	if player and Net.is_online():
 		var model := player.get_node_or_null("PlayerModel") as Node3D
 		var yaw := model.global_rotation.y if model else player.global_rotation.y

@@ -15,7 +15,7 @@ extends Node
 ## handshake and an idle timeout, strikes for malformed input, a global budget
 ## for signature checks. Logs to user://server/server.log (rotated at 5 MB).
 
-const HANDSHAKE_S := 6.0
+const HANDSHAKE_S := 15.0  # a client loading a territory may not poll for seconds
 const IDLE_S := 75.0
 const TICK_S := 0.1
 const TOKEN_TTL_S := 86400

@@ -44,6 +44,7 @@ var counters := {"bytes_in": 0, "bytes_out": 0, "msgs_in": 0, "msgs_out": 0, "st
 
 var _ws: WebSocketPeer
 var _t0 := 0.0
+var _polls := 0
 var _ping_at := 0.0
 var _last_state_ms := -100000
 var _last_state := PackedByteArray()
@@ -68,6 +69,7 @@ func connect_to(p_url: String) -> bool:
 		_set_status("offline")
 		return false
 	_t0 = _now_ms() / 1000.0
+	_polls = 0
 	_set_status("connecting")
 	return true
 
@@ -240,7 +242,9 @@ func _process(_delta: float) -> void:
 	_ws.poll()
 	var st := _ws.get_ready_state()
 	if st == WebSocketPeer.STATE_CONNECTING:
-		if _now_ms() / 1000.0 - _t0 > CONNECT_TIMEOUT_S:
+		_polls += 1
+		# wall time and polls both: a loading hitch (seconds without a frame) is not a timeout
+		if _now_ms() / 1000.0 - _t0 > CONNECT_TIMEOUT_S and _polls > 30:
 			close()
 		return
 	if st == WebSocketPeer.STATE_CLOSED:

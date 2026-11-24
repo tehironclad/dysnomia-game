@@ -23,6 +23,7 @@ signal speaking_changed(on: bool)
 const SETTINGS_PATH := "user://net.cfg"
 const DISCOVERY_PATH := "/api/game-server"
 const SERVER_SCENE := "res://scenes/net/game_server.tscn"
+const RETRY_FIRST_S := 5.0
 const RETRY_MIN_S := 20.0
 const RETRY_MAX_S := 300.0
 
@@ -42,7 +43,7 @@ var last_error := ""
 var heard := {}               # wallet → name: who spoke or wrote here (for the mute list)
 var _started := false
 var _connecting := false
-var _retry_s := RETRY_MIN_S
+var _retry_s := RETRY_FIRST_S
 var _retry_timer: Timer
 var _room := ""
 var _pending_chat: Array = []
@@ -108,7 +109,7 @@ func stop() -> void:
 func restart() -> void:
 	stop()
 	resolved_url = ""
-	_retry_s = RETRY_MIN_S
+	_retry_s = RETRY_FIRST_S
 	start()
 
 
@@ -181,12 +182,12 @@ func _offline(why: String) -> void:
 		_logged_offline = true
 		print("[Net] single-player: %s (retrying quietly)" % why)
 	_retry_timer.start(_retry_s)
-	_retry_s = minf(_retry_s * 2.0, RETRY_MAX_S)
+	_retry_s = clampf(_retry_s * 2.0, RETRY_MIN_S, RETRY_MAX_S)
 
 
 func _on_status(s: String) -> void:
 	if s == "online":
-		_retry_s = RETRY_MIN_S
+		_retry_s = RETRY_FIRST_S
 		last_error = ""
 		_logged_offline = false
 		print("[Net] online: %s" % resolved_url)

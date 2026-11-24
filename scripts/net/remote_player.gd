@@ -6,7 +6,7 @@ extends Node3D
 ## Uses HumanAvatar's public API only (set_head, set_body, update_movement,
 ## set_seated). Someone driving or on a ride is drawn seated (simplified).
 
-const TAG_Y := 2.25
+const TAG_Y := 2.05
 const BUBBLE_S := 6.0
 const VOICE_RATE := 16000.0
 
@@ -20,7 +20,6 @@ var avatar: HumanAvatar
 var tag: Label3D
 var speak_mark: Label3D
 var bubble: Label3D
-var _bubble_bg: MeshInstance3D
 var _bubble_t := 0.0
 var voice: AudioStreamPlayer3D
 var _playback: AudioStreamGeneratorPlayback
@@ -36,33 +35,25 @@ func setup(info: Dictionary) -> void:
 	avatar.civilian = true  # ~16 meshes, like the pub's regulars
 	avatar.name = "Avatar"
 	add_child(avatar)
-	tag = _label(28, Color(0.86, 0.93, 1.0))
+	# Labels keep their size on screen (fixed_size); offsets are in label pixels.
+	tag = _label(30, Color(0.86, 0.93, 1.0))
 	tag.position.y = TAG_Y
-	speak_mark = _label(34, Color(0.45, 1.0, 0.7))
-	speak_mark.position.y = TAG_Y + 0.32
-	speak_mark.text = "◉ ))"
+	tag.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	speak_mark = _label(30, Color(0.45, 1.0, 0.7))
+	speak_mark.position.y = TAG_Y
+	speak_mark.offset = Vector2(0, 78)
+	speak_mark.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	speak_mark.text = "◉ talking"
 	speak_mark.visible = false
 	bubble = _label(30, Color(1, 1, 1))
-	bubble.position.y = TAG_Y + 0.75
+	bubble.position.y = TAG_Y
+	bubble.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	bubble.offset = Vector2(0, 118)
 	bubble.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	bubble.width = 520.0
-	bubble.render_priority = 2
-	bubble.outline_render_priority = 1
+	bubble.width = 560.0
+	bubble.outline_size = 26
+	bubble.outline_modulate = Color(0.03, 0.06, 0.12, 0.92)
 	bubble.visible = false
-	_bubble_bg = MeshInstance3D.new()
-	var q := QuadMesh.new()
-	_bubble_bg.mesh = q
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	m.albedo_color = Color(0.03, 0.05, 0.09, 0.78)
-	m.no_depth_test = true
-	m.render_priority = 0
-	_bubble_bg.material_override = m
-	_bubble_bg.visible = false
-	_bubble_bg.layers = 2
-	add_child(_bubble_bg)
 	voice = AudioStreamPlayer3D.new()
 	var gen := AudioStreamGenerator.new()
 	gen.mix_rate = VOICE_RATE
@@ -80,8 +71,8 @@ func _label(px: int, col: Color) -> Label3D:
 	var l := Label3D.new()
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	l.no_depth_test = true
-	l.fixed_size = false
-	l.pixel_size = 0.0042
+	l.fixed_size = true
+	l.pixel_size = 0.0011
 	l.font_size = px
 	l.outline_size = 10
 	l.modulate = col
@@ -131,19 +122,9 @@ func apply_pose(s: Dictionary) -> void:
 
 
 func say(text: String) -> void:
-	bubble.text = text
+	bubble.text = "“%s”" % text
 	bubble.visible = true
 	_bubble_t = BUBBLE_S + text.length() * 0.05
-	_size_bubble.call_deferred()
-
-
-func _size_bubble() -> void:
-	var lines := maxi(1, ceili(bubble.text.length() / 34.0))
-	var w := minf(bubble.text.length(), 34.0) * bubble.font_size * 0.55 * bubble.pixel_size + 0.3
-	var h := lines * bubble.font_size * 1.25 * bubble.pixel_size + 0.2
-	(_bubble_bg.mesh as QuadMesh).size = Vector2(w, h)
-	_bubble_bg.position = bubble.position - Vector3(0, 0, 0.01)
-	_bubble_bg.visible = true
 
 
 func play_voice(pcm: PackedFloat32Array, volume: float) -> void:
@@ -170,4 +151,3 @@ func _process(delta: float) -> void:
 		_bubble_t -= delta
 		if _bubble_t <= 0.0:
 			bubble.visible = false
-			_bubble_bg.visible = false
