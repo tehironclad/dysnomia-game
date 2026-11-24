@@ -90,7 +90,7 @@
   `MidwaySim` (pure integer rules, replayable from the ticket + input log), `minigame/MidwayPlay` (seat glide,
   input, result screen) and one `MidwayStage` per stall. Tickets are 1 Ⓐ + the game's code in wei; scores post
   as `🎪` room lines checked by `FairBoard` (receipt + replay); `FairProgress` (Transfer logs) unlocks the rocket
-  (`RocketLights`). `tools/probe_fair.gd` plays all seven through. Shots: `--fair=<game>|rocket --fair-phase=aim|play|result`.
+  (`RocketLights`). `tools/probe_fair.gd` plays all seven through. Shots: `--fair=<game>|rocket --fair-phase=aim|play|result|board`.
   The Upsilon Rocket is piloted after liftoff (`RocketVoyage`: W/S, mouse or A/D, Shift; slow climb to this world's
   light speed `C_MS`; past 0.97 c a wormhole opens on the flight line and leads to the Field; Esc returns to the pad).
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
