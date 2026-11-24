@@ -779,8 +779,14 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   server status, notices and the talking mark.
 - **Keys:** `push_to_talk` (X) is an input action. The mic stays off until the player opts in.
   `audio/driver/enable_input=true`.
-- **Check it:** `tools/net_selftest.gd` (35 checks, scripted clients with test keys) and `tools/net_bot.gd`
+- **Check it:** `tools/net_selftest.gd` (39 checks, scripted clients with test keys) and `tools/net_bot.gd`
   (a remote player for screenshots: `screenshot.gd -- --net-url=ws://127.0.0.1:N`, no `--view`).
+- **Shared with the site (2026-11-24):** the site's **pulse node** (entropy-ai-pulse `pulse-node/`,
+  `docs/PULSE_NODE.md`) runs the site API warm on a spare laptop, with a store on disk, and Vercel relays to it.
+  It connects to this server as a guest and sends `C_INFO` (12) → `S_INFO` (75)
+  `{players, signed_in, guests, connections, rooms: [{room, players}], boards: [{board, rows}]}`: counts only,
+  never wallets or positions. It asks only if the welcome's `features` lists `"info"`. It also reads boards with
+  `C_LB_TOP`. The site serves them as `/api/game-live`. The game's Site API setting can point at either address.
 
 ## 19. Exchanges: the Swap Hall (PulseX) and the YUE Exchange (2026-11-24)
 

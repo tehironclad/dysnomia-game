@@ -19,6 +19,7 @@ const C_LB_SUBMIT := 8  # json {req, board, entry}
 const C_LB_TOP := 9     # json {req, board, n}
 const C_LEAVE := 10     # (empty)
 const C_PROFILE := 11   # json {name, head, acc, body}
+const C_INFO := 12      # json {req}: what the server is doing (counts only; guests may ask)
 
 # server → client
 const S_WELCOME := 64      # json {id, nonce, server, v, login}
@@ -32,11 +33,15 @@ const S_NOTICE := 71       # json {code, text}
 const S_PONG := 72         # binary: t u32
 const S_LB := 73           # json {req, ok, rows | entry | error}
 const S_ROOM := 74         # json {room, peers}
+const S_INFO := 75         # json {req, server, v, uptime_s, connections, players, signed_in, rooms, boards}
+
+## What this server understands beyond v1, listed in S_WELCOME "features".
+const FEATURES := ["info"]
 
 ## Per-type size limits (whole message, bytes). Anything else is refused.
 const MAX_SIZE := {
 	C_AUTH: 512, C_JOIN: 512, C_STATE: 19, C_CHAT: 1024, C_VOICE: 700, C_PING: 5,
-	C_LB_SUBMIT: 16384, C_LB_TOP: 256, C_LEAVE: 1, C_PROFILE: 512,
+	C_LB_SUBMIT: 16384, C_LB_TOP: 256, C_LEAVE: 1, C_PROFILE: 512, C_INFO: 64,
 }
 const MAX_MESSAGE := 16384
 
