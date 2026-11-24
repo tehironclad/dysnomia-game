@@ -259,6 +259,7 @@ func _build_seat(i: int, wood: StandardMaterial3D) -> void:
 	total.outline_size = 10
 	total.outline_modulate = Color(0, 0, 0, 0.85)
 	total.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	total.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM  # a note line grows upward, off the cards
 	total.position = b * Vector3(0, TOP + 0.09, HAND_R - 0.15)
 	add_child(total)
 	_totals.append(total)
@@ -323,7 +324,9 @@ func set_seats(seats: Array) -> void:
 		var s: Dictionary = seats[i] if i < seats.size() else {}
 		(_plates[i] as Label3D).text = String(s.get("name", "open seat"))
 		var t := int(s.get("total", -1))
-		(_totals[i] as Label3D).text = ("%d%s" % [t, String(s.get("note", ""))]) if t >= 0 else ""
+		# The note goes on its own line above: "24 BUST" side by side ran into the other seat's total.
+		var note := String(s.get("note", "")).strip_edges()
+		(_totals[i] as Label3D).text = (("%s\n%d" % [note, t]) if note != "" else str(t)) if t >= 0 else ""
 		(_rings[i] as Node3D).visible = bool(s.get("turn", false))
 
 

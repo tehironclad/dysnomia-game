@@ -307,4 +307,4 @@ func _process(delta: float) -> void:
 	_clock_t = 0.25  # the clock text is rebuilt 4×/s, not every frame
 	var t := _sky.now_unix()
 	clock.text = (("block %d\n%s" % [Chain.head_block, DysnomiaTime.format(t)]) if t >= 0 else "block —\ntime unknown") \
-		+ "\nWORLD " + {"latent": "latent", "stirring": "· deployer moved", "unverified": "· unverified code", "live": "LIVE", "unknown": "—"}.get(World.status, "—")
+		+ "\nWORLD " + {"latent": "not deployed yet", "stirring": "· deployer moved", "unverified": "· unverified code", "live": "LIVE", "unknown": "—"}.get(World.status, "—")
