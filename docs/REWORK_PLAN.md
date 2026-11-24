@@ -192,8 +192,11 @@ Nothing celebrates before step 4.
   - Hover shows the dossier card (the territory's fractal emblem + facts); "Warp" travels there.
   - Extras: search, filters (rarity, cover charge, GWAT, has my bars) and "watch it grow" (replays
     foundings in block order).
-  - **No walking between territories**: adjacency isn't real, so travel is a warp (a dive into the
-    destination's Julia set).
+  - ~~No walking between territories~~ *(superseded 2026-11-24, owner request)*: the Field still warps
+    anywhere, and each territory's four borders now show the nearest QING in that quarter of the
+    **raw** HECKE plane (LEARNINGS §6, checked against `MAP.GetMapQing`) beyond a force field. Join
+    (`Admitted(LAU)` read back from the chain) opens the field; walking through loads the neighbour at
+    the matching edge. `scripts/world/border/` (Neighbours, BorderRing).
 - **A territory:** a self-contained ~512 m world (§3.4).
 
 ### 3.4 Anatomy of a territory

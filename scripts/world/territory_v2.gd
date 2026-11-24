@@ -26,6 +26,7 @@ var help: ControlsHelp
 var guide: GuidePanel
 var opportunities: OpportunitiesPanel
 var score: TerritoryScore
+var border: BorderRing
 var _settings: PanelContainer
 var _monitor: Control
 var _near := ""
@@ -153,6 +154,14 @@ func _ready() -> void:
 	player.rotation.y = 0.0
 	if player.has_method("set_terrain_generator"):
 		player.set_terrain_generator(terrain)
+	# --- Borders (BorderRing): neighbouring QINGs beyond force fields; a border crossing lands here.
+	border = BorderRing.new()
+	border.name = "Borders"
+	add_child(border)
+	border.setup(territory, terrain, player if view == "" else null, hud if view == "" else null)
+	if view == "":
+		border.place_arrival()
+	# --- end Borders
 	view_mode = view
 	if view == "":
 		# Play: the player's camera. (With no current camera, Godot would pick
@@ -189,6 +198,10 @@ func _frame(view: String) -> void:
 		camera.position = f + Vector3(0.0, 28.0, -95.0)
 		camera.look_at(f + Vector3(0.0, 8.0, 0.0))
 		camera.fov = 60.0
+	elif view.begins_with("border") and border:  # --view=border_n|e|s|w: across a force field
+		border.frame_camera(camera, view.substr(7) if view.length() > 7 else "n")
+	elif view == "relief":  # from the highest ground, back over the terraces
+		terrain.frame_relief(camera)
 	elif view == "sky":
 		camera.position = Vector3(0.0, core_h + 2.0, 0.0)
 		camera.look_at(camera.position + Vector3(-0.55, 0.62, 0.55))

@@ -31,6 +31,39 @@ func build(q: Dictionary) -> void:
 			JuliaHeightfield.VERSION])
 
 
+## A neighbour's ground seen beyond the border (BorderRing): its own heightfield
+## at a low resolution, drawn with its own Deep Field numbers, no collider.
+## `centre` is where this node sits in the world (the shader's pattern origin).
+func build_distant(q: Dictionary, hf: JuliaHeightfield, centre: Vector3, iterations: int = 40) -> void:
+	params = DeepField.for_territory(q)
+	heightfield = hf
+	mesh_step = 1
+	_build_material()
+	material.set_shader_parameter("centre", Vector2(centre.x, centre.z))
+	material.set_shader_parameter("max_iter", iterations)
+	material.set_shader_parameter("detail_strength", 0.5)
+	_build_mesh()
+	_mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+## Preview camera (--view=relief): from the highest ground, looking back over
+## the terraces toward the Core.
+func frame_relief(cam: Camera3D) -> void:
+	var hf := heightfield
+	var best := 0
+	for k in hf.heights.size():
+		if hf.heights[k] > hf.heights[best]:
+			best = k
+	var sp := JuliaHeightfield.sample_spacing(hf.n)
+	var half := JuliaHeightfield.SIZE_M * 0.5
+	var top := Vector3(-half + (best % hf.n) * sp, 0.0, -half + (best / hf.n) * sp)
+	var back := Vector2(top.x, top.z).normalized() * 30.0
+	var at := Vector3(top.x + back.x, 0.0, top.z + back.y)
+	cam.position = Vector3(at.x, height_at(at.x, at.z) + 22.0, at.z)
+	cam.look_at(Vector3(0.0, hf.core_height + 4.0, 0.0))
+	cam.fov = 70.0
+
+
 func height_at(x: float, z: float) -> float:
 	return heightfield.height_at(x, z) if heightfield else 0.0
 
