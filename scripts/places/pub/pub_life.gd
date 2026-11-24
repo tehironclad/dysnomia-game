@@ -1,7 +1,7 @@
 class_name PubLife
 extends Node3D
 ## The people of Sunny's Pub: Sunny behind the bar and a handful of regulars
-## who sit, lean and chat, all on v2's avatar (HumanAvatar: the Quaternius body
+## who sit, lean and chat, each in an outfit, on v2's avatar (HumanAvatar: the Quaternius rig
 ## and its UAL clip library, which has real Sitting_Idle / Sitting_Talking /
 ## Idle_Talking clips). They are the room's furniture of life, not players:
 ## nothing about them is read from, or claimed to be, the chain.
