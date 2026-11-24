@@ -71,7 +71,7 @@ static func award(qing: String, game: String, kind: String, score: int, tx: Stri
 # --- The models ------------------------------------------------------------------------------
 
 static func _mats(kind: String) -> Array:
-	var gold := FairKit.paint(Color(1.0, 0.78, 0.3), 0.22, 1.0, 0.6)
+	var gold := FairKit.paint(Color(1.0, 0.78, 0.3), 0.3, 0.6, 0.6)
 	match kind:
 		"trophy":
 			return [gold, FairKit.pbr("dark_wooden_planks", Color(0.55, 0.4, 0.3), 2.0), FairKit.crystal_mat(Color(0.55, 0.85, 1.0))]

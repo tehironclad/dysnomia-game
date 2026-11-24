@@ -40,7 +40,7 @@ func _ready() -> void:
 		l.outline_render_priority = 2
 		l.font_size = 96
 		l.outline_size = 22
-		l.pixel_size = 0.0032
+		l.pixel_size = 0.0019
 		l.outline_modulate = Color(0.06, 0.02, 0.1, 0.95)
 		l.font = DeepFieldTheme.display_font()
 		l.visible = false

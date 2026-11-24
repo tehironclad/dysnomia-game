@@ -173,7 +173,7 @@ func _overlay() -> void:
 			if sim.phase == "show" and _seen_result != sim.round_i:
 				_seen_result = sim.round_i
 				seat.call_out(sim.last_text if sim.last_text != "" else "+%d" % sim.last_points, _result_color(), 1.0)
-	if sim.streak >= 2:
+	if sim.streak >= 2 and not sim.done:
 		seat.stats.text += "\nSTREAK %d · next ×%d" % [sim.streak, sim.next_mult()]
 	elif not sim.done:
 		seat.stats.text += "\nnext ×%d" % sim.next_mult()
@@ -227,7 +227,7 @@ func _on_result() -> void:
 			fx.burst(pos, Color(1.0, 0.85, 0.35) if sim.last_bonus else (Color(0.4, 1.0, 0.65) if sim.last_good else Color(1.0, 0.75, 0.4)), power)
 			if big:
 				fx.sparks(pos, Color(1.0, 0.9, 0.5), power)
-			fx.popup(pos + Vector3(0, 0.25, 0.2), "+%d%s" % [pts, (" ×%d" % sim.last_mult) if sim.last_mult > 1 else ""], _result_color(), 1.5 if big else 1.0)
+			fx.popup(pos + Vector3(0, 0.25, 0.2), "+%d%s" % [pts, (" ×%d" % sim.last_mult) if sim.last_mult > 1 else ""], _result_color(), 1.3 if big else 1.0)
 		FairSfx.play(self, "coin" if sim.last_bonus else "pop", 1.0 + 0.06 * mini(sim.streak, 6))
 		kick(0.025 + 0.05 * power, 0.1 if big else 0.0)
 		if sim.streak >= 2:
@@ -435,9 +435,9 @@ func _celebrate() -> void:
 	var m := FairPrizes.model(prize_kind, 2.6 if prize_kind != "pennant" else 2.0)
 	m.position.y = -0.3
 	_prize.add_child(m)
-	FairKit.omni(_prize, Vector3(0, 0.3, 0.6), Color(1.0, 0.9, 0.7), 2.5, 3.0)
+	FairKit.omni(_prize, Vector3(0, 0.4, 0.8), Color(1.0, 0.92, 0.75), 7.0, 4.0, 1.0)
 	var tag := FairKit.label(_prize, FairPrizes.NAMES.get(prize_kind, "").to_upper() + ("" if paid else "\npractice: a ticket takes it home"),
-		Vector3(0, 0.62, 0), 40, Color(1.0, 0.9, 0.6), 0.0, Color(0.08, 0.02, 0.1), 0.004)
+		Vector3(0, 0.95, 0), 40, Color(1.0, 0.9, 0.6), 0.0, Color(0.08, 0.02, 0.1), 0.004)
 	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	FairSfx.play(self, "cheer")
 	if grand:

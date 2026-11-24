@@ -58,3 +58,24 @@ func test_wormhole_crossing_on_long_frames() -> void:
 	check(RocketVoyage.crosses_disc(Vector3(100, 50, -990), Vector3(100, 50, -1010), c, n, 320.0), "off-centre but inside the ring")
 	check(not RocketVoyage.crosses_disc(Vector3(500, 0, -900), Vector3(500, 0, -1100), c, n, 320.0), "outside the ring misses")
 	check(not RocketVoyage.crosses_disc(Vector3(0, 0, -100), Vector3(0, 0, -200), c, n, 320.0), "not there yet")
+
+
+func test_ride_steps_are_short_walks_not_teleports() -> void:
+	near(RideBase.step_seconds(0.0), RideBase.STEP_MIN_S, 1e-5, "a step on the spot still takes a moment")
+	check(RideBase.step_seconds(3.0) > 0.6 and RideBase.step_seconds(3.0) <= RideBase.STEP_MAX_S, "3 m: a short walk")
+	near(RideBase.step_seconds(80.0), RideBase.STEP_MAX_S, 1e-5, "never long")
+	var a := Vector3(0, 0, 0)
+	var b := Vector3(4, 1, 0)
+	near(RideBase.step_point(a, b, 0.0).distance_to(a), 0.0, 1e-5, "starts where they stood")
+	near(RideBase.step_point(a, b, 1.0).distance_to(b), 0.0, 1e-5, "ends on the seat")
+	var mid := RideBase.step_point(a, b, 0.5)
+	check(mid.x > 0.5 and mid.x < 3.5, "in between halfway")
+	check(RideBase.step_point(a, b, 0.8).y > a.lerp(b, 0.8 * 0.8 * (3.0 - 1.6)).y, "a little hop onto the seat")
+
+
+func test_prize_models_build() -> void:
+	for k in FairPrizes.KINDS:
+		var m := FairPrizes.mesh(k)
+		check(m != null and m.get_surface_count() >= 2, "%s: one mesh, a surface per material (%d)" % [k, m.get_surface_count() if m else 0])
+	eq(MidwayGame.prize_kind("motzkin", MidwaySim.par("motzkin") * 7 / 10), "rocket")
+	eq(MidwayGame.prize_kind("saat", MidwaySim.par("saat") / 2), "moon")

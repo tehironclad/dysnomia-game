@@ -136,7 +136,7 @@ func spot_at() -> Vector3:
 
 
 func cheer_eye() -> Transform3D:
-	return look(Vector3(3.2, 2.2, 7.8), Vector3(0.0, 2.9, 0.3))
+	return look(Vector3(1.1, 2.0, 5.6), Vector3(0.0, 2.7, 0.2))
 
 
 func impact_pos() -> Vector3:

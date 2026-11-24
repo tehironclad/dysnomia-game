@@ -458,7 +458,7 @@ func _preview_auto(g: MidwayPlay, phase: String) -> void:
 		g.sim.step()
 	g.mark_seen()
 	if phase == "hit":
-		await get_tree().create_timer(0.85).timeout
+		await get_tree().create_timer(1.0).timeout  # just before the capture (screenshot.gd: 2.5 s, then --frames)
 		var c1 = MidwayAuto.choose(g.sim)
 		if c1 is Array:
 			g.set_aim(Vector2(c1[0], c1[1]))
