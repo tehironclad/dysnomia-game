@@ -630,7 +630,7 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   total's log10 placed in the tier's band, in whole 4 m floors; bars only grow, so it only grows.
   RatKing (log10 ≈ 9.1 at block 28,135,887): Burj, 111 floors, roof 444 m, spire tip 586 m.
 - **Site:** `LandmarkPlan.find_site` is the fair's search (round footprint fully on the plateau,
-  flattest, clear of the Core, arcade, monolith, plinth, arrival, the skyline ring and the fair),
+  flattest, clear of the Core, arcade, monolith, plinth, arrival, the skyline ring, the fair and the vehicle pad, 24 m inside the border fields),
   preferring the north. The plaza (r 30 m) and the landing ring (r 14 m, 90–220 m away) are terraces
   in the terrain's own material. The site does not depend on the tier, so it never moves.
 - **Lit windows** follow Development energy (Epibar total); **signs** are the QING's name (registry
@@ -650,5 +650,8 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
 - **Score:** horizontal metres flown + ring points (≤ 3 m 1000, ≤ 8 m 600, ≤ 14 m 300, else
   200 − d), times the landing (stand-up 1.0, skid 0.6, impact 0.25). Bests are local
   (`user://basejump.cfg`).
+- **Check it:** `tools/live_basejump.gd [-- --qing=0x…]` (headless, read-only, a practice jump) rides the
+  lift, launches, opens the wingsuit and canopy and prints the score card; RatKing: lift 444 m in
+  ~17 s, ~80 s of flight. Previews: `screenshot.gd -- --view=tower|deck|jump`.
 - **Keys:** `wingsuit` (Q) and `parachute` (C) are input actions in `project.godot`, listed in
   `ControlsHelp.ACTIONS`.

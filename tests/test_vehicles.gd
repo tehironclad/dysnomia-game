@@ -178,8 +178,7 @@ func test_hover_settles_at_its_height_and_glides_off_edges() -> void:
 
 
 func test_skimmer_hop_clears_a_crest() -> void:
-	## From the cushion, the crest jump must clear the tallest Julia boundary ridge:
-	## heightfield crest is 3–6 m, +2 m for star sets → 8 m at most.
+	## From the cushion, the crest jump must clear the Julia boundary ridge (CREST_M).
 	var s := VehicleSpecs.spec("skimmer")
 	var y := float(s["hover"])
 	var vy := float(s["jump"])
@@ -188,7 +187,7 @@ func test_skimmer_hop_clears_a_crest() -> void:
 		vy += VehicleSpecs.hover_accel(y, vy, s) / 60.0
 		y += vy / 60.0
 		top = maxf(top, y)
-	check(top > 8.0 + 1.0, "apex %.1f m" % top)
+	check(top > JuliaHeightfield.CREST_M + 1.0, "apex %.1f m" % top)
 
 
 func test_spring_is_stable_and_damped() -> void:

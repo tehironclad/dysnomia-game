@@ -54,6 +54,7 @@ var _lift_t := 0.0
 var _lift_from := Vector3.ZERO
 var _lift_h := 0.0
 var _lift_pad: MeshInstance3D
+var _suit_light: OmniLight3D   ## the suit's own lights, so a jumper reads against the night
 var _last_pos := Vector3.ZERO
 var _g := 3.2              ## the player's own (low) gravity
 
@@ -367,6 +368,7 @@ func _set_pose(p: String) -> void:
 	_attach_wing()  # the avatar can rebuild its body (a new look): follow it
 	_wing.visible = p == "wingsuit"
 	_canopy.visible = p == "canopy"
+	_suit_light.visible = p != ""
 	_canopy.scale = Vector3.ONE * 0.15
 
 
@@ -456,6 +458,14 @@ func _build_gear() -> void:
 	lmat.albedo_color = Color(0.85, 0.88, 0.95)
 	lm.material_override = lmat
 	_canopy.add_child(lm)
+	_suit_light = OmniLight3D.new()
+	_suit_light.name = "SuitLight"
+	_suit_light.light_color = _tint.lerp(Color.WHITE, 0.5)
+	_suit_light.light_energy = 1.6
+	_suit_light.omni_range = 6.5
+	_suit_light.position = Vector3(0, 2.6, -0.4)
+	_suit_light.visible = false
+	_player.add_child(_suit_light)
 	# Your own tower's cradle
 	_lift_pad = MeshInstance3D.new()
 	var pb := BoxMesh.new()

@@ -39,6 +39,7 @@ var _ground_mat: Material
 var _tower: Node3D       ## rotated so +Z faces the Core
 var _ring_node: Node3D
 var _mat: ShaderMaterial
+var _mat_round: ShaderMaterial  ## the same facade on round masses (the Burj's core)
 var _car: Node3D
 var _blinkers: Array = []
 var _blink_mat: StandardMaterial3D
@@ -94,6 +95,7 @@ func set_development(tier: int, hypobar_total: PackedInt64Array, p_energy: float
 	hypobar_text = TokenFormat.group(BigInt.to_decimal(hypobar_total)) if not hypobar_total.is_empty() else "—"
 	if _mat:
 		_mat.set_shader_parameter("energy", energy)
+		_mat_round.set_shader_parameter("energy", energy)
 	var lg := BigInt.log10(hypobar_total) if not BigInt.is_zero(hypobar_total) else -INF
 	var s := LandmarkPlan.spec(tier, lg)
 	if not board.is_empty():
@@ -142,6 +144,8 @@ func _rebuild(s: Dictionary) -> void:
 	_mat.set_shader_parameter("seed", float(_qing.right(6).hex_to_int() % 997))
 	_mat.set_shader_parameter("base_y", 0.0)
 	_mat.set_shader_parameter("crown_y", 1.0e6)
+	_mat_round = _mat.duplicate()
+	_mat_round.set_shader_parameter("curved", 1.0)
 	for m in ms:
 		_mass(m)
 	_build_lift()
@@ -153,6 +157,8 @@ func _rebuild(s: Dictionary) -> void:
 	# base_y/crown_y need world heights: set once the tower is in the tree
 	_mat.set_shader_parameter("base_y", global_position.y)
 	_mat.set_shader_parameter("crown_y", global_position.y + float(spec["roof"]) - 16.0)
+	for k in ["base_y", "crown_y"]:
+		_mat_round.set_shader_parameter(k, _mat.get_shader_parameter(k))
 	print("[Landmark] %s · %d floors · roof %d m · top %d m · plank toward %d°" % [spec["title"], spec["floors"], int(spec["roof"]), int(spec["top"]), int(rad_to_deg(plank_info["bearing"]))])
 	built.emit()
 
@@ -177,7 +183,7 @@ func _mass(m: Dictionary) -> void:
 		mi.rotation.y = m["yaw"]
 		Solid.box(_tower, m["size"], m["pos"], m["yaw"])
 	mi.position = m["pos"]
-	mi.material_override = _mat
+	mi.material_override = _mat_round if m.has("cyl") else _mat
 	_tower.add_child(mi)
 
 
@@ -401,8 +407,8 @@ func _build_plank(deck: Node3D, r: float) -> void:
 	# The gate at the tip: a light bar (and an invisible wall until you launch)
 	_box(plank, Vector3(0.1, 0.1, 2.6), Vector3(length * 0.5, 1.1, 0), _glow(Color("#ff8fa0"), 2.5))
 	Solid.box(plank, Vector3(0.3, 1.6, 2.6), Vector3(length * 0.5, 0.8, 0))
-	var arrow := _label(plank, "BASE JUMP ›", Vector3(length * 0.5 - 2.2, 0.03, 0), 0.02, 96, Color("#ffd27a"))
-	arrow.rotation = Vector3(-PI * 0.5, PI * 0.5, 0)
+	var arrow := _label(plank, "BASE JUMP ›", Vector3(length * 0.5 - 2.4, 0.03, 0), 0.006, 96, Color("#ffd27a"))
+	arrow.rotation = Vector3(-PI * 0.5, -PI * 0.5, 0)  # flat, reading across, its top toward the tip
 	# A sign at the plank's root (billboard), with the numbers that matter
 	_label(deck, "BASE JUMP · %d m\nlanding ring %d m %s" % [int(spec["deck"]), int(_ring_dist()), _ring_dir()],
 		Vector3(cos(b) * (r0 - 1.5), 2.6, sin(b) * (r0 - 1.5)), 0.01, 48, DeepFieldTheme.ICE, true, true)
@@ -803,11 +809,15 @@ func frame(view: String, camera: Camera3D) -> void:
 	match view:
 		"tower":
 			# From the plaza's edge toward the Core side, looking up the whole height
-			# From open ground to one side (the side nearer the middle), the whole height in frame
-			var away := side if (base + side * 200.0).length() < (base - side * 200.0).length() else -side
-			var dist := clampf(top * 0.42, 60.0, 240.0)
-			camera.position = base + away * dist + Vector3(0, dist * 0.25, 0)
-			camera.look_at(base + Vector3(0, dist * 0.25 + dist * 0.48, 0))
+			# From open ground on the side toward the middle, the whole height in frame
+			var inward := Vector3(-base.x, 0, -base.z).normalized().rotated(Vector3.UP, 0.6)
+			var dist := clampf(top * 0.3, 60.0, 170.0)
+			camera.position = base + inward * dist + Vector3(0, dist * 0.15, 0)
+			var core := get_parent() as Node3D
+			if core:
+				var lp := camera.position - core.global_position
+				camera.position.y = maxf(camera.position.y, float(_height_fn.call(lp.x, lp.z)) + core.global_position.y + 3.0)
+			camera.look_at(base + Vector3(0, dist * 0.15 + dist * 0.64, 0))
 			camera.fov = 85.0
 		"deck":
 			# On the sky deck by the plank's root, looking out along it over the territory
@@ -815,16 +825,16 @@ func frame(view: String, camera: Camera3D) -> void:
 			var sd := d.cross(Vector3.UP).normalized()
 			var r0: float = plank_info["from"]
 			var root := _tower.to_global(Vector3(0, deck, 0))
-			camera.position = root + d * (r0 - 5.0) + sd * 2.5 + Vector3(0, 2.4, 0)
-			camera.look_at(root + d * (r0 + 220.0) + Vector3(0, -deck * 0.45, 0))
+			camera.position = root + d * (r0 - 1.5) + sd * 0.6 + Vector3(0, 2.6, 0)
+			camera.look_at(root + d * (r0 + 320.0) + Vector3(0, -deck * 0.38, 0))
 			camera.fov = 78.0
 		"jump":
 			# Ahead of the jumper (BaseJump.preview puts them there), looking back at the tower
 			var d := plank_dir()
 			var p := jump_preview_at()
 			var sd := d.cross(Vector3.UP).normalized()
-			camera.position = p + d * 9.0 + sd * 4.0 + Vector3(0, -2.0, 0)
-			camera.look_at(p - d * 30.0 + Vector3(0, 6.0, 0))
+			camera.position = p + d * 4.5 + sd * 1.4 + Vector3(0, -0.6, 0)
+			camera.look_at(p - d * 24.0 + sd * 3.0 + Vector3(0, 3.0, 0))
 			camera.fov = 70.0
 
 

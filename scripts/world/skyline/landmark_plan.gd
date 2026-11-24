@@ -298,7 +298,7 @@ static func tower_site(height_fn: Callable, others: Array = []) -> Dictionary:
 
 ## The landing ring: on flat land ~150 m from the tower, clear of everything.
 static func ring_site(height_fn: Callable, tower_at: Vector2, others: Array = []) -> Dictionary:
-	var avoid: Array = [[Vector2.ZERO, 62.0], [tower_at, PLAZA_R + RING_R + 46.0]]
+	var avoid: Array = [[Vector2.ZERO, 74.0], [tower_at, PLAZA_R + RING_R + 46.0]]  # 74: clear of the skyline ring too
 	for k in KEEP_CLEAR:
 		avoid.append([k, RING_R + 30.0])
 	for o in others:

@@ -13,6 +13,7 @@ uniform float energy = 0.5;       // 0..1 (Development.energy_of)
 uniform float seed = 0.0;
 uniform float base_y = 0.0;       // world height of the plaza (floor 0)
 uniform float crown_y = 1000.0;   // world height where the crown lights start
+uniform float curved = 0.0;       // 1 on round masses: the facade runs around the circumference
 
 varying vec3 opos;
 varying vec3 onrm;
@@ -34,7 +35,7 @@ void fragment() {
 	vec2 nf = onrm.xz;
 	float side = step(0.5, length(nf));
 	vec2 t = length(nf) > 0.001 ? normalize(vec2(-nf.y, nf.x)) : vec2(1.0, 0.0);
-	float u = dot(opos.xz, t);
+	float u = mix(dot(opos.xz, t), atan(opos.z, opos.x) * length(opos.xz), curved);
 	float v = wy;
 	vec2 cell = vec2(floor(u / 1.6), floor(v / 4.0));
 	vec2 f = vec2(fract(u / 1.6), fract(v / 4.0));
@@ -61,7 +62,11 @@ void fragment() {
 	float fin = 1.0 - smoothstep(0.0, fwidth(fu) * 1.5 + 0.004, abs(fract(fu + 0.5) - 0.5));
 	float fv = v / 16.0;
 	float band = 1.0 - smoothstep(0.0, fwidth(fv) * 1.5 + 0.004, abs(fract(fv + 0.5) - 0.5));
-	e += tint * (fin * 0.55 + band * (0.3 + 0.4 * energy)) * side;
+	// …faded out where a pixel spans too much of the pattern (far away), so the
+	// lines never smear into a solid glow
+	float fin_fade = clamp(1.0 - fwidth(fu) * 6.0, 0.0, 1.0);
+	float band_fade = clamp(1.0 - fwidth(fv) * 6.0, 0.0, 1.0);
+	e += tint * (fin * 0.45 * fin_fade + band * (0.25 + 0.35 * energy) * band_fade) * side;
 	// The crown: brighter bands toward the top
 	float crown = step(crown_y - base_y, v);
 	e += tint * crown * side * (0.5 + 0.5 * step(0.5, fract(v / 8.0)));

@@ -101,7 +101,7 @@ func test_sites_on_land_clear_and_deterministic() -> void:
 	var r := P.ring_site(island, at, [[fair_at, 42.0]])
 	check(r["ok"], "a landing ring on land")
 	var ra: Vector2 = r["at"]
-	check(ra.length() >= 62.0, "the ring is clear of the Core")
+	check(ra.length() >= 74.0, "the ring is clear of the Core and the skyline")
 	check(ra.distance_to(at) >= P.PLAZA_R + P.RING_R + 46.0, "and away from the tower's foot")
 	check(ra.distance_to(fair_at) >= 42.0 + P.RING_R + 8.0, "and the fair")
 	# No land at all: best effort, never reported as a real site
