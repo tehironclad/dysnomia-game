@@ -94,6 +94,8 @@ func _on_state() -> void:
 
 func _on_lines(ls: Array) -> void:
 	echoes.update_from(ls.filter(func(l): return ChatLines.is_chain_shaped(l)))
+	for lab in echoes.find_children("*", "Label3D", true, false):
+		(lab as Label3D).pixel_size = 0.0075  # read from the plaza, not from inside a hall
 	var st: Dictionary = ChatFeed.stats()
 	glow = ChatLines.glow_for(int(st["count"]))
 	_refresh_markers()
@@ -210,7 +212,7 @@ func _bubble(anchor: Node3D, offset: Vector3, l: Dictionary, free_anchor: bool =
 	var lab := Label3D.new()
 	lab.font = DeepFieldTheme.body_font()
 	lab.font_size = 30
-	lab.pixel_size = 0.0055
+	lab.pixel_size = 0.0045
 	lab.width = 520.0
 	lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	lab.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -259,8 +261,8 @@ func _ripple() -> void:
 
 ## --view=chat: the Room's front, its echoes and its glow.
 func frame(cam: Camera3D) -> void:
-	cam.global_position = global_position + Vector3(0.0, 5.0, 25.0)
-	cam.look_at(global_position + Vector3(0.0, 3.4, 0.0))
+	cam.global_position = global_position + Vector3(0.0, 3.4, 19.0)
+	cam.look_at(global_position + Vector3(0.0, 2.6, 0.0))
 	cam.fov = 62.0
 
 

@@ -188,6 +188,12 @@ func resolve_wallets(subset: Array) -> int:
 func describe() -> String:
 	var src := "LogEvent(string,uint64,uint64,string) (topic 0xb916…) emitted by %s" % qing if mode == "room" \
 		else "LogEvent(uint64,uint64,string) (topic 0x6b81…) emitted by Fomalhaute"
-	var hist := "history: —" if not history_ok and loaded_limit > 0 else ("history: newest %d lines, scanned from block %d%s" % [loaded_limit, scanned_from, " (capped)" if capped else ""])
+	var hist := ""
+	if loaded_limit == 0:
+		hist = "chain history: reading…" if loading or _wanted > 0 else "chain history: not read"
+	elif not history_ok:
+		hist = "chain history: — (the log scan stopped at block %d)" % scanned_from
+	else:
+		hist = "chain history: newest %d lines, scanned from block %d%s" % [loaded_limit, scanned_from, " (capped)" if capped else ""]
 	return "%s\n%s · tailed to block %s every %d s%s" % [src, hist, str(after) if after >= 0 else "—", int(TAIL_S),
 		("\n" + site_note) if site_note != "" else ""]

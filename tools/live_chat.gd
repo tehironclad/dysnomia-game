@@ -99,6 +99,17 @@ func _run() -> void:
 	bar.open("gm from %s (view only)" % sess.player.username)
 	print("note: %s" % bar.note.text)
 	await _send(cf, bar, "real player viewed read-only")
+	print("\n== Into the arcade: the feed keeps running ==")
+	var before = cf.current
+	change_scene_to_file("res://scenes/places/arcade_place.tscn")
+	await _wait(func(): return current_scene != null and current_scene.get("chat_ctl") != null, 30.0)
+	for i in 30:
+		await process_frame
+	var ctl = current_scene.get("chat_ctl")
+	print("same feed object: %s · HUD feed visible: %s · bar allowed (T is the place's): %s" % [str(cf.current == before), str(cf.feed_visible()), str(cf.bar_allowed())])
+	print("arcade's chat panel reads the shared feed: %s · its history asks for 400 lines" % str(ctl != null and ctl.feed == cf.current))
+	await _wait(func(): return cf.current.loaded_limit >= 400, 120.0)
+	print("lines now: %d (history limit %d)" % [cf.current.lines.size(), cf.current.loaded_limit])
 	print("\nlive_chat done")
 	quit()
 

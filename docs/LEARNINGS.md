@@ -674,3 +674,31 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   ~17 s, ~80 s of flight. Previews: `screenshot.gd -- --view=tower|deck|jump`.
 - **Keys:** `wingsuit` (Q) and `parachute` (C) are input actions in `project.godot`, listed in
   `ControlsHelp.ACTIONS`.
+
+## 17. QING chat from anywhere (2026-11-24)
+
+- **What a room line does** [live]: `CHOA.Chat(qing, text)` is a reaction plus the line: Ω (`⌊Fornax(QING)/E_Q⌋`)
+  goes to the speaker's Hypobar here, Omicron to their Epibar (§4), and the QING logs `LogEvent`. It needs
+  admission (§5). After a post the game reads `YUE.Bar(QING)` at the receipt block − 1 and the block and shows
+  the measured change.
+- **Cost of one line** [live, Zürich, PulsePunk's wallet, block ≈ 28,136,975]: `eth_estimateGas` **≈ 848,000 gas**;
+  at the node's gas price then (≈ 6.5·10¹⁴ wei) ≈ **550 PLS**. One wallet approval per transaction; a cover room
+  also needs Join once a day (approve cover + 1 wei, then Join: 2 approvals, or 1 when the allowance suffices).
+- **Batching works** [live]: CHOA keys the speaker on **tx.origin**, so `Multicall3.aggregate3` of several
+  `CHOA.Chat` calls posts them all from one signature (a 3-line batch: ≈ 1,787,000 gas, ≈ 596k a line, vs 848k
+  alone). A wallet with no YUE reverts the same through Multicall3 (`NotStarted`, masked as "Multicall3: call
+  failed" when allowFailure is false, so simulate the batch with allowFailure true to decode each line).
+  Players already do it: PulsePunk's tx `0x67c3…f258` sent 40 × (`QING.Join(LAU)` + `QING.Chat(LAU, "Anyone
+  home?")`) to 40 rooms in one transaction (4.4 M gas). The chat bar sends one line at once; lines typed while it
+  is being signed go together as one aggregate3 (allowFailure false: all post or none), max 5.
+- **`eth_simulateV1` and `debug_traceCall` are not available** on `rpc.pulsechain.com` now (−32601, checked
+  2026-11-24), despite §9. Simulate with `eth_call`/`eth_estimateGas`; the logs come from the receipt.
+- **Site API** `/api/qing-chat` returns `{from, fromName, soul, text, txHash, block, logIndex, qingAddr}` (no Aura,
+  so no ✓/⚠); `from` is the tx sender. The game paints with it first and replaces each line with the chain's copy;
+  speakers' wallets come from `eth_getTransactionByHash` (tx.from), never from the API.
+- **Rooms are quiet**: on 2026-11-24 the newest line in the busiest rooms (Zürich, Illinois, RatKing, Shell City,
+  enter teh QING) was ~349,000 blocks (≈ 40 days) old. "Lines today" (8,400 blocks ≈ 24 h) is 0 everywhere, so the
+  crown glow is at rest and no tower carries a top-speaker marker; both follow the lines when they come.
+- **Free chat**: say lines go through the presence server (`Net.send_chat`) when it exists; they are tagged "say",
+  carry no block and add nothing to the territory. Only room lines are chain truth.
+

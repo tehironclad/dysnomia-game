@@ -46,7 +46,7 @@ func _ready() -> void:
 	var h := feed.history
 	_root.add_child(h)
 	h.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	h.offset_left = 20
+	h.offset_left = 420  # right of the HUD's territory column
 	h.offset_top = -300
 	_refresh()
 

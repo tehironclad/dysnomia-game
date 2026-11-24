@@ -159,7 +159,9 @@ func _on_arrived(fresh: Array) -> void:
 		_add_row(l, TTL, false)
 		unread += 1
 	_refresh_header()
-	Cues.play(self, "line")
+	var sc := get_tree().current_scene
+	if is_visible_in_tree() and not (sc and sc.get("chat_ctl") != null):  # places chime themselves
+		Cues.play(self, "line")
 
 
 func _is_own_shown(l: Dictionary) -> bool:

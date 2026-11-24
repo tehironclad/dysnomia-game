@@ -161,7 +161,7 @@ func _chat_preview() -> void:
 	var t0 := Time.get_ticks_msec()
 	while (cf.current == null or not cf.current.is_loaded()) and Time.get_ticks_msec() - t0 < 90000:
 		await process_frame
-	for i in 30:
+	for i in 4:
 		await process_frame
 	if cf.current and _chat_replay > 0:
 		var ls: Array = cf.current.lines.slice(maxi(0, cf.current.lines.size() - _chat_replay))
@@ -169,7 +169,7 @@ func _chat_preview() -> void:
 		cf.hud.feed._on_arrived(ls)
 		for l in ls:
 			cf.bubble.emit(l)
-			for i in 20:
+			for i in 3:
 				await process_frame
 	if _chat == "bar":
 		cf.hud.bar.open(_chat_text)

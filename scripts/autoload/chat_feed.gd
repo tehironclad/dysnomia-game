@@ -126,7 +126,10 @@ func feed_visible() -> bool:
 ## their own panel with T).
 func bar_allowed() -> bool:
 	var s := get_tree().current_scene
-	return s != null and s.scene_file_path == Travel.TERRITORY_SCENE and feed_visible()
+	if s == null or s.scene_file_path != Travel.TERRITORY_SCENE or not feed_visible():
+		return false
+	var acts = s.get("actions")
+	return not (acts != null and acts.has_method("is_open") and acts.is_open())  # a move's panel has the keys
 
 
 func stats() -> Dictionary:
