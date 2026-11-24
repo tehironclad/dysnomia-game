@@ -127,4 +127,11 @@
   - `--view=aerial|ground|core|sky|hud` gives a fixed camera. With no `--view` you see the player's own
     third-person camera.
 
+- Online play (`scripts/net/`, `docs/SERVER.md`, LEARNINGS §18): `server.bat` / `tools/server.sh` run the
+  headless game server (laptop + free tunnel). The `Net` autoload API (`send_chat`, `chat_received`,
+  `top`, `submit`) stays single-player quietly when no server answers. Sign-in is a free `personal_sign`
+  checked by GDScript ecrecover. Test it: `godot --headless --path . -s res://tools/net_selftest.gd`.
+  Screenshot with a remote player: run the server and `tools/net_bot.gd -- --url=ws://127.0.0.1:N`,
+  then `screenshot.gd -- --net-url=ws://127.0.0.1:N` (no `--view`).
+
 **Research source:** `tehironclad/entropy-ai-pulse`. Attach it read-only when a WP says "port from …".
