@@ -8,7 +8,7 @@ extends Node3D
 ## Uses HumanAvatar's public API only (set_head, set_body, update_movement,
 ## set_seated). Someone driving or on a ride is drawn seated (simplified).
 
-const TAG_Y := 2.05
+const TAG_Y := 2.02
 const VOICE_RATE := 16000.0
 
 var peer_id := -1
@@ -19,7 +19,6 @@ var is_crouching := false
 
 var avatar: HumanAvatar
 var tag: Label3D
-var speak_mark: Label3D
 var voice: AudioStreamPlayer3D
 var _playback: AudioStreamGeneratorPlayback
 var _voice_t := 0.0
@@ -34,16 +33,10 @@ func setup(info: Dictionary) -> void:
 	avatar.civilian = true  # ~16 meshes, like the pub's regulars
 	avatar.name = "Avatar"
 	add_child(avatar)
-	# Labels keep their size on screen (fixed_size); offsets are in label pixels.
-	tag = _label(30, Color(0.86, 0.93, 1.0))
+	# One line, a fixed size on screen (readable far off), just under ChatLife's bubbles (2.55 m).
+	tag = _label(26, Color(0.86, 0.93, 1.0))
 	tag.position.y = TAG_Y
 	tag.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	speak_mark = _label(30, Color(0.45, 1.0, 0.7))
-	speak_mark.position.y = TAG_Y
-	speak_mark.offset = Vector2(0, 78)
-	speak_mark.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	speak_mark.text = "◉ talking"
-	speak_mark.visible = false
 	voice = AudioStreamPlayer3D.new()
 	var gen := AudioStreamGenerator.new()
 	gen.mix_rate = VOICE_RATE
@@ -62,7 +55,7 @@ func _label(px: int, col: Color) -> Label3D:
 	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	l.no_depth_test = true
 	l.fixed_size = true
-	l.pixel_size = 0.0011
+	l.pixel_size = 0.0009
 	l.font_size = px
 	l.outline_size = 10
 	l.modulate = col
@@ -86,8 +79,10 @@ func apply_info(info: Dictionary) -> void:
 	var guest: bool = info.get("guest", true) or wallet == ""
 	display_name = String(info.get("name", ""))
 	var shown := display_name if display_name != "" else ("guest" if guest else NetProto.short_wallet(wallet))
-	tag.text = shown + ("" if guest else "\n" + NetProto.short_wallet(wallet))
-	tag.modulate = Color(0.7, 0.74, 0.8) if guest else Color(0.86, 0.93, 1.0)
+	_tag_text = shown + ("" if guest or shown == NetProto.short_wallet(wallet) else " · " + NetProto.short_wallet(wallet))
+	_tag_col = Color(0.7, 0.74, 0.8) if guest else Color(0.86, 0.93, 1.0)
+	_speaking = not _speaking  # force a refresh
+	_show_speaking(not _speaking)
 	var head := String(info.get("head", "bear"))
 	var acc: Array = info.get("acc", []) if info.get("acc") is Array else []
 	var key := head + "|" + ",".join(acc) + "|" + String(info.get("body", "male"))
@@ -136,6 +131,20 @@ func play_voice(pcm: PackedFloat32Array, volume: float) -> void:
 	_playback.push_buffer(frames)
 
 
+var _tag_text := ""
+var _tag_col := Color.WHITE
+var _speaking := false
+
+
+## The speaking mark: "◉" before the name, in green, while they talk.
+func _show_speaking(on: bool) -> void:
+	if on == _speaking:
+		return
+	_speaking = on
+	tag.text = ("◉ " + _tag_text) if on else _tag_text
+	tag.modulate = Color(0.45, 1.0, 0.7) if on else _tag_col
+
+
 func _exit_tree() -> void:
 	var chat_feed := get_node_or_null("/root/ChatFeed")
 	if chat_feed and wallet != "" and chat_feed.bubble_for(wallet) == self:
@@ -144,4 +153,4 @@ func _exit_tree() -> void:
 
 func _process(delta: float) -> void:
 	_voice_t = maxf(0.0, _voice_t - delta)
-	speak_mark.visible = _voice_t > 0.0 or _flag_speaking
+	_show_speaking(_voice_t > 0.0 or _flag_speaking)
