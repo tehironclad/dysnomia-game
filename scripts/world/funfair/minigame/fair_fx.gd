@@ -14,11 +14,13 @@ var _confetti: CPUParticles3D
 var _pops: Array = []         ## [Label3D, age, base_pos, base_scale]
 var _flash: OmniLight3D
 var _flash_e := 0.0
-var _bulbs: Array = []
-var _bulb_off: Material
-var _bulb_a: Material
-var _bulb_b: Material
-var _bulb_gold: Material
+var _bulbs: Array = []        ## bulb positions (stage space); drawn by _bulb_mm, one instance each
+var _bulb_mm: MultiMesh       ## the chase bulbs: one draw for the frame (was ~120 meshes)
+## Instance colours: rgb = colour, a = emission energy / 16 (fair_chase.gdshader).
+const BULB_OFF := Color(0.35, 0.28, 0.2, 0.0)
+const BULB_A := Color(1.0, 0.82, 0.45, 7.0 / 16.0)
+const BULB_B := Color(1.0, 0.35, 0.7, 7.0 / 16.0)
+const BULB_GOLD := Color(1.0, 0.9, 0.35, 12.0 / 16.0)
 var _mode := "idle"
 var _clock := 0.0
 var _step := -1
@@ -52,10 +54,6 @@ func _ready() -> void:
 	_flash.visible = false
 	_flash.shadow_enabled = false
 	add_child(_flash)
-	_bulb_off = FairKit.paint(Color(0.35, 0.28, 0.2), 0.4, 0.2)
-	_bulb_a = FairKit.glow(Color(1.0, 0.82, 0.45), 7.0, 4.0)
-	_bulb_b = FairKit.glow(Color(1.0, 0.35, 0.7), 7.0, 4.0)
-	_bulb_gold = FairKit.glow(Color(1.0, 0.9, 0.35), 12.0, 7.0)
 
 
 func _bit_mesh() -> Mesh:
@@ -246,13 +244,29 @@ func bulb_frame(c: Vector3, w: float, h: float, spacing: float = 0.2) -> void:
 		pts.append(c + Vector3(w * 0.5 - i * w / nx, -h * 0.5, 0))
 	for i in ny:
 		pts.append(c + Vector3(-w * 0.5, -h * 0.5 + i * h / ny, 0))
-	var sm := FairKit.sphere_mesh(0.032, 8)
-	var socket := FairKit.cyl_mesh(0.02, 0.024, 0.03, 8)
-	var brass := FairKit.paint(Color(0.75, 0.6, 0.3), 0.3, 0.9)
-	for p in pts:
-		var b := FairKit.mesh(self, sm, p + Vector3(0, 0, 0.03), _bulb_off, Vector3.ZERO, false)
-		FairKit.mesh(self, socket, p, brass, Vector3(PI * 0.5, 0, 0), false)
-		_bulbs.append(b)
+	# Two MultiMeshes (bulbs, brass sockets): two draws for the whole frame.
+	_bulbs = pts
+	_bulb_mm = MultiMesh.new()
+	_bulb_mm.transform_format = MultiMesh.TRANSFORM_3D
+	_bulb_mm.use_colors = true
+	_bulb_mm.mesh = FairKit.sphere_mesh(0.032, 8)
+	_bulb_mm.instance_count = pts.size()
+	var sockets := MultiMesh.new()
+	sockets.transform_format = MultiMesh.TRANSFORM_3D
+	sockets.mesh = FairKit.cyl_mesh(0.02, 0.024, 0.03, 8)
+	sockets.instance_count = pts.size()
+	var up := Basis(Vector3.RIGHT, PI * 0.5)
+	for i in pts.size():
+		_bulb_mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, pts[i] + Vector3(0, 0, 0.03)))
+		_bulb_mm.set_instance_color(i, BULB_OFF)
+		sockets.set_instance_transform(i, Transform3D(up, pts[i]))
+	for e in [[_bulb_mm, FairKit.shader_mat("fair_chase"), "Bulbs"], [sockets, FairKit.paint(Color(0.75, 0.6, 0.3), 0.3, 0.9), "Sockets"]]:
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = e[2]
+		mmi.multimesh = e[0]
+		mmi.material_override = e[1]
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mmi)
 	set_mode("still")
 
 
@@ -289,7 +303,7 @@ func _process(delta: float) -> void:
 		if _step != -2:
 			_step = -2
 			for i in _bulbs.size():
-				_bulbs[i].material_override = _bulb_a if _mode == "still" and i % 2 == 0 else _bulb_off
+				_bulb_mm.set_instance_color(i, BULB_A if _mode == "still" and i % 2 == 0 else BULB_OFF)
 	elif not _bulbs.is_empty():
 		busy = true
 		var rate := 5.0 if _mode == "idle" else (16.0 if _mode == "win" else 6.0)
@@ -298,11 +312,11 @@ func _process(delta: float) -> void:
 			_step = s
 			var n := _bulbs.size()
 			for i in n:
-				var m: Material = _bulb_off
+				var m := BULB_OFF
 				match _mode:
-					"idle": m = _bulb_a if (i + s) % 4 == 0 else _bulb_off
-					"win": m = (_bulb_a if (i / 3) % 2 == 0 else _bulb_b) if (i + s) % 3 != 0 else _bulb_off
-					"grand": m = _bulb_gold if s % 2 == 0 or i % 2 == 0 else _bulb_b
-				_bulbs[i].material_override = m
+					"idle": m = BULB_A if (i + s) % 4 == 0 else BULB_OFF
+					"win": m = (BULB_A if (i / 3) % 2 == 0 else BULB_B) if (i + s) % 3 != 0 else BULB_OFF
+					"grand": m = BULB_GOLD if s % 2 == 0 or i % 2 == 0 else BULB_B
+				_bulb_mm.set_instance_color(i, m)
 	if not busy:
 		set_process(false)

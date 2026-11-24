@@ -4,10 +4,12 @@ extends SceneTree
 ## their surfaces and shadow casters, grouped by node path (first --depth levels
 ## under the scene root), plus how many sit inside the camera's frustum.
 ##   xvfb-run … godot --path . -s res://tools/perf_breakdown.gd -- [--qing=0x…] [--view=…] [--scene=…] [--depth=3]
-## Also prints the renderer's own visible/shadow split for the frame.
+## Instances past their visibility range don't count as in view. Also prints the renderer's
+## own visible/shadow split for the frame.
 
 var _scene := "res://scenes/territory/territory_v2.tscn"
 var _depth := 3
+var _cam_pos := Vector3.ZERO
 
 
 func _initialize() -> void:
@@ -25,6 +27,8 @@ func _run() -> void:
 		await process_frame
 	var cam := root.get_viewport().get_camera_3d()
 	var planes: Array[Plane] = cam.get_frustum() if cam else []
+	if cam:
+		_cam_pos = cam.global_position
 	var groups := {}
 	var total := [0, 0, 0, 0]
 	_walk(current_scene, current_scene, planes, groups, total)
@@ -88,6 +92,8 @@ func _in_view(gi: GeometryInstance3D, planes: Array[Plane]) -> bool:
 	var box := gi.global_transform * gi.get_aabb()
 	var c := box.get_center()
 	var r := box.size.length() * 0.5
+	if gi.visibility_range_end > 0.0 and _cam_pos.distance_to(c) > gi.visibility_range_end:
+		return false  # past its visibility range
 	for pl in planes:
 		if pl.distance_to(c) > r:
 			return false
