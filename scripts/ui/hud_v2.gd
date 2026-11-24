@@ -159,11 +159,11 @@ func ticker(text: String, color: Color = DeepFieldTheme.ICE, ttl: float = 24.0) 
 
 
 func show_prompt(text: String) -> void:
-	prompt.text = text
+	PromptFade.set_text(prompt, text)  # eases in and out (no blinking at a zone's edge)
 
 
 func hide_prompt() -> void:
-	prompt.text = ""
+	PromptFade.set_text(prompt, "")
 
 
 var _clock_t := 0.0

@@ -259,7 +259,7 @@ func _process(delta: float) -> void:
 			best = i
 			best_d = d
 	_near_spot = best
-	prompt_label.text = ("%s  %s" % [ControlsHelp.key_of("interact"), String(_spots[best]["prompt"].call())]) if best >= 0 else ""
+	PromptFade.set_text(prompt_label, ("%s  %s" % [ControlsHelp.key_of("interact"), String(_spots[best]["prompt"].call())]) if best >= 0 else "")
 
 
 func _unhandled_input(event: InputEvent) -> void:

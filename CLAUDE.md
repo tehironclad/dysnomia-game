@@ -106,6 +106,13 @@
   `SwapPanel`; a surveyed lot at Wild) and the YUE Exchange (`YueFloor`, a sky lobby stop of the tower's glass
   lift, else the hall's counter: `YueExchange`, `YuePanel`). Read-only checks: `tools/live_swaps.gd`,
   `tools/live_yue_exchange.gd`. Shots: `--view=swap|swap_in|swap_panel|yue|yue_panel [--session=0x…]`.
+- Doors and motion polish: Use at the Room, the Void or the arcade/pub runs a `DoorSequence` (pure timeline
+  `DoorWalk`; ~1.5–2.4 s, any key skips): the player auto-walks (`player.auto_walk_to`) to the door, a `PassDoor`
+  (slide panels or a light curtain) opens, `ScreenFade` (on the tree root, self-clearing) fades out; the place
+  arrives walking in through `PlaceBase.add_door`, and leaving comes out of the same building's door
+  (`Travel.through_door/out_door/take_door`). Flight off keeps momentum and falls (`MotionMath`, `LandDust`);
+  vehicles hop in and step out. Check: `tools/probe_motion.gd [-- --only=room,void,arcade,pub,skip,fly,vehicle]`
+  (headless); with xvfb + lavapipe `--shots=<abs dir>` saves mid-transition frames. HUD prompts fade (`PromptFade`).
 - Collision: `scripts/world/solid.gd` (`Solid.box/cylinder/wrap`). Solid: the Core's room walls (doorway
   open), pylons, skyline towers (resized with them), the monolith, the World plinth, development props.
   Walk-through on purpose: the Heart, beacon/spire (sky), well basins, landing pads, floor lamps.

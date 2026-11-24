@@ -82,9 +82,22 @@ func _player() -> CharacterBody3D:
 	return current_scene.get_node_or_null("Player") as CharacterBody3D if current_scene else null
 
 
-func _shot(name: String) -> void:
+## Plays on for `t` s; with --shots, instead holds the walk's timeline at `t`
+## (the player still walks) and saves a frame.
+func _hold_shot(name: String, t: float) -> void:
 	if _shots == "" or DisplayServer.get_name() == "headless":
+		await _seconds(t)
 		return
+	var s := _seq()
+	if s:
+		s.freeze_at = t
+	await _frames(6)
+	await _shot(name)
+	if s and is_instance_valid(s):
+		s.freeze_at = -1.0
+
+
+func _shot(name: String) -> void:
 	await RenderingServer.frame_post_draw
 	var img := root.get_viewport().get_texture().get_image()
 	img.save_png(_shots.path_join(name + ".png"))
@@ -135,8 +148,7 @@ func _door_round(addr: String, door: String) -> void:
 	_check(terr._near == door, "%s: the door's prompt is offered (near=%s)" % [label, terr._near])
 	await _press("interact")
 	_check(_seq() != null, "%s: Use starts the walk in" % label)
-	await _seconds(0.7)
-	await _shot("enter_" + label.get_slice(" ", 0) + ("_pub" if addr == SUNFLOWER else ""))
+	await _hold_shot("enter_" + label.get_slice(" ", 0) + ("_pub" if addr == SUNFLOWER else ""), 0.7)
 	var place: String = travel.place_scene(door, addr)
 	var t0 := Time.get_ticks_msec()
 	var arrived: bool = await _wait_scene(place, 30.0)
@@ -146,8 +158,7 @@ func _door_round(addr: String, door: String) -> void:
 	var walk_in_s := (Time.get_ticks_msec() - t0) / 1000.0
 	await _frames(2)
 	_check(_seq() != null, "%s: arrives walking in through the entrance" % label)
-	await _seconds(0.45)
-	await _shot("inside_" + place.get_file().get_basename())
+	await _hold_shot("inside_" + place.get_file().get_basename(), 0.45)
 	var dur := await _wait_seq_end()
 	p = _player()
 	var spawn: Vector3 = current_scene._spawn
@@ -163,8 +174,7 @@ func _door_round(addr: String, door: String) -> void:
 	_check(current_scene._near_exit, "%s: exit prompt offered" % label)
 	await _press("interact")
 	_check(_seq() != null, "%s: Use at the exit starts the walk out" % label)
-	await _seconds(0.6)
-	await _shot("exit_" + place.get_file().get_basename())
+	await _hold_shot("exit_" + place.get_file().get_basename(), 0.6)
 	var back: bool = await _wait_scene("res://scenes/territory/territory_v2.tscn", 60.0)
 	_check(back, "%s: back in the territory" % label)
 	if not back:
@@ -172,8 +182,7 @@ func _door_round(addr: String, door: String) -> void:
 	terr = current_scene
 	p = _player()
 	_check(_seq() != null, "%s: comes out walking from the door" % label)
-	await _seconds(0.5)
-	await _shot("out_" + label.get_slice(" ", 0) + ("_pub" if addr == SUNFLOWER else ""))
+	await _hold_shot("out_" + label.get_slice(" ", 0) + ("_pub" if addr == SUNFLOWER else ""), 0.5)
 	await _wait_seq_end()
 	await _frames(5)
 	spot = terr._door_spot(door)

@@ -143,7 +143,7 @@ func _process(_delta: float) -> void:
 	var near := Vector2(player.global_position.x - exit_at.x, player.global_position.z - exit_at.z).length() < exit_radius
 	if near != _near_exit:
 		_near_exit = near
-		prompt_label.text = ("%s  leave, back to %s" % [ControlsHelp.key_of("interact"), GameManager.territory_name]) if near else ""
+		PromptFade.set_text(prompt_label, ("%s  leave, back to %s" % [ControlsHelp.key_of("interact"), GameManager.territory_name]) if near else "")
 	if player.global_position.y < floor_y - 25.0:  # fell off the edge of the Void
 		player.global_position = exit_at + Vector3(0, 1.5, -2.0)
 		player.velocity = Vector3.ZERO
