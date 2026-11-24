@@ -91,6 +91,11 @@ static func read(p_wallet: String) -> PlayerState:
 	], st.wallet, head)
 	st.lau = _addr(Multicall.value(r1[0], ["address"]))
 	st.yue = _addr(Multicall.value(r1[1], ["address"]))
+	# A failed read is not "no LAU": say so, never show an empty identity as a fact.
+	if not r1[0].get("ok", false):
+		var ce: Dictionary = r1[0].get("chunk_error", {})
+		st.error = "CHO.GetUserTokenAddress could not be read (%s)" % String(ce.get("message", ce.get("error", "RPC failed")))
+		return st
 	var calls: Array = []
 	if st.has_lau():
 		calls.append(Multicall.make_call(st.lau, "Username()"))

@@ -86,6 +86,8 @@ func _identity_blocker(need_yue: bool) -> String:
 	var ps: PlayerState = Session.player
 	if ps == null:
 		return "Reading your identity… try again in a moment."
+	if ps.error != "":
+		return "Couldn't read your identity from the chain: %s. Check the RPC in Settings, or try again." % ps.error
 	if not ps.has_lau():
 		return "No LAU yet: Enter the Void at the front door to create your identity."
 	if need_yue and not ps.has_yue():
