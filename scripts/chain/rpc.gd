@@ -106,10 +106,47 @@ func _log_once(url: String, why: String) -> void:
 	print("[Rpc] cannot reach %s: %s" % [url, why])
 
 
+## Antivirus HTTPS scanning and corporate proxies re-sign TLS with their own root,
+## which Windows trusts but Godot's bundled list doesn't (every node then fails with a
+## TLS handshake error while the browser works). After such a failure the game trusts
+## the operating system's own certificate store — the same one the browser uses.
+static var _system_tls: TLSOptions = null
+static var use_system_ca := false
+
+
+static func tls_options() -> TLSOptions:
+	if not use_system_ca:
+		return null
+	if _system_tls == null:
+		var c := X509Certificate.new()
+		if c.load_from_string(OS.get_system_ca_certificates()) == OK:
+			_system_tls = TLSOptions.client(c)
+	return _system_tls
+
+
+static func apply_tls(http: HTTPRequest) -> void:
+	var o := tls_options()
+	if o:
+		http.set_tls_options(o)
+
+
 func _send_once(method: String, params: Array, url: String = "") -> Dictionary:
+	var res := await _send_raw(method, params, url)
+	if not res["ok"] and String(res.get("error", {}).get("message", "")).begins_with("TLS handshake") and not use_system_ca:
+		use_system_ca = true
+		var again := await _send_raw(method, params, url)
+		if again["ok"] or again["kind"] != "transport":
+			print("[Rpc] TLS handshake failed with Godot's certificate list — using the system certificate store (antivirus/proxy HTTPS scanning)")
+			return again
+		use_system_ca = false  # not the cause; back to the bundled list
+	return res
+
+
+func _send_raw(method: String, params: Array, url: String = "") -> Dictionary:
 	stats["requests"] += 1
 	var http := HTTPRequest.new()
 	http.timeout = TIMEOUT_S
+	apply_tls(http)
 	add_child(http)
 	var body := JSON.stringify({"jsonrpc": "2.0", "id": _next_id, "method": method, "params": params})
 	_next_id += 1

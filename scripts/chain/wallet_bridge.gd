@@ -432,6 +432,11 @@ func _try_ws_accept(peer: StreamPeerTCP) -> void:
 		return
 
 	var new_ws := WebSocketPeer.new()
+	# Relayed chain reads (multicall results, logs) can be far larger than the 64 KiB
+	# default; an oversized message would be dropped and the read lost.
+	new_ws.inbound_buffer_size = 16 * 1024 * 1024
+	new_ws.outbound_buffer_size = 1024 * 1024
+	new_ws.max_queued_packets = 4096
 	var err := new_ws.accept_stream(peer)
 	if err != OK:
 		peer.disconnect_from_host()

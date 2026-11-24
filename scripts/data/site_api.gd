@@ -24,6 +24,7 @@ func get_json(path: String, query: Dictionary = {}) -> Dictionary:
 		url += "?" + "&".join(parts)
 	var http := HTTPRequest.new()
 	http.timeout = TIMEOUT_S
+	Rpc.apply_tls(http)  # system certificate store when TLS is being intercepted
 	add_child(http)
 	if http.request(url) != OK:
 		http.queue_free()
