@@ -390,12 +390,12 @@ func _build_effects() -> void:
 	_rocket.add_child(_cabin_light)
 	# Ground cloud: billows out across the pad and beyond
 	_pad_smoke = FairKit.smoke(220, 7.0, Vector2(3.0, 10.0), Color(0.78, 0.76, 0.74), 30.0,
-		Vector2(0.5, 2.5), 1.8, Vector3(0, 0.12, 0), 2.2, true, Vector3.UP, 15.0)
+		Vector2(0.5, 2.0), 5.5, Vector3(0, 0.12, 0), 2.2, true, Vector3.UP, 9.0)   # stops ~9 m out: stays on the pad
 	_pad_smoke.position = Vector3(0, PAD_H + 0.3, 0)
 	add_child(_pad_smoke)
 	# Exhaust trail follows the rocket (world-space particles)
 	_trail = FairKit.smoke(140, 4.0, Vector2(2.0, 7.0), Color(0.8, 0.78, 0.76), 10.0,
-		Vector2(10.0, 16.0), 2.2, Vector3(0, 0.1, 0), 0.6, true, Vector3.DOWN)
+		Vector2(10.0, 16.0), 5.0, Vector3(0, 0.1, 0), 0.6, true, Vector3.DOWN)
 	_trail.position = Vector3(0, -6.0, 0)
 	_trail.visibility_aabb = AABB(Vector3(-60, -450, -60), Vector3(120, 500, 120))
 	_rocket.add_child(_trail)

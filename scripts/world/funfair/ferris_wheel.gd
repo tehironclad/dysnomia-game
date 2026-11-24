@@ -215,6 +215,11 @@ func _ride_tick(t: float, _delta: float) -> void:
 	_place(_phi, t)
 
 
+func get_rider_mounts() -> Array:
+	## The level gondolas; Funfair seats a few locals on their benches (sit pose).
+	return _gondolas
+
+
 func get_seat_transform(_time: float) -> Transform3D:
 	var g := _gondolas[_rider_k]
 	return Transform3D(global_transform.basis, g.global_transform * Vector3(0, -HANG + 0.03, 0.25))
