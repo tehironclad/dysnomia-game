@@ -351,6 +351,9 @@ func _road_places() -> Array:
 		var r := landmark.ring_local()
 		out.append({"name": "skyline landmark", "at": t, "r": LandmarkPlan.PLAZA_R})
 		out.append({"name": "landing ring", "at": Vector2(r.x, r.z), "r": LandmarkPlan.RING_R, "from": t})
+	if exchanges and exchanges.hall:
+		var h := exchanges.position + exchanges.hall.position
+		out.append({"name": "Swap Hall", "at": Vector2(h.x, h.z), "r": SwapHall.RADIUS})
 	return out
 
 
