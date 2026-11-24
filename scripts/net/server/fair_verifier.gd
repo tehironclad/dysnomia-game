@@ -5,9 +5,8 @@ extends RefCounted
 ## a score can be checked by replaying (seed, input log):
 ##   1. entry {score, game, tx, inputs?}: the game must exist and the score be
 ##      within MidwayGame.max_score(game);
-##   2. if MidwayGame has a static replay(game, seed, inputs) -> int (the fair
-##      games' replay hook), the replayed score must equal the claimed one:
-##      "verified: replayed";
+##   2. the input log (MidwaySim's v1 text) replayed from the ticket's seed must
+##      give exactly the claimed score (MidwaySim.replay): "verified: replayed";
 ##   3. the ticket: its receipt read from the chain must show status 0x1 and
 ##      `from` = the signed-in wallet. Unreachable chain → kept "unverified".
 ## Anything not checked is labelled so; nothing is assumed.
@@ -22,25 +21,21 @@ static func verify(board: String, entry: Dictionary, wallet: String) -> Dictiona
 	var midway: GDScript = load(MIDWAY)
 	if midway == null or not midway.call("has_game", game):
 		return {"ok": false, "check": "unknown fair game '%s'" % game}
-	if score > int(midway.call("max_score", game)):
+	if score > MidwaySim.max_score(game):
 		return {"ok": false, "check": "score above the game's maximum"}
 	if not (tx.begins_with("0x") and tx.length() == 66 and tx.substr(2).is_valid_hex_number()):
 		return {"ok": false, "check": "a fair score needs its ticket's tx hash"}
 	var notes: PackedStringArray = []
 	var verified := true
-	var has_replay := false
-	for m in midway.get_script_method_list():
-		if m["name"] == "replay":
-			has_replay = true
-	if has_replay:
-		var seed_v: int = midway.call("seed_from_tx", tx)
-		var replayed := int(midway.call("replay", game, seed_v, entry.get("inputs", [])))
-		if replayed != score:
-			return {"ok": false, "check": "replay of the input log scores %d, not %d" % [replayed, score]}
-		notes.append("replayed")
-	else:
-		verified = false
-		notes.append("not replayed (no replay hook yet)")
+	# The input log is the fair's own v1 text (MidwaySim.encode_log), as in the room's 🎪 lines
+	var log_text := String(entry.get("log", entry.get("inputs", "")))
+	var dec: Dictionary = MidwaySim.decode_log(game, log_text)
+	if not dec.get("ok", false):
+		return {"ok": false, "check": "malformed input log"}
+	var replayed := MidwaySim.replay(game, MidwayGame.seed_from_tx(tx), dec["log"])
+	if replayed != score:
+		return {"ok": false, "check": "replay of the input log scores %d, not %d" % [replayed, score]}
+	notes.append("replayed")
 	var rec: Dictionary = await Chain.rpc.get_receipt(tx)
 	if rec.get("ok", false) and rec.get("result") is Dictionary:
 		var r: Dictionary = rec["result"]
@@ -48,6 +43,12 @@ static func verify(board: String, entry: Dictionary, wallet: String) -> Dictiona
 			return {"ok": false, "check": "the ticket's transaction reverted"}
 		if String(r.get("from", "")).to_lower() != wallet:
 			return {"ok": false, "check": "the ticket was bought by another wallet"}
+		var qing := board.get_slice("/", 0) if board.contains("/") else ""
+		if qing.begins_with("0x"):
+			# The same check as the room boards: Transfer(wallet → this QING, 1 Ⓐ + this stall's code)
+			var t: Dictionary = FairBoard.ticket_check(r, wallet, qing, game)
+			if not t.get("ok", false):
+				return {"ok": false, "check": String(t.get("why", "ticket check failed"))}
 		notes.append("ticket receipt checked (block %d)" % String(r.get("blockNumber", "0x0")).hex_to_int())
 	else:
 		verified = false
