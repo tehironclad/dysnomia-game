@@ -9,7 +9,7 @@ const SHADER := preload("res://assets/shaders/deep_field_sky.gdshader")
 ## Dysnomia orbits ~37,350 km from Eris (radius ~1,163 km): ~3.6° across.
 const ERIS_ANGULAR_DIAMETER_DEG := 3.57
 const RESYNC_S := 600.0
-const SUN_MAX_ENERGY := 0.28
+const SUN_MAX_ENERGY := 1.15  ## ~1/9,000 of Earth's daylight is still ~100–250× a full moon; eyes adapt
 
 @export var environment_path: NodePath
 @export var sun_path: NodePath
@@ -108,8 +108,9 @@ func _place_sun(frac: float) -> void:
 	# DirectionalLight3D shines along its -Z; point -Z away from the sun.
 	_sun.look_at_from_position(Vector3.ZERO, -dir, Vector3.FORWARD if absf(dir.y) > 0.99 else Vector3.UP)
 	var elev := dir.y
-	# ~96 AU from the Sun, daylight is ~1/9,000 of Earth's: the sun is "just
-	# another star". Keep it faint; the land is lit mostly by its filaments.
+	# ~96 AU from the Sun, daylight is ~1/9,000 of Earth's — yet that is still far
+	# brighter than a full moon, and eyes adapt: by day the land gets real, hard,
+	# airless sunlight (black sky, sharp shadows). Night falls to the filaments.
 	_sun.light_energy = clampf(elev * 3.0, 0.0, 1.0) * SUN_MAX_ENERGY
 	_sun.visible = elev > -0.05
 

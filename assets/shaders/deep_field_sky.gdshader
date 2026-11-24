@@ -162,7 +162,9 @@ void sky() {
 	// The sun: a hot point; LIGHT0 is the directional light.
 	if (LIGHT0_ENABLED) {
 		float sd = acos(clamp(dot(d, LIGHT0_DIRECTION), -1.0, 1.0));
-		col += vec3(1.0, 0.96, 0.9) * (exp(-sd * sd / 0.00002) * 4.0 + exp(-sd / 0.01) * 0.05);
+		// Small hot disc + a soft halo so the sun reads as the sun (no air: no blue sky)
+		float above = smoothstep(-0.05, 0.08, LIGHT0_DIRECTION.y);
+		col += vec3(1.0, 0.96, 0.9) * (exp(-sd * sd / 0.00004) * 6.0 + exp(-sd / 0.03) * 0.35 * above + exp(-sd / 0.12) * 0.06 * above);
 	}
 	COLOR = col;
 }
