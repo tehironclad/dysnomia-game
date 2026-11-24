@@ -9,7 +9,8 @@
   - No external scripts: the game builds every transaction's calldata itself;
     this page only relays {from, to, data, value} to the browser wallet
     (EIP-1193: eth_requestAccounts, eth_chainId, wallet_switchEthereumChain,
-    wallet_addEthereumChain, eth_sendTransaction).
+    wallet_addEthereumChain, eth_sendTransaction, personal_sign for the game
+    server's free sign-in).
   - It authenticates to the game with a per-session token ({{TOKEN}}).
   - It never claims a transaction succeeded: it reports the hash, and the game
     reads the receipt from the chain itself.
@@ -124,6 +125,27 @@
     }
   }
 
+  // personal_sign (EIP-191) for the game server's sign-in: a free signature of a
+  // text the game shows (it names the server and a one-time nonce). Not a
+  // transaction: nothing is sent to the chain and nothing can be spent with it.
+  async function personalSign(id, message, address) {
+    try {
+      if (!account) await connectWallet();
+      if (String(address || '').toLowerCase() !== account) throw { message: 'the game expected ' + address + ' but the wallet is ' + account };
+      var bytes = new TextEncoder().encode(String(message));
+      var hex = '0x' + Array.prototype.map.call(bytes, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+      log('sign-in request #' + id + ' (free, not a transaction) — approve it in your wallet', 'ok');
+      try { window.focus(); } catch (e) {}
+      var sig = await eth().request({ method: 'personal_sign', params: [hex, account] });
+      send({ type: 'sign_result', id: id, signature: sig });
+      log('signed #' + id, 'ok');
+    } catch (e) {
+      var msg = (e && e.code === 4001) ? 'rejected in the wallet' : (e && (e.message || e.reason)) || String(e);
+      send({ type: 'sign_error', id: id, error: msg });
+      log('#' + id + ' not signed: ' + msg, 'bad');
+    }
+  }
+
   // Chain reads relayed for the game when its own connection to the RPC fails
   // (firewall, antivirus HTTPS scanning…). Reads only: a JSON-RPC body is posted to a
   // fixed public PulseChain node and the raw answer goes back; nothing is signed here.
@@ -153,6 +175,7 @@
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m.type === 'request_accounts') connectWallet();
       else if (m.type === 'send_raw') sendRaw(m.id, m.tx || {});
+      else if (m.type === 'personal_sign') personalSign(m.id, m.message, m.address);
       else if (m.type === 'switch_chain') ensureChain().then(function (cid) { send({ type: 'chain_changed', chainId: cid }); });
       else if (m.type === 'ping') send({ type: 'pong' });
       else if (m.type === 'rpc') relayRpc(m.id, m.body);

@@ -636,7 +636,7 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
     preview, as before. Measured 2026-11-24: that two-topic filter over **the whole chain** (block 0 → head)
     answers in < 1 s when the pair has few transfers, but for a busy pair (hundreds of transfers a day) the
     node cuts the body off after ~10 s (HTTP 200, 23 bytes of JSON); scan from `FROM_BLOCK`, never block 0.
-  - Shots: `screenshot.gd -- --qing=<Grand Fair QING> --fair=<game>|rocket [--fair-phase=aim|play|result]
+  - Shots: `screenshot.gd -- --qing=<Grand Fair QING> --fair=<game>|rocket [--fair-phase=aim|play|result|board]
     [--fair-codes=1,2,3]` (practice, nothing paid or posted). `tools/probe_fair.gd [-- --wallet=0x…]` plays
     all seven through, replays each score and checks the rocket's lock from the chain.
 
@@ -733,3 +733,35 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
 - **Free chat**: say lines go through the presence server (`Net.send_chat`) when it exists; they are tagged "say",
   carry no block and add nothing to the territory. Only room lines are chain truth.
 
+## 18. Online play: the free game server (2026-11-24)
+
+- **Where:** a headless Godot server on the owner's laptop, behind Tailscale Funnel or Cloudflare Tunnel
+  (`docs/SERVER.md`), listening on 127.0.0.1. Launch: `server.bat`, `tools/server.sh`, or
+  `godot --headless --path . res://scenes/net/game_server.tscn -- --port=8787` (`-- --server` also works).
+- **Finding it:** Settings (F2 → Online & voice) or `GET <site>/api/game-server` → `{url}`
+  (`https://` becomes `wss://`). No answer → single-player, one log line, quiet retries (5 s, then 20 s up
+  to 5 min). Autoloads do no network on their own: `NetPresence` (added by the territory) starts `Net`
+  20 frames after arrival, because the loading frames are long enough to time out a handshake.
+- **Identity:** `personal_sign` (EIP-191) of `NetProto.login_message(server, nonce)` through the
+  wallet relay (`wallet_bridge.personal_sign`, `Wallet.sign_message`). The server runs `ecrecover` in
+  pure GDScript (`scripts/net/crypto/`: Keccak-256, secp256k1 10×26-bit limbs, about 105 ms) on a
+  WorkerThreadPool task. It checks against ethers v6 goldens (`tests/golden/ecrecover.json`, made by
+  `tools/golden/ecrecover.js`). After that, a 24 h session token. Guests see and hear but can't talk.
+  Names are the client's LAU Username; the tag also shows the short verified wallet.
+- **Wire:** NetProto (binary, little-endian). Presence is 19 B at 10 Hz, positions in int32 cm, yaw u16;
+  the server relays changed states every 100 ms to the same room only. `NetInterp` draws 150 ms in the
+  past on the sender's u16 clock. Voice is IMA-ADPCM, 16 kHz, 20 ms frames of 163 B, relayed within 40 m;
+  the μ-law codec is the fallback.
+- **API other features use:** `Net.send_chat(text)`, `Net.chat_received(wallet, name, text, world_pos)`,
+  `Net.top(board, n)`, `Net.submit(board, entry)`. Offline, these return `{ok:false, error:"—"}`.
+  Leaderboard verifiers plug in by board-id pattern (`Leaderboards.add_verifier`). `FairVerifier`
+  checks the ticket receipt and replays if `MidwayGame.replay(game, seed, inputs)` exists. Without a
+  verifier, a row is "unverified". No row is ever invented.
+- **Chat UI:** the QING chat bar (§17, T; Tab switches to "say") calls `Net.send_chat`, and its feed shows
+  `Net.chat_received` lines. Remote avatars register with `ChatFeed.register_speaker`, so `ChatLife` floats
+  bubbles over them, for free lines and on-chain lines alike. `NetChatFeed` (on the HUD) shows only the
+  server status, notices and the talking mark.
+- **Keys:** `push_to_talk` (X) is an input action. The mic stays off until the player opts in.
+  `audio/driver/enable_input=true`.
+- **Check it:** `tools/net_selftest.gd` (35 checks, scripted clients with test keys) and `tools/net_bot.gd`
+  (a remote player for screenshots: `screenshot.gd -- --net-url=ws://127.0.0.1:N`, no `--view`).

@@ -15,6 +15,9 @@ signal wallet_disconnected()
 signal tx_result(id: int, hash: String)
 signal tx_confirmed(id: int, hash: String)
 signal tx_failed(id: int, error: String)
+## personal_sign (EIP-191): a free signature, not a transaction (the game server's sign-in).
+signal sign_result(id: int, signature: String)
+signal sign_failed(id: int, error: String)
 
 # ── Multiplayer signals ──
 signal mp_sync(players: Array)
@@ -232,6 +235,17 @@ func send_raw(tx: Dictionary) -> int:
 	_next_tx_id += 1
 	_send_json({"type": "send_raw", "id": tx_id, "tx": tx})
 	return tx_id
+
+
+## Asks the wallet to personal_sign `message` (UTF-8 text) with the connected
+## account. Free: nothing is sent to the chain. Returns the request id (-1 if not ready).
+func personal_sign(message: String) -> int:
+	if _state != State.CONNECTED or not _authed or _wallet_address == "":
+		return -1
+	var id := _next_tx_id
+	_next_tx_id += 1
+	_send_json({"type": "personal_sign", "id": id, "message": message, "address": _wallet_address})
+	return id
 
 
 var _relay_next := 1
@@ -556,6 +570,12 @@ func _handle_ws_message(text: String) -> void:
 			var error: String = data.get("error", "Unknown error")
 			if tx_id >= 0:
 				tx_failed.emit(tx_id, error)
+
+		"sign_result":
+			sign_result.emit(int(data.get("id", -1)), String(data.get("signature", "")))
+
+		"sign_error":
+			sign_failed.emit(int(data.get("id", -1)), String(data.get("error", "refused")))
 
 		"rpc_result":
 			var rid: int = data.get("id", -1)
