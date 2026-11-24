@@ -22,6 +22,8 @@ var _pitch: float = -0.2  # Slight downward angle
 var _yaw: float = 0.0     # third person: the camera's WORLD yaw (independent of the body)
 var _yaw_ready := false
 var _camera_mode: int = CameraMode.THIRD_PERSON
+var extra_fov := 0.0   ## base jumping: added FOV with speed
+var shake := 0.0       ## base jumping: 0..1 wind buffet
 
 @onready var spring_arm: SpringArm3D = $SpringArm3D
 @onready var camera: Camera3D = $SpringArm3D/Camera3D
@@ -114,8 +116,25 @@ func _process(delta: float) -> void:
 		global_rotation.y = _yaw
 
 	# Sprint FOV effect
-	var target_fov: float = sprint_fov if Input.is_action_pressed("sprint") else base_fov
+	var target_fov: float = (sprint_fov if Input.is_action_pressed("sprint") else base_fov) + extra_fov
 	camera.fov = lerpf(camera.fov, target_fov, fov_lerp_speed * delta)
+	if shake > 0.0:
+		var t := Time.get_ticks_msec() * 0.001
+		camera.h_offset = shake * 0.08 * sin(t * 23.0) * sin(t * 7.1)
+		camera.v_offset = shake * 0.08 * sin(t * 19.0 + 1.3) * sin(t * 5.3)
+	elif camera.h_offset != 0.0 or camera.v_offset != 0.0:
+		camera.h_offset = 0.0
+		camera.v_offset = 0.0
+
+
+## Base jumping: pulls the third-person camera toward (yaw, pitch) at `rate` per
+## second, so it swings in behind a wingsuit or canopy; the mouse still looks around.
+func chase(yaw: float, pitch: float, rate: float, delta: float) -> void:
+	if _camera_mode == CameraMode.FIRST_PERSON:
+		return
+	var w := clampf(rate * delta, 0.0, 1.0)
+	_yaw = lerp_angle(_yaw, yaw, w)
+	_pitch = lerpf(_pitch, pitch, w)
 
 
 func _on_camera_mode_changed(_first_person: bool) -> void:

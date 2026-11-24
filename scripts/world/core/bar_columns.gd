@@ -99,6 +99,16 @@ func update_board(board: Array, block: int, me: String = "") -> void:
 			_cols.erase(w)
 
 
+## A player's tower here: {root, height, width} (its root stands on the ground,
+## +Z pointing away from the Core), or {} when they have no bars here.
+func tower_of(wallet: String) -> Dictionary:
+	var c: Dictionary = _cols.get(wallet.to_lower(), _cols.get(wallet, {}))
+	if c.is_empty() or not is_instance_valid(c["root"]):
+		return {}
+	var body: MeshInstance3D = c["body"]
+	return {"root": c["root"], "height": body.scale.y, "width": body.scale.x}
+
+
 func _make(wallet: String) -> Dictionary:
 	var root := Node3D.new()
 	root.name = "Tower_" + wallet.substr(2, 8)

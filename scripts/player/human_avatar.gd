@@ -58,6 +58,7 @@ var _fly_blend := 0.0
 var _fly_speed := 0.0
 var _fly_pitch := 0.0
 var _seat_clip := ""  ## "" = on foot; else the clip held while seated (a vehicle: "Driving")
+var air_pose := ""  ## base jumping: "" (jetpack) | freefall | wingsuit | canopy
 var _materials: Array = []  # [StandardMaterial3D, original albedo texture]
 var _suit_mat: StandardMaterial3D
 var _plate_mat: StandardMaterial3D
@@ -435,6 +436,13 @@ func _self_layer() -> void:
 		(vi as VisualInstance3D).layers = 2
 
 
+## Base jumping (BaseJump): the flying pose without the jetpack's flames, shaped
+## for a belly-to-earth freefall, a wingsuit (arms and legs spread for the
+## membranes) or hanging under a canopy (hands up on the toggles). "" = normal.
+func set_air_pose(p: String) -> void:
+	air_pose = p
+
+
 func update_movement(vel: Vector3, on_floor: bool, flying: bool) -> void:
 	_vel = vel
 	_on_floor = on_floor
@@ -472,7 +480,10 @@ func _process(delta: float) -> void:
 		_play("Idle")
 		_fly_blend = minf(1.0, _fly_blend + delta * 3.0)
 		_fly_speed = speed
-		extras.set_flames(true, Vector3.ZERO, Vector3.ZERO, 0.6 + clampf(speed / 30.0, 0.0, 0.4))
+		if air_pose == "":
+			extras.set_flames(true, Vector3.ZERO, Vector3.ZERO, 0.6 + clampf(speed / 30.0, 0.0, 0.4))
+		else:
+			extras.set_flames(false, Vector3.ZERO, Vector3.ZERO)
 	else:
 		extras.set_flames(false, Vector3.ZERO, Vector3.ZERO)
 		_fly_blend = maxf(0.0, _fly_blend - delta * 4.0)
@@ -529,20 +540,42 @@ func _fly_pose(delta: float) -> void:
 	var w := _fly_blend
 	var sp := clampf(_fly_speed / 30.0, 0.0, 1.0)
 	var climb := clampf(_vel.y / 10.0, -1.0, 1.0)
-	_fly_pitch = lerpf(_fly_pitch, deg_to_rad(lerpf(10.0, 78.0, sp) - climb * 25.0), clampf(4.0 * delta, 0.0, 1.0))
+	var pitch_deg := lerpf(10.0, 78.0, sp) - climb * 25.0
+	var spread_deg := lerpf(14.0, 6.0, sp)
+	var elbow_deg := 8.0
+	var leg_deg := 3.0
+	var knee_deg := 14.0
+	match air_pose:
+		"freefall":
+			pitch_deg = 86.0
+			spread_deg = 68.0
+			elbow_deg = 38.0
+			leg_deg = 9.0
+			knee_deg = 48.0
+		"wingsuit":
+			pitch_deg = 80.0 - climb * 10.0
+			spread_deg = 46.0
+			leg_deg = 12.0
+			knee_deg = 4.0
+		"canopy":
+			pitch_deg = 6.0
+			spread_deg = 140.0
+			elbow_deg = 30.0
+			knee_deg = 10.0
+	_fly_pitch = lerpf(_fly_pitch, deg_to_rad(pitch_deg), clampf(4.0 * delta, 0.0, 1.0))
 	var t := Time.get_ticks_msec() / 1000.0
-	var sweep := deg_to_rad(lerpf(8.0, 28.0, sp))
+	var sweep := deg_to_rad(lerpf(8.0, 28.0, sp)) if air_pose == "" else deg_to_rad(6.0)
 	for side in [1.0, -1.0]:
 		var l := "_l" if side > 0.0 else "_r"
 		var down := Basis(Vector3.BACK, -side * deg_to_rad(78.0))  # T-pose arm → hanging at the side
 		var back := Basis(Vector3.RIGHT, sweep + 0.04 * sin(t * 2.0 + side))
-		var out := Basis(Vector3.BACK, side * deg_to_rad(lerpf(14.0, 6.0, sp)))
+		var out := Basis(Vector3.BACK, side * deg_to_rad(spread_deg))
 		var arm := back * out * down
 		_set_global("upperarm" + l, arm, w)
-		_set_global("lowerarm" + l, Basis(Vector3.RIGHT, deg_to_rad(8.0)) * arm, w, "upperarm" + l, arm)
-		var leg := Basis(Vector3.BACK, side * deg_to_rad(3.0)) * Basis(Vector3.RIGHT, deg_to_rad(4.0 + 3.0 * sin(t * 2.2 + side)))
+		_set_global("lowerarm" + l, Basis(Vector3.RIGHT, deg_to_rad(elbow_deg)) * arm, w, "upperarm" + l, arm)
+		var leg := Basis(Vector3.BACK, side * deg_to_rad(leg_deg)) * Basis(Vector3.RIGHT, deg_to_rad(4.0 + 3.0 * sin(t * 2.2 + side)))
 		_set_global("thigh" + l, leg, w)
-		_set_global("calf" + l, Basis(Vector3.RIGHT, deg_to_rad(14.0)) * leg, w, "thigh" + l, leg)
+		_set_global("calf" + l, Basis(Vector3.RIGHT, deg_to_rad(knee_deg)) * leg, w, "thigh" + l, leg)
 	# Look ahead: the neck counters most of the pitch.
 	_set_global("neck_01", Basis(Vector3.RIGHT, _fly_pitch * 0.75 * w), w)
 	# Pitch the whole body about the hips, banking into turns.

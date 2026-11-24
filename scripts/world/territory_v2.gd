@@ -20,6 +20,8 @@ var monolith: VoidMonolith
 var arcade: ArcadeFront
 var fair: FairSite
 var garage: GarageSite
+var landmark: Landmark      # skyline landmark + base jumping (scripts/world/skyline/)
+var base_jump: BaseJump
 var phenomena: Phenomena
 var actions: CoreActions
 var lattice: WorldLattice
@@ -119,6 +121,7 @@ func _ready() -> void:
 		func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y,
 		func(x, z): return terrain.get_height_at(x, z), DeepField.to_color(terrain.params["color"]), terrain.material,
 		[[Vector2(fair.position.x, fair.position.z), FairSite.RADIUS + 10.0]])
+	_add_landmark(core_y)
 	lattice = WorldLattice.new()
 	lattice.name = "WorldLattice"
 	core.add_child(lattice)
@@ -214,6 +217,8 @@ func _frame(view: String) -> void:
 		border.frame_camera(camera, view.substr(7) if view.length() > 7 else "n")
 	elif view == "relief":  # from the highest ground, back over the terraces
 		terrain.frame_relief(camera)
+	elif view in ["tower", "deck", "jump"] and landmark:
+		_frame_landmark(view)
 	elif view == "sky":
 		camera.position = Vector3(0.0, core_h + 2.0, 0.0)
 		camera.look_at(camera.position + Vector3(-0.55, 0.62, 0.55))
@@ -242,6 +247,8 @@ func _on_state_changed() -> void:
 		development.set_tier(dev_tier, energy)
 		if fair:
 			fair.set_dev_tier(dev_tier)
+		if landmark:
+			landmark.set_development(dev_tier, BigInt.coerce(state.total_hypobar.value), energy, state.board, state.block)
 		terrain.set_development(dev_tier, energy)
 		sky.set_aurora(energy if dev_tier >= 4 else 0.0)
 	var model := player.get_node_or_null("PlayerModel")
@@ -259,6 +266,38 @@ static func _dec(v) -> String:
 
 static func _tok(v) -> String:
 	return TokenFormat.wei_to_tokens(BigInt.coerce(v))
+
+
+# --- Skyline landmark + base jumping (scripts/world/skyline/) ------------------
+
+func _add_landmark(core_y: float) -> void:
+	var tint := DeepField.to_color(terrain.params["color"])
+	landmark = Landmark.new()
+	landmark.name = "Landmark"
+	core.add_child(landmark)
+	landmark.setup(String(territory["address"]), String(territory.get("name", "")), hud, player,
+		func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y,
+		tint, terrain.material, [[Vector2(fair.position.x, fair.position.z), FairSite.RADIUS],
+			[Vector2(garage.position.x, garage.position.z), GarageSite.RADIUS]])
+	base_jump = BaseJump.new()
+	base_jump.name = "BaseJump"
+	add_child(base_jump)
+	base_jump.setup(player, hud, landmark, columns, String(territory["address"]),
+		func(x, z): return terrain.get_height_at(x, z), core, tint)
+
+
+## --view=tower|deck|jump: framed once the tower is built (it needs the chain read).
+func _frame_landmark(view: String) -> void:
+	camera.position = Vector3(0.0, 330.0, 330.0)
+	camera.look_at(Vector3(0.0, 0.0, 10.0))
+	landmark.built.connect(func() -> void:
+		landmark.frame(view, camera)
+		if view == "jump":
+			var d := landmark.plank_dir()
+			var p := landmark.jump_preview_at()
+			player.process_mode = Node.PROCESS_MODE_ALWAYS
+			player.set_physics_process(false)
+			base_jump.preview(p, d, "wingsuit"), CONNECT_DEFERRED)
 
 
 ## Which live move is in reach of the player (positions relative to the Core).
