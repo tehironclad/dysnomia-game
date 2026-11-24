@@ -57,6 +57,12 @@ func update_from(lines: Array) -> void:
 		(f["label"] as Label3D).text = "%s%s · block %d\n%s" % [nm, badge, l["block"], String(l["text"]).left(80)]
 
 
+## The echo standing for this line's speaker (after update_from), or null.
+func figure_for(l: Dictionary) -> Node3D:
+	var f: Dictionary = _figures.get(speaker_key(l), {})
+	return f.get("node") if not f.is_empty() else null
+
+
 func _make(l: Dictionary) -> Dictionary:
 	var root := Node3D.new()
 	add_child(root)

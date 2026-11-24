@@ -110,7 +110,7 @@ func _site_first(limit: int) -> void:
 			var l := ChatLines.from_site(m, qing)
 			if not l.is_empty() and String(l["qing"]) == qing:
 				got.append(l)
-	site_note = "site accelerator: %d lines (chain-backed, block %s); replaced by the chain's copy" % [got.size(), str(r["data"].get("block", "—"))]
+	site_note = "site accelerator: %d lines (chain-backed, block %s); replaced by the chain's copy" % [got.size(), str(int(r["data"]["block"])) if r["data"].get("block") is float or r["data"].get("block") is int else "—"]
 	if not got.is_empty():
 		ChatLines.merge(lines, got)
 		lines_changed.emit(lines)

@@ -141,12 +141,19 @@ func close() -> void:
 
 func send() -> void:
 	var text := edit.text
-	var why: String = ChatFeed.submit(text)
-	if why != "":
-		_show_status(why)
-		return
 	edit.text = ""
 	_kept = ""
+	var n_before: int = ChatFeed.outbox.entries.size()
+	var why: String = ChatFeed.submit(text)
+	if why != "":
+		_set_text(text)
+		_show_status(why)
+		return
+	# A precondition that fails at once (no wallet, no LAU, view only) keeps the
+	# bar open with the reason; the text is already back (_on_outbox).
+	var es: Array = ChatFeed.outbox.entries
+	if es.size() > n_before and es[-1]["state"] == "failed":
+		return
 	status.visible = false
 	close()
 
