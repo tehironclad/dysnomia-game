@@ -118,6 +118,7 @@ func _read_board() -> void:
 	var b: Dictionary = await PulseX.read_board(toks, "")
 	if b.get("ok", false):
 		board = b
+		print("[SwapHall] pools read at block %d" % b["block"])
 	elif board.is_empty():
 		board = b  # an outage shows "—", never a made-up price
 	_paint_boards()
@@ -326,7 +327,7 @@ func _build_hall() -> void:
 	# Inside: the quote wall on the back wall
 	_box(Vector3(W - 3.0, 6.4, 0.1), Vector3(0, 4.45, BACK + 0.3), Landmark._glow(Color(0.02, 0.03, 0.05), 1.0))
 	_box(Vector3(W - 2.8, 0.08, 0.12), Vector3(0, 7.7, BACK + 0.32), glow)
-	_wall_board = _label("", Vector3(0, 4.6, BACK + 0.38), 0.0058, 40, DeepFieldTheme.INK)
+	_wall_board = _label("", Vector3(0, 4.6, BACK + 0.38), 0.0036, 64, DeepFieldTheme.INK)
 	_wall_board.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	# The hanging four-face board over the floor
 	var hang := Node3D.new()
@@ -334,7 +335,7 @@ func _build_hall() -> void:
 	_built.add_child(hang)
 	_box(Vector3(4.2, 2.2, 4.2), Vector3.ZERO, Landmark._metal(Color(0.03, 0.03, 0.04)), 0.0, false, hang)
 	_box(Vector3(4.3, 0.08, 4.3), Vector3(0, 1.12, 0), glow, 0.0, false, hang)
-	_box(Vector3(4.3, 0.08, 4.3), Vector3(0, -1.12, 0), glow, 0.0, false, hang)
+	_box(Vector3(4.3, 0.08, 4.3), Vector3(0, -1.12, 0), Landmark._metal(Color(0.1, 0.11, 0.13)), 0.0, false, hang)
 	for k in 4:
 		var yaw := PI * 0.5 * k
 		var l := Label3D.new()
@@ -365,11 +366,11 @@ func _build_hall() -> void:
 	_box(Vector3(1.3, 0.06, 4.1), Vector3(yx, 1.13, -3.0), Landmark._glow(Color("#ff8fd0"), 1.8))
 	_yue_sign = _label("", Vector3(yx - 0.7, 2.8, -3.0), 0.0075, 48, Color("#ffb8e6"), true, -PI * 0.5)
 	# Lights
-	for p in [Vector3(-6, H - 1.0, -2), Vector3(6, H - 1.0, -2), Vector3(0, H - 1.0, 4)]:
+	for p in [Vector3(-6, H - 1.0, -2), Vector3(6, H - 1.0, -2), Vector3(0, H - 1.0, 4), Vector3(0, 2.5, -1.5)]:
 		var o := OmniLight3D.new()
 		o.position = p
 		o.light_color = Color(1.0, 0.96, 0.9).lerp(_tint, 0.25)
-		o.light_energy = 4.0
+		o.light_energy = 5.0
 		o.omni_range = 18.0
 		_built.add_child(o)
 	var sign_l := OmniLight3D.new()
@@ -484,7 +485,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func preview_transform(view: String) -> Transform3D:
 	var t := Transform3D()
 	if view == "in":
-		t.origin = to_global(Vector3(-2.5, 1.8, 4.6))
-		return t.looking_at(to_global(Vector3(0.6, 4.0, BACK)), Vector3.UP)
+		t.origin = to_global(Vector3(-1.5, 2.0, 1.2))
+		return t.looking_at(to_global(Vector3(0.4, 3.9, BACK)), Vector3.UP)
 	t.origin = to_global(Vector3(-9.0, 4.0, 27.0))
 	return t.looking_at(to_global(Vector3(0.5, 4.5, 0.0)), Vector3.UP)

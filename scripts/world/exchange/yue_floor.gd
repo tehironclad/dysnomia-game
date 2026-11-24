@@ -50,7 +50,7 @@ func build(spec: Dictionary, lift_info: Dictionary, player: CharacterBody3D, hud
 	var z1 := z0 + POD_D
 	var zc := (z0 + z1) * 0.5
 	var metal := Landmark._metal(Color(0.14, 0.15, 0.17))
-	var dark := Landmark._metal(Color(0.06, 0.065, 0.08))
+	var dark := Landmark._metal(Color(0.2, 0.19, 0.24))
 	dark.metallic = 0.35
 	dark.roughness = 0.12
 	var glass := Landmark._glass(0.16)
@@ -91,11 +91,11 @@ func build(spec: Dictionary, lift_info: Dictionary, player: CharacterBody3D, hud
 	desk_at = Vector3(0, 0, dz - 1.3)
 	var title := _label("YUE EXCHANGE", Vector3(0, POD_H - 0.9, z1 - 0.3), 0.012, 96, Color("#ffb8e6"), false, PI)
 	title.outline_size = 10
-	_label("%s · %d m · Hong / Hung at the territory's fixed rate" % [tower_title, int(floor_y)], Vector3(0, POD_H - 1.6, z1 - 0.3), 0.006, 48, DeepFieldTheme.INK, true, PI)
+	_label("%s · %d m · Hong / Hung at the territory's fixed rate" % [tower_title, int(floor_y)], Vector3(0, POD_H - 1.75, z1 - 0.3), 0.0075, 48, DeepFieldTheme.INK, true, PI)
 	# Side boards: this territory's pair, and the territories that trade
-	_board = _label("reading the desk…", Vector3(-POD_W * 0.5 + 0.25, 2.4, zc), 0.0058, 40, DeepFieldTheme.INK, true, PI * 0.5)
+	_board = _label("reading the desk…", Vector3(-POD_W * 0.5 + 0.25, 2.4, zc), 0.0036, 64, DeepFieldTheme.INK, true, PI * 0.5)
 	_board.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_list = _label("", Vector3(POD_W * 0.5 - 0.25, 2.4, zc), 0.0058, 40, Color("#ffd27a"), true, -PI * 0.5)
+	_list = _label("", Vector3(POD_W * 0.5 - 0.25, 2.4, zc), 0.0036, 64, Color("#ffd27a"), true, -PI * 0.5)
 	_list.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	for s in [-1.0, 1.0]:
 		_box(Vector3(0.06, 3.2, POD_D - 2.0), Vector3(s * (POD_W * 0.5 - 0.15), 2.4, zc), Landmark._metal(Color(0.02, 0.02, 0.03)))
@@ -103,7 +103,7 @@ func build(spec: Dictionary, lift_info: Dictionary, player: CharacterBody3D, hud
 		var o := OmniLight3D.new()
 		o.position = p
 		o.light_color = Color(1.0, 0.9, 0.96)
-		o.light_energy = 1.8
+		o.light_energy = 3.0
 		o.omni_range = 11.0
 		add_child(o)
 
@@ -209,5 +209,5 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Screenshot camera: from beside the lift door, looking over the desk and out.
 func preview_transform() -> Transform3D:
 	var t := Transform3D()
-	t.origin = to_global(Vector3(-6.5, 2.2, _lift_front + 1.0))
-	return t.looking_at(to_global(Vector3(2.5, 1.6, _lift_front + POD_D - 1.0)), Vector3.UP)
+	t.origin = to_global(Vector3(5.5, 2.1, _lift_front + 1.0))
+	return t.looking_at(to_global(Vector3(-4.0, 1.9, _lift_front + POD_D * 0.62)), Vector3.UP)
