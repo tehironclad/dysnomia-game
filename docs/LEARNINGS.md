@@ -674,3 +674,64 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   ~17 s, ~80 s of flight. Previews: `screenshot.gd -- --view=tower|deck|jump`.
 - **Keys:** `wingsuit` (Q) and `parachute` (C) are input actions in `project.godot`, listed in
   `ControlsHelp.ACTIONS`.
+
+## 17. Exchanges: the Swap Hall (PulseX) and the YUE Exchange (2026-11-24)
+
+- **PulseX addresses [live, block 28,136,888]** (each has code; each router's `factory()` returns its
+  factory and `WPLS()` returns WPLS; `WETH()` reverts): V1 router `0x98bf93ebf5c380c0e6ae8e192a7e2ae08edacc02`
+  → factory `0x1715a3e4a142d8b698131108995174f37aeba10d` (65,546 pairs); V2 router
+  `0x165c3410fc91ef562c50559f7d2289febed552d9` → factory `0x29ea7545def87022badc76323f373ea1e707c523`
+  (192,747 pairs). ⚠ The site's `api/prices.js` calls `0x1715…` "PulseX V2": it is **V1**.
+  `read_board` re-checks `factory()`/`WPLS()` on every read and turns swaps off if they ever differ.
+- **Router:** Uniswap-V2 function names (`swapExactETHForTokens`, `…ForETH`, `…SupportingFeeOnTransferTokens`,
+  `getAmountsOut`). The fee is **0.29%**: `out = in·9971·rOut / (rIn·10000 + in·9971)`
+  (`getAmountOut(1e6, 1e30, 1e30) = 997,099` on both). Reverts are `Error(string)`: `PulseXRouter: EXPIRED`,
+  `PulseXRouter: INSUFFICIENT_OUTPUT_AMOUNT`, `PulseXLibrary: INSUFFICIENT_INPUT_AMOUNT`,
+  `TransferHelper::transferFrom: transferFrom failed` (not approved / too little); no pair → a bare revert.
+- **Pools [live, block 28,136,967]:** every Swap Hall token has a WPLS pool: AFFECTION (V2 ≈ 138.9M WPLS,
+  V1 0.8M), Fornax (V2 only, 24.5M), Fomalhaute (V2 11.0M, V1 0.6M), Eris (V1 12.2M, V2 9.7M), Tethys/CHO
+  (V1 5.2M, V2 3.7M), qZů (V2 6.2M), the Zürich asset (V2 11.0M), MATH, NoNukes, CROWS, VOID, CHEON (92k),
+  SIU (4k: thin, 1,000 PLS moves it 20%). Of the 942 QING tokens only **5** have a pair (qILLINOIS, qZů, q⩜,
+  q🈹, qSOLO); **714** of their assets do (mostly bridged tokens). None of the tested tokens takes a
+  transfer fee: plain swaps simulate fine (the game still retries the FoT variant on `PulseX: K`).
+- **Simulated from real wallets [live]:** 1,000 PLS → 38.25 Ⓐ from the owner `0x18f6…3111` (eth_call
+  with `value`; Transfer pair → wallet); approve + 100 Ⓐ → 2,599 PLS from `0xb644…d465`, and approve + 10
+  Zürich → 67.1 PLS from the owner, both with `trace_callMany` (state carried between the two calls;
+  `eth_simulateV1` is **not** available on rpc.pulsechain.com today). Without the approval the sell
+  reverts `TransferHelper::transferFrom`.
+- **YUE exchange [live]:** `Hong(SpendAsset, QingAsset, Amount)` `0xb3bde122` buys, `Hung(QingAsset,
+  ReceiveAsset, Amount)` `0x518945cd` sells. Cost = `Amount × Rate / 10^18` (every rated pair is 18/18
+  decimals). The YUE calls `transferFrom(you → YUE)` for what you pay (so **approve the YUE you trade
+  with**) and pays out of **its own stock**; what you pay stays in that YUE.
+  - **Any YUE, anyone:** `GetAssetRate`/`IsValidAsset` read the same on every YUE (it is
+    `QING.GetMarketRate(Asset())`, set by the QING's owners with `AddMarketRate`, only rising). The desk is
+    whichever YUE holds what you want; the game picks the one with the most stock (yours on a tie).
+  - **Rates:** only **14 of 942** QINGs have one for their asset (Illinois 0.1, MrStu 10, **Zürich 1e6 Zů per
+    qZů**, enter teh 1, PP4000 35.2, HoneyPot 1e-11, …; `tools/live_yue_exchange.gd` prints all). **No QING's
+    asset is itself a QING**, so the "walk up the hierarchy" in the knowledge base has nothing to walk today
+    (the game reads one level up if that ever changes). RatKing (the only Burj) has **no rate**: its desk
+    honestly says so and lists the territories that do.
+  - **Stock:** of the 55 known YUEs, 4 hold Illinois stock, 8 hold qZů (12 qZů in `0x1058…3c5c`, 1,000 Zů in
+    `0x4f94…f2d4`), 2 hold q🍯.
+  - **Simulated [live]:** from the owner, approve + Hong 0.0001 qZů at YUE `0x1058…` (pays 100 Zů) and approve
+    + Hung 0.0001 qZů into `0x4f94…` (gets 100 Zů) both **succeed** (trace_callMany); Illinois both ways too.
+  - **Errors [calc + seen live]:** `InvalidPair(address,address)` `0xd9a764d9` (token not on the asset chain),
+    `ExchangeRateNotFound(address,address)` `0x464460b9` (no rate), `ERC20InsufficientAllowance` `0xfb8f41b2`
+    or `DysnomiaInsufficientAllowance` (approve first; plain OZ assets revert `ERC20: insufficient allowance`),
+    `MarketRateNotFound(address)` `0x90b23441`, `OnlyGameTokens(address)` `0xd65928ec`; a non-QING as QingAsset
+    reverts with no data.
+- **In the game** (`scripts/world/exchange/`, panels in `scripts/ui/`):
+  - **Swap Hall** (`SwapHall`): Wild = a surveyed lot whose two field terminals already trade; Outpost+ =
+    the hall (curved glass front, wing roof, price pylon, ticker, quote wall, hanging board, swap counter).
+    Site: `LandmarkPlan.find_site` from `0.3·SIZE_M` east, clear of the Core, skyline, fair, pad, tower
+    plaza and landing ring. Boards are the reserves at one block, no wallet: the same for every viewer.
+  - **YUE Exchange** (`YueFloor`): a glass sky lobby hung off the glass lift at ≈ roof/5 (16–96 m, whole
+    floors; RatKing's Burj: 88 m), a stop of the existing lift (`Landmark.exchange_y`: E goes on up to the
+    deck, Ctrl back down). Every tower class has one (Sky Inn … Burj); Wild/Outpost have no tower, so the
+    Swap Hall's YUE counter (or the lot's terminal) is the desk.
+  - Writes: approve (simulate → sign → receipt → allowance re-read ≥ amount) → swap / Hong / Hung
+    (simulate from the wallet, with `value` for a buy → sign → receipt → Transfer / WPLS logs checked →
+    balances, pool or desk re-read at the receipt block). Sells also measure the PLS received:
+    balance(block) − balance(block−1) + gasUsed·effectiveGasPrice.
+- **Check it:** `tools/live_swaps.gd [-- --wallet=0x… --qing=0x… --all]`, `tools/live_yue_exchange.gd
+  [-- --wallet=0x… --qing=0x…,0x…]` (read-only). Previews: `--view=swap|swap_in|swap_panel|yue|yue_panel`.

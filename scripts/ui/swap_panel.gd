@@ -273,7 +273,12 @@ func quote() -> void:
 	var minimum := PulseX.min_out(out, slip)
 	var wallet := reader()
 	var lines: Array = []
-	lines.append("Route: %s on PulseX %s (router %s)" % [" → ".join(PackedStringArray(path.map(func(a): return "WPLS" if a == Contracts.WPLS else _sym_of(a)))), v, short(router)])
+	var hops_txt := " → ".join(PackedStringArray(path.map(func(a): return "WPLS" if a == Contracts.WPLS else _sym_of(a))))
+	if kind == "buy":
+		hops_txt = "PLS → " + hops_txt
+	elif kind == "sell":
+		hops_txt += " → PLS"
+	lines.append("Route: %s on PulseX %s (router %s)" % [hops_txt, v, short(router)])
 	lines.append("Quote: %s %s → %s %s (router getAmountsOut, latest block) · from the reserves at %s: %s" % [PulseX.fmt(amount_in, dec_in, 6), sym_in,
 		PulseX.fmt(out, dec_out, 6), sym_out, blk(board["block"]), PulseX.fmt(local[local.size() - 1], dec_out, 6)])
 	lines.append("Price impact %.2f%% (includes PulseX's 0.29%% fee per hop) · slippage %.1f%% → you get at least %s %s · deadline: 20 min" % [impact, slip / 100.0, PulseX.fmt(minimum, dec_out, 6), sym_out])

@@ -93,6 +93,10 @@
 - Development (`scripts/state/development.gd`): tier from the Hypobar total, energy from the Epibar
   total; skyline towers per player (`bar_columns.gd`, `tower.gdshader`), structures (`development_site.gd`),
   city lights/roads (terrain shader), aurora (sky shader). `tools/live_development.gd` measures every territory.
+- Exchanges (`scripts/world/exchange/`, LEARNINGS §17): `SwapHall` (PLS ⇄ tokens on PulseX: `PulseX`,
+  `SwapPanel`; a surveyed lot at Wild) and the YUE Exchange (`YueFloor`, a sky lobby stop of the tower's glass
+  lift, else the hall's counter: `YueExchange`, `YuePanel`). Read-only checks: `tools/live_swaps.gd`,
+  `tools/live_yue_exchange.gd`. Shots: `--view=swap|swap_in|swap_panel|yue|yue_panel [--session=0x…]`.
 - Collision: `scripts/world/solid.gd` (`Solid.box/cylinder/wrap`). Solid: the Core's room walls (doorway
   open), pylons, skyline towers (resized with them), the monolith, the World plinth, development props.
   Walk-through on purpose: the Heart, beacon/spire (sky), well basins, landing pads, floor lamps.

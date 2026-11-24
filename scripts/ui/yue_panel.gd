@@ -96,6 +96,8 @@ func refresh() -> void:
 		b.pressed.connect(_load_pair.bind(i))
 		list.add_child(b)
 		_rows.append(b)
+	if rated != null:
+		say("%d of %d territories have a market rate (%s). Pick one; this territory is first." % [rated.size(), Registry.count(), blk(YueExchange.rated_block())], OK)
 	await _load_pair(0)
 
 
