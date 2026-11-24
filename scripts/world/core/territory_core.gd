@@ -23,7 +23,7 @@ const WELLS := [
 var params: Dictionary = {}
 var territory: Dictionary = {}
 var base_y := 0.0
-var heart: MeshInstance3D
+var heart: HeartOrrery
 var door_material: ShaderMaterial
 var _wells := {}  # key → {column: MeshInstance3D, label: Label3D, mat: StandardMaterial3D}
 var _t := 0.0
@@ -217,28 +217,31 @@ func set_door_closed(closed: bool) -> void:
 
 
 func _build_heart(tint: Color) -> void:
-	heart = MeshInstance3D.new()
+	heart = HeartOrrery.new()
 	heart.name = "Heart"
-	var s := SphereMesh.new()
-	s.radius = 1.1
-	s.height = 2.2
-	s.radial_segments = 24
-	s.rings = 12
-	heart.mesh = s
-	heart.material_override = _glow(tint.lerp(Color.WHITE, 0.35), 2.5)
 	heart.position = Vector3(0.0, 11.0, 0.0)
 	add_child(heart)
-	var lamp := OmniLight3D.new()
-	lamp.light_color = tint
-	lamp.light_energy = 1.4
-	lamp.omni_range = 28.0
-	lamp.position = heart.position
-	add_child(lamp)
+	heart.build(params, tint, DeepField.to_color(params.get("color2", "#ffb070")))
+
+
+## Development (tier from the Hypobar total, energy from the Epibar total):
+## the Heart's rings and their speed. Same for every viewer.
+func set_development(tier: int, energy: float) -> void:
+	if heart:
+		heart.set_development(tier, energy)
+
+
+## A new block was read here: the Heart ticks with the chain's clock.
+func block_tick() -> void:
+	if heart:
+		heart.tick()
 
 
 ## A heartbeat (Beat confirmed): the Heart swells and fades.
 func pulse() -> void:
 	_pulse = 1.0
+	if heart:
+		heart.beat(1.0)
 
 
 ## Bars moved here (a Su or a CHOA.Chat landed): sparks run up both pylons
@@ -255,6 +258,8 @@ func cascade(strength: float = 0.5) -> void:
 		add_child(s)
 		_sparks.append({"node": s, "t": 0.0, "from": Vector3(x, 0.3, 0.0), "mid": Vector3(x, 14.0, 0.0), "to": Vector3(0.0, 11.0, 0.0)})
 	_pulse = maxf(_pulse, 0.25 + 0.35 * clampf(strength, 0.0, 1.0))
+	if heart:
+		heart.beat(0.35 + 0.35 * clampf(strength, 0.0, 1.0))
 
 
 ## A room line (LogEvent from this QING) etched on the Room's back wall.
@@ -337,9 +342,7 @@ func _process(delta: float) -> void:
 	_t += delta
 	if heart:
 		_pulse = maxf(0.0, _pulse - delta * 0.8)
-		var s := 1.0 + 0.04 * sin(_t * 1.3) + 0.6 * _pulse
-		heart.scale = Vector3.ONE * s
-		heart.position.y = 11.0 + 0.25 * sin(_t * 0.7)
+		heart.position.y = 11.0 + 0.2 * sin(_t * 0.7)
 	for i in range(_sparks.size() - 1, -1, -1):  # backwards: removal without a copy
 		var sp: Dictionary = _sparks[i]
 		sp["t"] += delta * 0.9

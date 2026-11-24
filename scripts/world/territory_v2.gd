@@ -263,8 +263,14 @@ func _frame(view: String) -> void:
 		camera.fov = 55.0
 
 
+var _ticked_block := -1
+
+
 ## Shared territory state → the world (same for every viewer).
 func _on_state_changed() -> void:
+	if state.block > 0 and state.block != _ticked_block:
+		_ticked_block = state.block
+		core.block_tick()  # the Heart ticks with each new block read here
 	core.set_well("fornax", state.fornax)
 	core.set_well("eris", state.eris)
 	core.set_well("tethys", state.tethys)
@@ -317,6 +323,7 @@ func _set_development(tier: int, hypo: PackedInt64Array, energy: float, board: A
 	dev_tier = tier
 	columns.set_energy(energy)
 	development.set_tier(dev_tier, energy)
+	core.set_development(dev_tier, energy)  # the Heart's rings (HeartOrrery)
 	if fair:
 		fair.set_dev_tier(dev_tier)
 	if landmark:
