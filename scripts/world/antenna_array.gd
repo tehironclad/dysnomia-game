@@ -53,7 +53,9 @@ func initialize(seed_value: int) -> void:
 	_build_shelter()
 	_build_fence()
 	_build_gate_arch()
+	_build_access_road()
 	_build_rover()
+	_build_crate_stack()
 	_build_lighting()
 	_build_crew(seed_value)
 	var keep: Array = [_radar]
@@ -453,8 +455,11 @@ func _build_equipment() -> void:
 	# Ice bridge (cable tray) from the canopy to the mast at 2.4 m
 	var tray_a := Vector3(c.x - 2.0, trayy, c.z - 0.2)
 	var tray_b := Vector3(BASE_W * 0.35, _mast_base_y + 2.4, BASE_W * 0.35)
-	var tray := Kit.box(self, Vector3(0.4, 0.05, tray_a.distance_to(tray_b)), (tray_a + tray_b) * 0.5, Kit.grille(Color(0.45, 0.46, 0.47), 0.05))
+	var tray := Kit.box(self, Vector3(0.6, 0.05, tray_a.distance_to(tray_b)), (tray_a + tray_b) * 0.5, Kit.grille(Color(0.55, 0.56, 0.57), 0.05))
 	tray.basis = Basis.looking_at(tray_b - tray_a, Vector3.UP)
+	var tside := (tray_b - tray_a).cross(Vector3.UP).normalized() * 0.3
+	for sd: float in [-1.0, 1.0]:
+		Kit.beam(self, tray_a + tside * sd + Vector3(0, 0.08, 0), tray_b + tside * sd + Vector3(0, 0.08, 0), 0.025, Kit.paint(Color(0.95, 0.7, 0.1), 0.5, 0.5), 6, false)
 	var mid := (tray_a + tray_b) * 0.5
 	Kit.beam(self, Vector3(mid.x, 0.06, mid.z), mid - Vector3(0, 0.05, 0), 0.05, post, 6)
 	for k in 3:
@@ -472,7 +477,7 @@ func _build_equipment() -> void:
 
 func _build_shelter() -> void:
 	## Prefab relay shelter with lit window, waveguide port to the mast, generator + tank.
-	var sh := Kit.cabin(self, Vector3(-6.5, 0, 5.5), PI * 0.5, Vector3(5.0, 2.6, 2.6), "RELAY SHELTER 07", Color(0.75, 0.92, 1.0))
+	var sh := Kit.cabin(self, Vector3(-6.5, 0, 5.5), PI * 0.5, Vector3(5.0, 2.6, 2.6), "RELAY SHELTER 07", Color(0.75, 0.92, 1.0), true, Color(0.72, 0.7, 0.62))
 	sh.name = "RelayShelter"
 	# Waveguide bridge from the shelter wall (+X face is the front) to the mast
 	var cable := Kit.paint(Color(0.03, 0.03, 0.035), 0.7, 0.0)
@@ -501,7 +506,7 @@ func _build_rover() -> void:
 	## Six-wheeled crew rover parked outside the gate.
 	var root := Node3D.new()
 	root.name = "Rover"
-	root.position = Vector3(FENCE_HALF + 3.6, _h(FENCE_HALF + 3.6, -4.2), -4.2)
+	root.position = Vector3(FENCE_HALF + 3.6, _h(FENCE_HALF + 3.6, -4.2) + 0.07, -4.2)
 	root.rotation.y = 0.35
 	add_child(root)
 	var body := Kit.hull_material(Color(0.82, 0.8, 0.74), false)
@@ -526,21 +531,92 @@ func _build_rover() -> void:
 
 
 func _build_gate_arch() -> void:
-	## Lit "COMM ARRAY" arch over the gate + a station ID plate on the gate post.
+	## Big cyan neon "COMM ARRAY" arch over the gate, facing the approach (+X), plus a station
+	## ID plate on the gate post.
 	var gx := FENCE_HALF + 0.05
-	var gh := _gate_half + 0.25
+	var gh := _gate_half + 1.3
 	var steel := Kit.paint(Color(0.2, 0.21, 0.23), 0.45, 0.8)
 	for s: float in [-1.0, 1.0]:
-		Kit.beam(self, Vector3(gx, 0.0, s * gh), Vector3(gx, 4.0, s * gh), 0.09, steel)
-		Kit.box(self, Vector3(0.4, 0.15, 0.4), Vector3(gx, 0.08, s * gh), Kit.pbr("brushed_concrete", 0.8, Color(0.6, 0.6, 0.6)))
-	Kit.box(self, Vector3(0.22, 0.8, gh * 2.0 + 0.3), Vector3(gx, 3.9, 0), steel)
+		Kit.beam(self, Vector3(gx, 0.0, s * gh), Vector3(gx, 5.6, s * gh), 0.12, steel)
+		Kit.box(self, Vector3(0.5, 0.18, 0.5), Vector3(gx, 0.09, s * gh), Kit.pbr("brushed_concrete", 0.8, Color(0.6, 0.6, 0.6)))
+	Kit.box(self, Vector3(0.26, 1.45, gh * 2.0 + 0.4), Vector3(gx, 4.9, 0), Kit.paint(Color(0.03, 0.03, 0.035), 0.5, 0.4))
 	for side: float in [1.0, -1.0]:
-		var fx := gx + side * 0.12
-		Kit.label(self, "COMM ARRAY", Vector3(fx, 3.95, 0), 130, Color(0.6, 0.93, 1.0), side * PI * 0.5, 2.4)
-		Kit.box(self, Vector3(0.02, 0.05, gh * 2.0), Vector3(fx, 3.58, 0), Kit.glow(Kit.CYAN, 4.0), Vector3.ZERO, false)
+		var fx := gx + side * 0.14
+		var l := Kit.label(self, "COMM ARRAY", Vector3(fx, 4.98, 0), 250, Color(0.6, 0.95, 1.0), side * PI * 0.5, 3.0)
+		l.outline_size = 22
+		l.outline_modulate = Color(0.1, 0.7, 1.0, 0.9)
+		Kit.box(self, Vector3(0.02, 0.06, gh * 2.0 + 0.2), Vector3(fx, 4.25, 0), Kit.glow(Kit.CYAN, 5.0), Vector3.ZERO, false)
+		Kit.box(self, Vector3(0.02, 0.06, gh * 2.0 + 0.2), Vector3(fx, 5.58, 0), Kit.glow(Kit.CYAN, 5.0), Vector3.ZERO, false)
 	Kit.sign_board(self, "STATION ID\nDYS-RLY-07\nPULSECHAIN 369", Vector3(gx + 0.12, 1.55, -gh - 0.6), PI * 0.5, Vector2(0.8, 0.6), Color(0.85, 0.86, 0.84), Color(0.08, 0.1, 0.14), 30)
 	Kit.beam(self, Vector3(gx + 0.1, 0.0, -gh - 0.6), Vector3(gx + 0.1, 1.3, -gh - 0.6), 0.03, steel)
-	Kit.light_pool(self, Vector3(gx + 1.2, 0.08, 0), 3.0, Kit.CYAN, 0.9)
+	Kit.light_pool(self, Vector3(gx + 1.6, 0.08, 0), 4.0, Kit.CYAN, 1.0)
+
+
+func _build_access_road() -> void:
+	## Concrete access road from the gate out to the edge of the levelled site, widening into
+	## a parking apron for the rover; follows the real terrain, with reflective edge studs.
+	var mat := Kit.pbr("brushed_concrete", 0.4, Color(0.42, 0.42, 0.41))
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var x0 := FENCE_HALF + 0.3
+	var x1 := FENCE_HALF + 9.5
+	var nx := int(x1 - x0)
+	var zs := [-7.4, -2.4, 0.0, 2.4]
+	for i in nx:
+		var xa := x0 + float(i)
+		var xb := xa + 1.0
+		for j in zs.size() - 1:
+			var za: float = zs[j]
+			var zb: float = zs[j + 1]
+			if j == 0 and xa > FENCE_HALF + 7.0:
+				continue  # Apron only beside the gate end
+			var v := [Vector3(xa, _h(xa, za) + 0.07, za), Vector3(xb, _h(xb, za) + 0.07, za), Vector3(xb, _h(xb, zb) + 0.07, zb), Vector3(xa, _h(xa, zb) + 0.07, zb)]
+			for idx in [0, 2, 1, 0, 3, 2]:
+				st.set_uv(Vector2(v[idx].x, v[idx].z) * 0.3)
+				st.add_vertex(v[idx])
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.name = "AccessRoad"
+	mi.mesh = st.commit()
+	mi.material_override = mat
+	add_child(mi)
+	var studs: Array = []
+	for i in int((x1 - x0) / 2.0):
+		var x := x0 + 1.0 + float(i) * 2.0
+		studs.append(Transform3D(Basis.from_scale(Vector3(0.12, 0.05, 0.12)), Vector3(x, _h(x, 2.3) + 0.1, 2.3)))
+		if x > FENCE_HALF + 7.0:
+			studs.append(Transform3D(Basis.from_scale(Vector3(0.12, 0.05, 0.12)), Vector3(x, _h(x, -2.3) + 0.1, -2.3)))
+	Kit.multi(self, Kit.unit_box(), studs, Kit.glow(Color(1.0, 0.7, 0.15), 3.0), false)
+	# Parking bay lines on the apron
+	for z: float in [-7.2, -2.6]:
+		var a := Vector3(x0 + 1.0, 0, z)
+		var b := Vector3(FENCE_HALF + 6.8, 0, z)
+		a.y = _h(a.x, z) + 0.09
+		b.y = _h(b.x, z) + 0.09
+		Kit.beam(self, a, b, 0.04, Kit.paint(Color(0.95, 0.9, 0.8), 0.6, 0.0), 4, false)
+
+
+func _build_crate_stack() -> void:
+	## Spares stacked in the compound corner nearest the approach.
+	var p := Vector3(8.3, 0.06, 8.2)
+	Kit.prop(self, "wooden_crate_02", p, 0.1)
+	Kit.prop(self, "wooden_crate_02", p + Vector3(0.6, 0, 0.05), -0.05)
+	Kit.prop(self, "wooden_crate_02", p + Vector3(0.3, 0.46, 0.0), 0.25)
+	Kit.prop(self, "old_military_crate", p + Vector3(-1.2, 0, -0.6), 1.5, 0.7)
+	Kit.prop(self, "old_military_crate", p + Vector3(-1.2, 0.22, -0.6), 1.45, 0.7)
+	Kit.prop(self, "barrel_03", p + Vector3(-0.4, 0, -1.4), 0.3)
+	Kit.prop(self, "barrel_03", p + Vector3(0.3, 0, -1.5), 1.3)
+	Kit.cyl(self, 0.55, 0.55, 0.06, p + Vector3(-2.2, 0.55, 0.2), Kit.paint(Color(0.36, 0.26, 0.16), 0.85, 0.0), 18, Vector3(PI * 0.5, 0, 0))
+	Kit.cyl(self, 0.55, 0.55, 0.06, p + Vector3(-2.2, 0.55, -0.5), Kit.paint(Color(0.36, 0.26, 0.16), 0.85, 0.0), 18, Vector3(PI * 0.5, 0, 0))
+	Kit.cyl(self, 0.38, 0.38, 0.65, p + Vector3(-2.2, 0.55, -0.15), Kit.paint(Color(0.04, 0.04, 0.045), 0.6, 0.0), 18, Vector3(PI * 0.5, 0, 0))
+
+
+func get_board_anchor() -> Transform3D:
+	## Reserved spot for a 3.2 x 1.8 m media billboard (bottom 1.2 m up) just outside the
+	## fence beside the access road, facing the approach from spawn (+X). Board front = -Z.
+	var p := Vector3(FENCE_HALF + 2.2, 0, 6.6)
+	p.y = _h(p.x, p.z) + 1.2 + 0.9
+	return Transform3D(Basis(Vector3.UP, -PI * 0.5), p)
 
 
 # ─── Fence & gate ───────────────────────────────────────────────────
@@ -589,7 +665,7 @@ func _build_fence() -> void:
 				var outward := Vector3(pp.x, 0, pp.z).normalized() * 0.32
 				arms.append(Kit.beam_xform(pp + Vector3(0, 2.1, 0), pp + Vector3(0, 2.45, 0) + outward, 0.015))
 			rails.append(Kit.beam_xform(Vector3(p0.x, g0 + 2.08, p0.z), Vector3(p1.x, g1 + 2.08, p1.z), 0.025))
-			if i % 2 == 0:
+			if (i + side) % 4 == 0:
 				lamps.append(Vector3(p0.x, g0, p0.z) - Vector3(p0.x, 0, p0.z).normalized() * 0.09)
 			var ow0 := Vector3(p0.x, 0, p0.z).normalized()
 			var ow1 := Vector3(p1.x, 0, p1.z).normalized()
@@ -613,7 +689,10 @@ func _build_fence() -> void:
 		var inward := -Vector3(lp.x, 0, lp.z).normalized()
 		heads.append(Transform3D(Basis.from_scale(Vector3(0.16, 0.1, 0.16)), lp + Vector3(0, 1.85, 0) + inward * 0.06))
 		lenses.append(Transform3D(Basis.from_scale(Vector3(0.12, 0.02, 0.12)), lp + Vector3(0, 1.79, 0) + inward * 0.06))
-		Kit.light_pool(self, lp + inward * 1.2 + Vector3(0, 0.1, 0), 1.8, Color(1.0, 0.85, 0.6), 0.45)
+		var k := float(heads.size())
+		var rr := 1.6 + 0.9 * absf(sin(k * 2.3))
+		var pst := 0.18 + 0.16 * absf(cos(k * 1.7))
+		Kit.light_pool(self, lp + inward * (0.9 + 0.5 * absf(sin(k))) + Vector3(0, 0.1, 0), rr, Color(1.0, 0.8 + 0.08 * sin(k), 0.55), pst)
 	Kit.multi(self, Kit.unit_box(), heads, Kit.paint(Color(0.1, 0.1, 0.11), 0.5, 0.7), false)
 	Kit.multi(self, Kit.unit_box(), lenses, Kit.glow(Color(1.0, 0.85, 0.6), 5.0), false)
 

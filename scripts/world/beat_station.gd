@@ -21,7 +21,7 @@ const MONUMENT_SHADER = preload("res://assets/shaders/monument.gdshader")
 const CIRCLE_SHADER = preload("res://assets/shaders/monument_circle.gdshader")
 
 const INTERACTION_RADIUS: float = 12.0
-const DECK_H: float = 1.0           # Stage deck top above the levelled ground
+const DECK_H: float = 1.6           # Stage deck top above the levelled ground
 const DECK_R: float = 9.6           # Octagon circumradius
 const PYLON_HEIGHT: float = 12.0
 const PYLON_BOTTOM_RADIUS: float = 0.8
@@ -35,6 +35,9 @@ const CORE_H: float = 4.5
 const GROUND_RING_SIZE: float = 15.0
 const VIOLET := Color(0.62, 0.3, 1.0)
 const CYAN := Color(0.25, 0.85, 1.0)
+const MAGENTA := Color(1.0, 0.25, 0.7)
+const STEP_SIDES := [2, 4]
+const GEN_SPOTS := [Vector3(-12.2, 0, -6.4), Vector3(-11.0, 0, -5.1)]      # Octagon sides (k: normal angle k*45 deg from +Z) with stairs
 
 # ─── Materials ──────────────────────────────────────────────────────
 var _pylon_material: ShaderMaterial
@@ -66,6 +69,7 @@ var _arc_mat: StandardMaterial3D
 var _arc_timer: float = 0.0
 var _arc_idx: int = 0
 var _arc_rng := RandomNumberGenerator.new()
+var _movers: Array[Node3D] = []   # Moving-head spot pivots
 
 # ─── Animation / state ─────────────────────────────────────────────
 var _dish_angle: float = 0.0
@@ -242,6 +246,14 @@ func _process(delta: float) -> void:
 	if _arc_mat:
 		_arc_mat.emission_energy_multiplier = 2.5 + _power * 3.0 + flash * 10.0
 
+	# ── Moving heads sweep the pit and the deck floor ──
+	for i in _movers.size():
+		var ph := t * (0.45 + 0.13 * float(i)) + float(i) * 2.1
+		var target := Vector3(sin(ph) * 6.5, 0.0, 6.5 + cos(ph * 1.3) * 5.0)
+		if target.z < 9.0:
+			target.y = DECK_H
+		_movers[i].look_at(to_global(target), Vector3.UP)
+
 	# ── Beat effect decay ──
 	if _beat_effect_timer > 0.0:
 		_beat_effect_timer -= delta
@@ -303,7 +315,7 @@ func _build_site() -> void:
 		Kit.box(self, Vector3(28.4, 0.5, 0.25), Vector3(0, -0.1, 14.1 * s), kerb)
 		Kit.box(self, Vector3(0.25, 0.5, 28.4), Vector3(14.1 * s, -0.1, 0), kerb)
 	# Embankment from the kerb down to the real terrain so the plaza never floats
-	Kit.skirt(self, Vector2(14.25, 14.25), 0.12, 4.5, Kit.pbr("brushed_concrete", 0.35, Color(0.42, 0.41, 0.4)))
+	Kit.skirt(self, Vector2(14.25, 14.25), 0.12, 4.5, Kit.pbr("brushed_concrete", 0.35, Color(0.58, 0.57, 0.55)))
 
 
 func _build_deck() -> void:
@@ -322,29 +334,35 @@ func _build_deck() -> void:
 		Kit.pbr("brushed_concrete", 0.5, Color(0.5, 0.5, 0.5)), 8, Vector3(0, PI / 8.0, 0))
 
 	var apothem := DECK_R * cos(PI / 8.0)
-	_build_steps(apothem, 1.0)
-	_build_steps(apothem, -1.0)
+	for k in STEP_SIDES:
+		_build_steps(apothem, float(k) * TAU / 8.0)
 	_build_railings(apothem)
+	# Open stage front: LED lip + a row of stage-edge uplights instead of a rail
+	Kit.box(self, Vector3(2.0 * apothem * tan(PI / 8.0) - 0.2, 0.06, 0.06), Vector3(0, DECK_H + 0.04, apothem - 0.1), Kit.glow(CYAN, 3.0), Vector3.ZERO, false)
 
 
-func _build_steps(apothem: float, side: float) -> void:
+func _build_steps(apothem: float, ang: float) -> void:
+	## Stair flight off octagon side at normal angle `ang` (stairs run outward along it).
+	var root := Node3D.new()
+	root.rotation.y = ang
+	add_child(root)
 	var tread := Kit.pbr("metal_plate", 0.5, Color(0.55, 0.55, 0.57))
-	var n := 4
+	var n := int(ceil(DECK_H / 0.27))
 	var rise := DECK_H / float(n)
+	var run := 0.34
 	for i in n:
-		var depth := 0.42 * float(n - i)
+		var depth := run * float(n - i)
 		var h := rise * float(i + 1)
-		Kit.box(self, Vector3(4.0, h, depth), Vector3(0, h * 0.5, side * (apothem + depth * 0.5)), tread)
-		# Hazard nosing on each tread edge
-		Kit.box(self, Vector3(4.02, 0.03, 0.08), Vector3(0, h + 0.005, side * (apothem + depth - 0.04)), Kit.hazard(4.0), Vector3.ZERO, false)
-	# Handrails both sides of the steps
+		Kit.box(root, Vector3(4.0, h, depth), Vector3(0, h * 0.5, apothem + depth * 0.5), tread)
+		Kit.box(root, Vector3(4.02, 0.03, 0.08), Vector3(0, h + 0.005, apothem + depth - 0.04), Kit.hazard(4.0), Vector3.ZERO, false)
 	var rail := Kit.paint(Color(0.85, 0.62, 0.1), 0.45, 0.6)
+	var foot := apothem + run * float(n)
 	for sx: float in [-2.05, 2.05]:
-		var a := Vector3(sx, DECK_H + 1.0, side * apothem)
-		var b := Vector3(sx, 1.0, side * (apothem + 1.68))
-		Kit.beam(self, a, b, 0.035, rail)
-		Kit.beam(self, Vector3(sx, DECK_H, side * apothem), a, 0.04, rail)
-		Kit.beam(self, Vector3(sx, 0.0, side * (apothem + 1.68)), b, 0.04, rail)
+		var a := Vector3(sx, DECK_H + 1.0, apothem)
+		var b := Vector3(sx, 1.0, foot)
+		Kit.beam(root, a, b, 0.035, rail)
+		Kit.beam(root, Vector3(sx, DECK_H, apothem), a, 0.04, rail)
+		Kit.beam(root, Vector3(sx, 0.0, foot), b, 0.04, rail)
 
 
 func _build_railings(apothem: float) -> void:
@@ -357,7 +375,9 @@ func _build_railings(apothem: float) -> void:
 		var tan_ := Vector3(cos(ang), 0, -sin(ang))
 		var half := apothem * tan(PI / 8.0) - 0.35
 		var c := nrm * (apothem - 0.25)
-		if k == 0 or k == 4:
+		if k == 0:
+			continue  # Open stage front
+		if STEP_SIDES.has(k):
 			# Step sides: short rail stubs either side of the 4 m stair opening
 			for sd: float in [-1.0, 1.0]:
 				var p0 := c + tan_ * sd * 2.05
@@ -541,7 +561,7 @@ func _build_conduits() -> void:
 			Kit.tube(self, pts, 0.075, _conduit_mat)
 	# Deck → generators: thick black cables draping over the deck edge
 	var rubber := Kit.paint(Color(0.03, 0.03, 0.035), 0.7, 0.0)
-	for g: Vector3 in [Vector3(10.2, 0, -9.0), Vector3(11.6, 0, -7.6)]:
+	for g: Vector3 in GEN_SPOTS:
 		var edge := Vector3(g.x, 0, g.z).normalized() * (DECK_R * cos(PI / 8.0) - 0.3)
 		var pts: Array[Vector3] = [
 			edge + Vector3(0, DECK_H + 0.08, 0) - edge.normalized() * 1.5,
@@ -718,122 +738,164 @@ func _build_speakers() -> void:
 
 
 func _build_control_desk() -> void:
-	## Operator console at the stage front: angled top, 3 monitors, VU strip facing the crowd.
+	## DJ booth at the stage front: flight-case desk, two turntables, mixer, laptop, three
+	## monitors (CHARGE/HYPO/EPI, radar, log) and an LED front panel facing the crowd.
 	var root := Node3D.new()
-	root.name = "ControlDesk"
+	root.name = "DJBooth"
 	root.position = Vector3(0, DECK_H, 4.3)
 	add_child(root)
-	var body := Kit.pbr("metal_plate", 0.9, Color(0.24, 0.25, 0.27), false)
+	var body := Kit.painted("metal_plate", Color(0.06, 0.06, 0.065), 1.4)
 	var dark := Kit.paint(Color(0.03, 0.03, 0.035), 0.4, 0.4)
-	Kit.box(root, Vector3(3.4, 0.95, 0.9), Vector3(0, 0.475, 0), body)
-	Kit.box(root, Vector3(3.5, 0.06, 1.05), Vector3(0, 0.98, -0.05), dark, Vector3(-0.18, 0, 0))
-	# Fader / knob rows on the deck surface (cheap emissive dots)
+	var alu := Kit.paint(Color(0.6, 0.61, 0.63), 0.3, 0.95)
+	Kit.box(root, Vector3(3.4, 1.0, 0.9), Vector3(0, 0.5, 0), body)
+	for sx: float in [-1.7, 1.7]:
+		Kit.box(root, Vector3(0.04, 1.0, 0.92), Vector3(sx, 0.5, 0), alu, Vector3.ZERO, false)
+	Kit.box(root, Vector3(3.5, 0.05, 1.0), Vector3(0, 1.02, -0.05), dark)
+	# Turntables: platter, label, tonearm
+	for sx: float in [-1.05, 1.05]:
+		Kit.box(root, Vector3(0.62, 0.08, 0.5), Vector3(sx, 1.08, -0.1), Kit.paint(Color(0.12, 0.12, 0.13), 0.35, 0.6))
+		Kit.cyl(root, 0.2, 0.2, 0.02, Vector3(sx - 0.05, 1.13, -0.1), Kit.paint(Color(0.02, 0.02, 0.02), 0.2, 0.2), 24, Vector3.ZERO, false)
+		Kit.cyl(root, 0.06, 0.06, 0.022, Vector3(sx - 0.05, 1.135, -0.1), Kit.glow(VIOLET if sx < 0 else CYAN, 2.0), 16, Vector3.ZERO, false)
+		Kit.beam(root, Vector3(sx + 0.22, 1.15, -0.28), Vector3(sx + 0.05, 1.15, 0.02), 0.008, alu, 6, false)
+	# Mixer with lit faders + laptop on a stand
+	Kit.box(root, Vector3(0.6, 0.1, 0.5), Vector3(0, 1.09, -0.1), Kit.paint(Color(0.1, 0.1, 0.11), 0.4, 0.6))
 	var leds: Array = []
-	for r in 3:
-		for c in 16:
-			leds.append(Transform3D(Basis.from_scale(Vector3(0.05, 0.02, 0.05)), Vector3(-1.4 + float(c) * 0.187, 1.03 + float(r) * 0.03, -0.35 + float(r) * 0.18)))
-	Kit.multi(root, Kit.unit_box(), leds, Kit.glow(Color(1.0, 0.55, 0.15), 2.0), false)
-	# Front VU strip facing the audience (+Z)
-	_desk_vu = Kit.screen(1, _accent, 5)
-	Kit.quad(root, Vector2(3.0, 0.42), Vector3(0, 0.55, 0.455), _desk_vu)
-	Kit.label(root, "META RESONANCE CONTROL", Vector3(0, 0.86, 0.456), 36, Color(0.85, 0.85, 0.85), 0.0, 0.3)
-	# Monitors on arms, facing the operator (-Z side)
+	for r in 4:
+		for c in 6:
+			leds.append(Transform3D(Basis.from_scale(Vector3(0.03, 0.015, 0.03)), Vector3(-0.22 + float(c) * 0.088, 1.15, -0.28 + float(r) * 0.11)))
+	Kit.multi(root, Kit.unit_box(), leds, Kit.glow(Color(1.0, 0.55, 0.15), 2.5), false)
+	Kit.box(root, Vector3(0.4, 0.02, 0.28), Vector3(0.45, 1.25, -0.35), dark, Vector3(0.1, 0.2, 0))
+	var lap := Kit.screen(3, CYAN, 9)
+	Kit.quad(root, Vector2(0.38, 0.24), Vector3(0.45, 1.39, -0.46), lap, Vector3(-0.3, PI + 0.2, 0))
+	# Front LED panel facing the audience (+Z) + logo
+	_desk_vu = Kit.screen(5, _accent, 5)
+	Kit.quad(root, Vector2(3.2, 0.62), Vector3(0, 0.52, 0.455), _desk_vu)
+	Kit.label(root, "META.BEAT", Vector3(0, 0.9, 0.456), 44, Color(0.9, 0.95, 1.0), 0.0, 1.0)
+	# Monitors on arms, facing the DJ (-Z side)
 	var modes := [0, 2, 3]
 	for i in 3:
 		var x := (float(i) - 1.0) * 1.05
 		var mon := Node3D.new()
-		mon.position = Vector3(x, 1.45, 0.1)
+		mon.position = Vector3(x, 1.62, 0.25)
 		mon.rotation = Vector3(-0.15, PI + (float(i) - 1.0) * -0.25, 0)
 		root.add_child(mon)
-		Kit.box(mon, Vector3(0.95, 0.6, 0.05), Vector3.ZERO, dark)
+		Kit.box(mon, Vector3(0.8, 0.5, 0.05), Vector3.ZERO, dark)
 		var scr := Kit.screen(modes[i], _accent, 30 + i)
-		Kit.quad(mon, Vector2(0.88, 0.53), Vector3(0, 0, 0.027), scr)
+		Kit.quad(mon, Vector2(0.74, 0.44), Vector3(0, 0, 0.027), scr)
 		_screens.append(scr)
-		Kit.beam(root, Vector3(x, 1.0, 0.1), Vector3(x, 1.2, 0.1), 0.03, dark)
-	# Desk task light
-	Kit.omni(root, Vector3(0, 1.9, -0.6), Color(0.6, 0.85, 1.0), 0.8, 4.5)
+		Kit.beam(root, Vector3(x, 1.05, 0.25), Vector3(x, 1.38, 0.25), 0.025, dark)
+	# Stage monitor wedges along the stage front edge, facing back at the performers
+	var apo := DECK_R * cos(PI / 8.0)
+	for x: float in [-3.0, -1.2, 1.2, 3.0]:
+		var w := Kit.box(self, Vector3(0.75, 0.42, 0.55), Vector3(x, DECK_H + 0.21, apo - 0.5), Kit.painted("metal_plate", Color(0.05, 0.05, 0.055), 1.6), Vector3(0.5, PI, 0))
+		w.name = "Wedge"
+		Kit.box(self, Vector3(0.65, 0.3, 0.02), Vector3(x, DECK_H + 0.26, apo - 0.72), Kit.grille(), Vector3(0.5, PI, 0), false)
 
 
 func _build_video_wall() -> void:
-	## Truss-framed video wall behind the stage (facing +Z) showing the territory gauges.
-	var root := Node3D.new()
-	root.name = "VideoWall"
-	root.position = Vector3(0, 0, -12.2)
-	add_child(root)
-	var truss := Kit.paint(Color(0.55, 0.56, 0.58), 0.35, 0.9)
-	var frame := Kit.paint(Color(0.04, 0.04, 0.045), 0.6, 0.3)
-	var w := 10.5
-	# Legs: square truss towers on ballast feet
-	var xs: Array = []
-	for sx: float in [-w * 0.5, w * 0.5]:
-		Kit.box(root, Vector3(1.0, 0.3, 1.0), Vector3(sx, 0.15, 0), Kit.pbr("brushed_concrete", 0.8, Color(0.6, 0.6, 0.6)))
-		for cx: float in [-0.2, 0.2]:
-			for cz: float in [-0.2, 0.2]:
-				xs.append(Kit.beam_xform(Vector3(sx + cx, 0.3, cz), Vector3(sx + cx, 7.0, cz), 0.03))
-		for k in 13:
-			var y0 := 0.3 + float(k) * 0.5
-			xs.append(Kit.beam_xform(Vector3(sx - 0.2, y0, 0.2), Vector3(sx + 0.2, y0 + 0.5, 0.2), 0.015))
-			xs.append(Kit.beam_xform(Vector3(sx - 0.2, y0, -0.2), Vector3(sx + 0.2, y0 + 0.5, -0.2), 0.015))
-	# Header truss
-	for cy: float in [6.6, 7.0]:
-		for cz: float in [-0.2, 0.2]:
-			xs.append(Kit.beam_xform(Vector3(-w * 0.5, cy, cz), Vector3(w * 0.5, cy, cz), 0.03))
-	for k in 26:
-		var x0 := -w * 0.5 + float(k) * w / 26.0
-		xs.append(Kit.beam_xform(Vector3(x0, 6.6, 0.2), Vector3(x0 + w / 26.0, 7.0, 0.2), 0.015))
-	Kit.multi(root, Kit.unit_cylinder(6), xs, truss)
-	# Screens
-	var modes := [0, 1, 2]
-	var labels := ["CHARGE  HYPO  EPI", "RESONANCE", "BEAT SCAN"]
-	for i in 3:
-		var x := (float(i) - 1.0) * 3.2
-		Kit.box(root, Vector3(3.0, 2.0, 0.18), Vector3(x, 4.5, 0), frame)
-		var scr := Kit.screen(modes[i], _accent, 40 + i)
-		scr.set_shader_parameter("brightness", 2.8)
-		Kit.quad(root, Vector2(2.84, 1.84), Vector3(x, 4.5, 0.095), scr)
+	## On-deck LED backdrop between the rear pylons (gauges left/right, visualiser centre),
+	## a full square roof truss on the pylons with moving heads, a deck wash and a violet
+	## back light.
+	var truss := Kit.paint(Color(0.6, 0.61, 0.63), 0.35, 0.9)
+	var frame := Kit.paint(Color(0.03, 0.03, 0.035), 0.6, 0.3)
+	var z := -PYLON_SPACING + 0.9
+	var y0 := DECK_H + 0.5
+	var h := 4.6
+	Kit.box(self, Vector3(9.0, h + 0.3, 0.3), Vector3(0, y0 + h * 0.5, z - 0.1), frame)
+	var panels := [[-3.0, 2.8, 0], [0.0, 3.0, 5], [3.0, 2.8, 1]]
+	for p in panels:
+		var scr := Kit.screen(p[2], _accent, 40 + int(p[2]))
+		scr.set_shader_parameter("brightness", 3.0)
+		Kit.quad(self, Vector2(p[1], h), Vector3(p[0], y0 + h * 0.5, z + 0.06), scr)
 		_screens.append(scr)
-		Kit.label(root, labels[i], Vector3(x, 3.3, 0.1), 52, Color(0.85, 0.85, 0.88), 0.0, 0.4)
-	# Back panel so the wall reads solid from the spawn side
-	Kit.box(root, Vector3(9.8, 2.3, 0.04), Vector3(0, 4.5, -0.12), Kit.painted("container_side", Color(0.3, 0.31, 0.33), 0.6))
-	Kit.label(root, "META RESONANCE ARRAY", Vector3(0, 4.6, -0.15), 160, Color(0.9, 0.9, 0.9), PI, 0.0, 8)
-	# Header sign (both faces)
-	var sign_mat := Kit.glow(_accent, 3.0)
-	Kit.box(root, Vector3(6.4, 0.75, 0.08), Vector3(0, 7.55, 0), frame)
-	Kit.label(root, "META.BEAT", Vector3(0, 7.55, 0.05), 170, _accent, 0.0, 2.5)
-	Kit.label(root, "META.BEAT", Vector3(0, 7.55, -0.05), 170, _accent, PI, 2.5)
-	Kit.box(root, Vector3(6.4, 0.04, 0.1), Vector3(0, 7.15, 0), sign_mat, Vector3.ZERO, false)
-	# Violet back-light: washes the wall and rims the stage from behind
-	Kit.omni(root, Vector3(0, 3.5, 3.4), VIOLET, 2.2, 12.0)
+	Kit.label(self, "CHARGE  HYPO  EPI", Vector3(-3.0, y0 + 0.25, z + 0.08), 40, Color(0.9, 0.9, 0.95), 0.0, 0.6)
+	Kit.label(self, "RESONANCE", Vector3(3.0, y0 + 0.25, z + 0.08), 40, Color(0.9, 0.9, 0.95), 0.0, 0.6)
+	var xs: Array = []
+	for sx: float in [-4.6, 4.6]:
+		Kit.truss_xforms(Vector3(sx, DECK_H, z - 0.1), Vector3(sx, y0 + h + 0.3, z - 0.1), 0.3, 0.45, xs, 0.025)
+	# Square roof truss tying the four pylons together (the front span carries the header)
+	var ry := DECK_H + 8.7
+	var c := PYLON_SPACING
+	Kit.truss_xforms(Vector3(-c, ry, -c + 0.45), Vector3(-c, ry, c - 0.45), 0.42, 0.5, xs, 0.03)
+	Kit.truss_xforms(Vector3(c, ry, -c + 0.45), Vector3(c, ry, c - 0.45), 0.42, 0.5, xs, 0.03)
+	Kit.truss_xforms(Vector3(-c + 0.45, ry, -c), Vector3(c - 0.45, ry, -c), 0.42, 0.5, xs, 0.03)
+	Kit.multi(self, Kit.unit_cylinder(6), xs, truss)
+	# Moving-head fixtures hung under the truss (static ones are just glowing lenses)
+	var heads: Array = []
+	for k in 6:
+		var t := float(k) / 5.0
+		heads.append(Transform3D(Basis.from_scale(Vector3(0.3, 0.38, 0.3)), Vector3(lerpf(-c + 0.8, c - 0.8, t), ry - 0.45, -c)))
+		heads.append(Transform3D(Basis.from_scale(Vector3(0.3, 0.38, 0.3)), Vector3(c, ry - 0.45, lerpf(-c + 0.8, c - 0.8, t))))
+		heads.append(Transform3D(Basis.from_scale(Vector3(0.3, 0.38, 0.3)), Vector3(-c, ry - 0.45, lerpf(-c + 0.8, c - 0.8, t))))
+	Kit.multi(self, Kit.unit_box(), heads, Kit.paint(Color(0.06, 0.06, 0.07), 0.5, 0.6), false)
+	# Two real moving spots on the front truss that sweep the crowd and deck floor
+	for i in 2:
+		var piv := Node3D.new()
+		piv.position = Vector3(-c if i == 0 else c, ry - 0.6, 2.2)
+		add_child(piv)
+		Kit.box(piv, Vector3(0.34, 0.42, 0.34), Vector3(0, 0, 0), Kit.paint(Color(0.06, 0.06, 0.07), 0.5, 0.6), Vector3.ZERO, false)
+		var col: Color = MAGENTA if i == 0 else CYAN
+		var sp := SpotLight3D.new()
+		sp.light_color = col
+		sp.light_energy = 6.0
+		sp.spot_range = 22.0
+		sp.spot_angle = 14.0
+		sp.spot_attenuation = 0.6
+		sp.shadow_enabled = false
+		piv.add_child(sp)
+		Kit.light_cone(piv, Vector3(0, 0, -0.2), Vector3(0, 0, -1), 13.0, 0.12, 2.4, col, 1.1)
+		_movers.append(piv)
+	# Warm deck wash from the front truss + violet back light behind the LED wall
+	var wash := Kit.spot(self, Vector3(0, ry - 0.6, c - 0.2), Vector3(0, DECK_H, 0.5), Color(1.0, 0.9, 0.78), 3.0, 16.0, 48.0)
+	wash.name = "DeckWash"
+	Kit.omni(self, Vector3(0, DECK_H + 4.5, -7.6), VIOLET, 2.6, 13.0)
 
 
 # ─── Props, lamps, signage ──────────────────────────────────────────
 
 func _build_props() -> void:
-	# Generator yard (+X, -Z): generators, fuel drums, gas bottles, cable drum
-	Kit.prop(self, "portable_generator", Vector3(10.2, 0, -9.0), 0.7 + _rng.randf_range(-0.1, 0.1))
-	Kit.prop(self, "portable_generator", Vector3(11.6, 0, -7.6), 0.75 + _rng.randf_range(-0.1, 0.1))
+	# Generator yard (-X, -Z): generators, fuel drums, gas bottles, cable drum
+	for g in GEN_SPOTS:
+		Kit.prop(self, "portable_generator", g, -0.8 + _rng.randf_range(-0.1, 0.1))
 	var drums: Array = []
 	for i in 5:
-		var p := Vector3(12.2 + float(i % 2) * 0.68, 0, -11.6 + float(i / 2) * 0.68 + float(i % 2) * 0.3)
+		var p := Vector3(-12.6 + float(i % 2) * 0.68, 0, -8.6 + float(i / 2) * 0.68 + float(i % 2) * 0.3)
 		drums.append(Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), p))
 	Kit.prop_multi(self, "barrel_03", drums)
 	for i in 3:
-		Kit.prop(self, "small_lpg_tank", Vector3(9.0 + float(i) * 0.48, 0, -12.6), _rng.randf() * TAU)
-	_cable_drum(Vector3(8.0, 0, -10.6), 0.4)
+		Kit.prop(self, "small_lpg_tank", Vector3(-8.4 + float(i) * 0.48, 0, -12.9), _rng.randf() * TAU)
+	_cable_drum(Vector3(-8.6, 0, -7.4), 0.4)
+	_build_backstage()
 	# Kit stores (-X, -Z): crates, tool cart, ammo cases
 	Kit.prop(self, "wooden_crate_02", Vector3(-11.6, 0, -10.8), 0.1)
 	Kit.prop(self, "wooden_crate_02", Vector3(-11.0, 0, -10.6), -0.05)
 	Kit.prop(self, "wooden_crate_02", Vector3(-11.3, 0.46, -10.7), 0.3)
 	Kit.prop(self, "old_military_crate", Vector3(-9.6, 0, -12.4), 0.2)
 	Kit.prop(self, "tool_cart", Vector3(-8.0, 0, -10.2), 2.6)
-	# Crowd pit: steel barrier line with a security lane to the stage steps, FOH desk behind
-	Kit.crowd_barrier(self, Vector3(-8.6, 0, 10.95), Vector3(-2.4, 0, 10.95))
-	Kit.crowd_barrier(self, Vector3(2.4, 0, 10.95), Vector3(8.6, 0, 10.95))
-	_build_foh(Vector3(0, 0, 13.0))
-	Kit.light_pool(self, Vector3(0, 0.08, 12.2), 7.0, CYAN, 0.9)
-	# Concrete barriers now guard the back corners of the plaza
-	for i in 4:
-		var x := (6.5 + float(i % 2) * 1.6) * (1.0 if i < 2 else -1.0)
+	# Crowd pit right up against the stage front: barrier line, FOH tent off to the side
+	Kit.crowd_barrier(self, Vector3(-7.6, 0, 9.85), Vector3(7.6, 0, 9.85))
+	_build_foh(Vector3(-10.2, 0, 12.4))
+	# Light pools over the crowd (warm + cyan + magenta) so the plaza reads at night
+	Kit.light_pool(self, Vector3(-4.0, 0.08, 11.8), 4.5, Color(1.0, 0.78, 0.5), 1.1)
+	Kit.light_pool(self, Vector3(3.8, 0.08, 12.0), 4.5, CYAN, 1.1)
+	Kit.light_pool(self, Vector3(0.0, 0.08, 10.8), 4.0, MAGENTA, 0.8)
+	Kit.light_pool(self, Vector3(7.5, 0.08, 9.0), 4.0, Color(1.0, 0.78, 0.5), 0.8)
+	Kit.light_pool(self, Vector3(0, DECK_H + 0.09, 1.5), 7.5, Color(1.0, 0.88, 0.7), 0.7)
+	# Bollard lights along the plaza kerb with soft pools (front + sides)
+	var bol: Array = []
+	var lens: Array = []
+	for i in 9:
+		var t := -12.0 + float(i) * 3.0
+		for p: Vector3 in [Vector3(t, 0, 13.6), Vector3(13.6, 0, t), Vector3(-13.6, 0, t)]:
+			if absf(p.x) > 13.0 and absf(p.z) > 12.5:
+				continue
+			bol.append(Transform3D(Basis.from_scale(Vector3(0.09, 0.9, 0.09)), p + Vector3(0, 0.45, 0)))
+			lens.append(Transform3D(Basis.from_scale(Vector3(0.1, 0.12, 0.1)), p + Vector3(0, 0.8, 0)))
+			Kit.light_pool(self, p + Vector3(0, 0.08, 0), 2.2, Color(1.0, 0.82, 0.55), 0.6)
+	Kit.multi(self, Kit.unit_cylinder(8), bol, Kit.paint(Color(0.15, 0.15, 0.16), 0.5, 0.7), false)
+	Kit.multi(self, Kit.unit_cylinder(8), lens, Kit.glow(Color(1.0, 0.82, 0.55), 4.0), false)
+	# Concrete barriers guard the back-left corner (back-centre is kept for the billboard)
+	for x: float in [-9.4, -11.0]:
 		Kit.prop(self, "concrete_road_barrier", Vector3(x, 0, -13.3), _rng.randf_range(-0.06, 0.06))
 	# Lighting masts on the wings and back corners, aimed at the stage (front pair carry spots)
 	var masts := [Vector3(13.6, 0, 3.9), Vector3(-13.5, 0, 8.9), Vector3(13.0, 0, -12.9), Vector3(-13.0, 0, -12.9)]
@@ -843,9 +905,9 @@ func _build_props() -> void:
 		Kit.light_pool(self, Vector3(p.x * 0.55, 0.07, p.z * 0.55), 6.5, Color(1.0, 0.85, 0.65), 0.7)
 	# Crew cabin (-X) and transformer (+X)
 	Kit.cabin(self, Vector3(-12.2, 0, 2.0), PI * 0.5, Vector3(5.0, 2.5, 2.3), "CREW - BEAT OPS")
-	_build_transformer(Vector3(12.0, 0, 1.5))
-	# Cable protector ramp carrying the FOH snake up the security lane
-	var ramp := Kit.box(self, Vector3(0.6, 0.08, 1.9), Vector3(1.8, 0.08, 11.6), Kit.hazard(5.0), Vector3.ZERO, false)
+	_build_transformer(Vector3(12.2, 0, -4.4))
+	# Cable protector ramp carrying the FOH snake along the side of the pit
+	var ramp := Kit.box(self, Vector3(1.9, 0.08, 0.6), Vector3(-8.4, 0.08, 10.6), Kit.hazard(5.0), Vector3.ZERO, false)
 	ramp.name = "CableRamp"
 	# Speaker feeds: ground cables from each stack to the deck
 	var rubber := Kit.paint(Color(0.03, 0.03, 0.035), 0.7, 0.0)
@@ -856,12 +918,10 @@ func _build_props() -> void:
 	# Signage on proper stands
 	var warn := "HIGH RESONANCE\nKEEP CLEAR DURING BEAT"
 	var apo := DECK_R * cos(PI / 8.0)
-	_sign_stand(warn, Vector3(3.0, 0, apo + 2.2), 0.0, Color(0.92, 0.7, 0.08), Color(0.05, 0.05, 0.05))
-	_sign_stand(warn, Vector3(-3.0, 0, -apo - 2.2), PI, Color(0.92, 0.7, 0.08), Color(0.05, 0.05, 0.05))
-	_sign_stand("STAGE ACCESS\nAUTHORISED CREW", Vector3(-3.0, 0, apo + 2.2), 0.0, Color(0.08, 0.2, 0.55), Color(0.92, 0.92, 0.92))
-	Kit.sign_board(self, "GEN YARD\n11 kV", Vector3(9.2, 1.3, -13.8), 0.0, Vector2(1.2, 0.5), Color(0.92, 0.7, 0.08), Color(0.05, 0.05, 0.05), 34)
-	Kit.beam(self, Vector3(8.7, 0, -13.85), Vector3(8.7, 1.6, -13.85), 0.03, Kit.paint(Color(0.5, 0.5, 0.5), 0.4, 0.9))
-	Kit.beam(self, Vector3(9.7, 0, -13.85), Vector3(9.7, 1.6, -13.85), 0.03, Kit.paint(Color(0.5, 0.5, 0.5), 0.4, 0.9))
+	_sign_stand(warn, Vector3(apo + 3.3, 0, 2.7), PI * 0.5, Color(0.92, 0.7, 0.08), Color(0.05, 0.05, 0.05))
+	_sign_stand(warn, Vector3(3.2, 0, -apo - 3.3), PI, Color(0.92, 0.7, 0.08), Color(0.05, 0.05, 0.05))
+	_sign_stand("STAGE ACCESS\nAUTHORISED CREW", Vector3(apo + 3.3, 0, -2.5), PI * 0.5, Color(0.08, 0.2, 0.55), Color(0.92, 0.92, 0.92))
+	_sign_stand("GEN YARD\n11 kV", Vector3(-9.6, 0, -5.6), PI * 0.5, Color(0.92, 0.7, 0.08), Color(0.05, 0.05, 0.05))
 
 
 func _sign_stand(text: String, pos: Vector3, rot_y: float, bg: Color, fg: Color) -> void:
@@ -902,7 +962,7 @@ func _build_transformer(pos: Vector3) -> void:
 	Kit.sign_board(root, "DANGER\nHIGH VOLTAGE", Vector3(0, 1.2, 0.57), 0.0, Vector2(0.9, 0.45), Color(0.92, 0.85, 0.75), Color(0.75, 0.05, 0.05), 30)
 	Kit.box(root, Vector3(0.12, 0.12, 0.03), Vector3(0.7, 1.75, 0.565), Kit.glow(Color(0.2, 1.0, 0.4), 3.0), Vector3.ZERO, false)
 	# HV feed to the deck: conduit from the bushings arcing to the deck side
-	var deck_pt := Vector3(DECK_R * cos(PI / 8.0) + 0.05, DECK_H - 0.3, pos.z)
+	var deck_pt := Vector3(pos.x, 0, pos.z).normalized() * (DECK_R * cos(PI / 8.0) - 0.1) + Vector3(0, DECK_H - 0.3, 0)
 	Kit.cable(self, pos + Vector3(-0.3, 2.45, 0), deck_pt, 0.3, 0.06, _conduit_mat, 10)
 	Kit.cable(self, pos + Vector3(-0.3, 2.45, 0.55), deck_pt + Vector3(0, 0, 0.5), 0.3, 0.06, _conduit_mat, 10)
 	Kit.cable(self, pos + Vector3(-0.3, 2.45, -0.55), deck_pt + Vector3(0, 0, -0.5), 0.3, 0.06, _conduit_mat, 10)
@@ -931,17 +991,49 @@ func _build_light() -> void:
 
 
 func _build_locals(seed_value: int) -> void:
-	## Operator at the desk, crew on rounds, a visitor heading up the lane, security, the FOH
-	## engineer and a crowd of ten in the pit (AmbientNPC culls itself past 70 m).
-	Kit.npc(self, seed_value + 101, [], Vector3(0, 0, 1), Callable(), Vector3(0, DECK_H, 3.45))
+	## DJ at the booth (arms up), crew on rounds, a visitor using the side stairs, security
+	## at the barrier, the FOH engineer, and twelve in the pit in loose clumps.
+	var dj := Kit.npc(self, seed_value + 101, [], Vector3(0, 0, 1), Callable(), Vector3(0, DECK_H, 3.45))
+	if dj:
+		Kit.arms_up(dj, false, _rng)
 	Kit.npc(self, seed_value + 202, [
-		Vector3(-9.5, 0, 3.7), Vector3(-9.6, 0, 9.4), Vector3(-9.5, 0, 3.7), Vector3(-9.8, 0, -7.0)])
+		Vector3(-9.5, 0, 3.7), Vector3(-9.0, 0, 9.0), Vector3(-9.5, 0, 3.7), Vector3(-9.4, 0, -4.0)])
+	var sfoot := DECK_R * cos(PI / 8.0) + 0.34 * ceil(DECK_H / 0.27) + 0.4
 	Kit.npc(self, seed_value + 303, [
-		Vector3(1.6, 0, 11.6), Vector3(0.6, 0, 10.9), Vector3(0.0, DECK_H, 8.0), Vector3(3.2, DECK_H, 6.6), Vector3(0.4, DECK_H, 8.1), Vector3(0.6, 0, 10.9)])
-	Kit.npc(self, seed_value + 404, [], Vector3(0, 0, 1), Callable(), Vector3(-1.5, 0, 11.3))
-	Kit.npc(self, seed_value + 505, [], Vector3(0, 0, -1), Callable(), Vector3(0.3, 0, 13.65))
-	Kit.crowd(self, seed_value + 606, Vector3(-8.2, 0, 11.5), Vector3(-2.9, 0, 13.6), 5, Vector3(0.15, 0, -1))
-	Kit.crowd(self, seed_value + 707, Vector3(2.9, 0, 11.5), Vector3(8.2, 0, 13.6), 5, Vector3(-0.15, 0, -1))
+		Vector3(sfoot + 0.4, 0, 1.6), Vector3(sfoot, 0, 0.0), Vector3(7.6, DECK_H, 0.0), Vector3(4.8, DECK_H, 2.6), Vector3(7.6, DECK_H, 0.0), Vector3(sfoot, 0, 0.0)])
+	Kit.npc(self, seed_value + 404, [], Vector3(0, 0, 1), Callable(), Vector3(2.6, 0, 9.4))
+	Kit.npc(self, seed_value + 505, [], Vector3(0.6, 0, -1), Callable(), Vector3(-10.2, 0, 13.05))
+	Kit.crowd(self, seed_value + 606, Vector3(-7.4, 0, 10.4), Vector3(7.4, 0, 13.4), 12, Vector3(0, 0, -1))
+
+
+func get_board_anchor() -> Transform3D:
+	## Reserved spot for a 3.2 x 1.8 m media billboard (bottom 1.2 m up) at the back edge of
+	## the plaza, facing the approach from player spawn (-Z). Board front = local -Z.
+	return Transform3D(Basis.IDENTITY, Vector3(-4.6, 1.2 + 0.9, -13.5))
+
+
+func _build_backstage() -> void:
+	## Stacked-container backstage block (office below, artists' lounge above) with an
+	## external stair, lit windows, signage and a roof light bar.
+	var base := Vector3(9.5, 0, -11.1)
+	var low := Kit.cabin(self, base, 0.0, Vector3(5.4, 2.6, 2.6), "BACKSTAGE", Color(1.0, 0.85, 0.62), true, Color(0.2, 0.28, 0.42))
+	low.name = "Backstage"
+	var up := Kit.cabin(self, base + Vector3(-0.5, 2.85, -0.1), 0.0, Vector3(4.6, 2.4, 2.4), "ARTISTS", Color(0.75, 0.6, 1.0), true, Color(0.55, 0.2, 0.3))
+	up.name = "ArtistsLounge"
+	# External stair + landing on the -X end
+	var steel := Kit.paint(Color(0.85, 0.62, 0.1), 0.45, 0.6)
+	var tread := Kit.pbr("metal_plate", 0.6, Color(0.5, 0.5, 0.52), false)
+	for i in 10:
+		var t := (float(i) + 0.5) / 10.0
+		Kit.box(self, Vector3(0.9, 0.05, 0.3), base + Vector3(-3.3, 0.3 + t * 2.75, 1.55 - t * 2.8), tread)
+	Kit.box(self, Vector3(1.0, 0.08, 1.2), base + Vector3(-3.3, 3.1, -1.75), tread)
+	for sx: float in [-0.45, 0.45]:
+		Kit.beam(self, base + Vector3(-3.3 + sx, 1.3, 1.6), base + Vector3(-3.3 + sx, 4.05, -1.2), 0.03, steel)
+		Kit.beam(self, base + Vector3(-3.3 + sx, 0.0, -1.75), base + Vector3(-3.3 + sx, 3.1, -1.75), 0.05, steel)
+	# Roof light bar + sign
+	Kit.box(self, Vector3(4.2, 0.5, 0.1), base + Vector3(-0.5, 5.75, 1.0), Kit.paint(Color(0.03, 0.03, 0.035), 0.5, 0.3))
+	Kit.label(self, "META CREW", Vector3(base.x - 0.5, 5.75, base.z + 1.06), 90, VIOLET.lightened(0.3), 0.0, 2.0)
+	Kit.box(self, Vector3(4.2, 0.04, 0.04), base + Vector3(-0.5, 5.48, 1.06), Kit.glow(CYAN, 3.0), Vector3.ZERO, false)
 
 
 func _build_foh(pos: Vector3) -> void:

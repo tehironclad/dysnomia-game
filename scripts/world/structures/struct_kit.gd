@@ -164,7 +164,7 @@ static func painted(id: String, c: Color, uv_scale: float = 0.5, world: bool = f
 	var key := "painted|%s|%s|%.3f|%s" % [id, c.to_html(), uv_scale, world]
 	if _mats.has(key):
 		return _mats[key]
-	var m := pbr(id, uv_scale, c, world, 0.35).duplicate() as StandardMaterial3D
+	var m := pbr(id, uv_scale, c, world, 0.08).duplicate() as StandardMaterial3D
 	m.albedo_texture = null
 	m.albedo_color = c
 	_mats[key] = m
@@ -512,6 +512,42 @@ static func tube(parent: Node3D, pts: Array[Vector3], r: float, mat: Material, s
 	return mi
 
 
+static func barrel_roof(parent: Node3D, width: float, length: float, rise: float, pos: Vector3, mat: Material, segs: int = 16) -> MeshInstance3D:
+	## Curved (barrel-vault) roof along local Z: an elliptical arc `width` wide rising `rise`,
+	## with flat half-ellipse gable caps at both ends. pos = centre of the springing line.
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var hl := length * 0.5
+	var pts: Array[Vector2] = []
+	for i in segs + 1:
+		var a := PI * float(i) / float(segs)
+		pts.append(Vector2(cos(a) * width * 0.5, sin(a) * rise))
+	for i in segs:
+		var p0 := pts[i]
+		var p1 := pts[i + 1]
+		var n0 := Vector3(p0.x / (width * 0.5), p0.y / maxf(rise, 0.01), 0).normalized()
+		var n1 := Vector3(p1.x / (width * 0.5), p1.y / maxf(rise, 0.01), 0).normalized()
+		var q := [[Vector3(p0.x, p0.y, -hl), n0], [Vector3(p0.x, p0.y, hl), n0], [Vector3(p1.x, p1.y, hl), n1],
+			[Vector3(p0.x, p0.y, -hl), n0], [Vector3(p1.x, p1.y, hl), n1], [Vector3(p1.x, p1.y, -hl), n1]]
+		for v in q:
+			st.set_normal(v[1])
+			st.set_uv(Vector2((v[0] as Vector3).z, float(i) / float(segs) * PI * width * 0.5))
+			st.add_vertex(v[0])
+		# Gable caps (fan from the springing-line centre)
+		for zs: float in [-hl, hl]:
+			var nz := Vector3(0, 0, signf(zs))
+			for v: Vector3 in [Vector3(0, 0, zs), Vector3(p1.x, p1.y, zs), Vector3(p0.x, p0.y, zs)]:
+				st.set_normal(nz)
+				st.set_uv(Vector2(v.x, v.y))
+				st.add_vertex(v)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = mat
+	mi.position = pos
+	parent.add_child(mi)
+	return mi
+
+
 static func dish_mesh(radius: float, depth: float, radial: int = 24, rings_n: int = 8) -> ArrayMesh:
 	## Concave parabolic reflector, open side +Y, rim at y=0, double-sided via two surfaces' worth of tris.
 	var st := SurfaceTool.new()
@@ -677,7 +713,7 @@ static func flood_mast(parent: Node3D, pos: Vector3, height: float, aim: Vector3
 	return root
 
 
-static func cabin(parent: Node3D, pos: Vector3, rot_y: float, size: Vector3, title: String, window_color: Color = Color(1.0, 0.85, 0.6), lit: bool = true) -> Node3D:
+static func cabin(parent: Node3D, pos: Vector3, rot_y: float, size: Vector3, title: String, window_color: Color = Color(1.0, 0.85, 0.6), lit: bool = true, wall_color: Color = Color(0.56, 0.6, 0.62)) -> Node3D:
 	## Converted shipping-container cabin: corrugated walls, door, lit window, roof AC unit.
 	## Front (door + window) faces local +Z.
 	var root := Node3D.new()
@@ -685,8 +721,12 @@ static func cabin(parent: Node3D, pos: Vector3, rot_y: float, size: Vector3, tit
 	root.rotation.y = rot_y
 	parent.add_child(root)
 	box(root, Vector3(size.x + 0.3, 0.3, size.z + 0.3), Vector3(0, 0.05, 0), pbr("brushed_concrete", 0.7, Color(0.6, 0.6, 0.58)))
-	var wall := pbr("container_side", 0.45, Color(0.72, 0.74, 0.78), false)
+	var wall := painted("container_side", wall_color, 0.45)
 	box(root, size, Vector3(0, 0.2 + size.y * 0.5, 0), wall)
+	# Louvred vents on both ends, a grime band at the foot, and a door sign
+	for sx: float in [-1.0, 1.0]:
+		box(root, Vector3(0.02, 0.45, 0.7), Vector3(sx * (size.x * 0.5 + 0.01), 0.2 + size.y - 0.6, 0), grille(Color(0.2, 0.21, 0.22), 0.03), Vector3.ZERO, false)
+	box(root, Vector3(size.x + 0.01, 0.25, size.z + 0.01), Vector3(0, 0.33, 0), paint(Color(0.2, 0.19, 0.17), 0.95, 0.0), Vector3.ZERO, false)
 	var trim := paint(Color(0.12, 0.12, 0.13), 0.5, 0.7)
 	# Corner posts and roof rail
 	for sx: float in [-1.0, 1.0]:
@@ -694,8 +734,11 @@ static func cabin(parent: Node3D, pos: Vector3, rot_y: float, size: Vector3, tit
 			box(root, Vector3(0.14, size.y, 0.14), Vector3(sx * size.x * 0.5, 0.2 + size.y * 0.5, sz * size.z * 0.5), trim, Vector3.ZERO, false)
 	box(root, Vector3(size.x + 0.1, 0.12, size.z + 0.1), Vector3(0, 0.2 + size.y + 0.04, 0), trim)
 	var fz := size.z * 0.5 + 0.01
-	# Door
+	# Door with a vision panel and a STAFF sign
 	box(root, Vector3(0.95, 2.05, 0.05), Vector3(-size.x * 0.5 + 0.8, 0.2 + 1.03, fz), paint(Color(0.18, 0.2, 0.22), 0.5, 0.6), Vector3.ZERO, false)
+	box(root, Vector3(0.25, 0.4, 0.02), Vector3(-size.x * 0.5 + 0.8, 0.2 + 1.6, fz + 0.03), glow(window_color, 0.8 if lit else 0.05), Vector3.ZERO, false)
+	box(root, Vector3(0.5, 0.18, 0.01), Vector3(-size.x * 0.5 + 0.8, 0.2 + 1.15, fz + 0.03), paint(Color(0.95, 0.75, 0.1), 0.6, 0.0), Vector3.ZERO, false)
+	label(root, "STAFF ONLY", Vector3(-size.x * 0.5 + 0.8, 0.2 + 1.15, fz + 0.04), 26, Color(0.05, 0.05, 0.05))
 	box(root, Vector3(0.05, 0.25, 0.06), Vector3(-size.x * 0.5 + 1.15, 0.2 + 1.0, fz + 0.03), paint(Color(0.7, 0.7, 0.7), 0.3, 1.0), Vector3.ZERO, false)
 	# Window with lit interior
 	var wx := size.x * 0.5 - 1.2
@@ -776,24 +819,57 @@ static func npc(parent: Node3D, seed_value: int, points: Array, facing: Vector3 
 
 
 static func crowd(parent: Node3D, seed_value: int, area_min: Vector3, area_max: Vector3, count: int, facing: Vector3) -> void:
-	## A loose standing crowd in an XZ box (y = area_min.y), everyone roughly facing `facing`.
+	## A loose crowd in an XZ box (y = area_min.y): people stand in small clumps, face the
+	## stage with real spread (some turned to friends), and a share raise one or both arms.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
+	var clumps: Array[Vector3] = []
+	var nc := maxi(2, count / 3)
+	for c in nc:
+		var fx := (float(c) + 0.5) / float(nc) + rng.randf_range(-0.12, 0.12) / float(nc)
+		clumps.append(Vector3(lerpf(area_min.x + 0.6, area_max.x - 0.6, fx), area_min.y, rng.randf_range(area_min.z + 0.4, area_max.z - 0.4)))
 	var placed: Array[Vector3] = []
 	var tries := 0
-	while placed.size() < count and tries < count * 30:
+	while placed.size() < count and tries < count * 40:
 		tries += 1
-		var p := Vector3(rng.randf_range(area_min.x, area_max.x), area_min.y, rng.randf_range(area_min.z, area_max.z))
+		var c: Vector3 = clumps[rng.randi() % clumps.size()]
+		var p := c + Vector3(rng.randf_range(-1.3, 1.3), 0, rng.randf_range(-0.9, 0.9))
+		p.x = clampf(p.x, area_min.x, area_max.x)
+		p.z = clampf(p.z, area_min.z, area_max.z)
 		var ok := true
 		for q in placed:
-			if q.distance_to(p) < 0.85:
+			if q.distance_to(p) < 0.75:
 				ok = false
 				break
 		if not ok:
 			continue
 		placed.append(p)
-		var f := facing.rotated(Vector3.UP, rng.randf_range(-0.45, 0.45))
-		npc(parent, seed_value + 17 * placed.size(), [], f, Callable(), p)
+		var f := facing.rotated(Vector3.UP, rng.randf_range(-0.6, 0.6))
+		if rng.randf() < 0.22:
+			f = (c - p).normalized() if (c - p).length() > 0.2 else f.rotated(Vector3.UP, PI * 0.5)  # Chatting to the clump
+		var n := npc(parent, seed_value + 17 * placed.size(), [], f, Callable(), p)
+		var r := rng.randf()
+		if n and r < 0.3:
+			arms_up(n, rng.randf() < 0.5, rng)
+		n.scale = Vector3.ONE * rng.randf_range(0.92, 1.06) if n else Vector3.ONE
+
+
+static func arms_up(n: Node3D, both: bool, rng: RandomNumberGenerator) -> void:
+	## Freeze an AmbientNPC with one or both arms raised (dancing / cheering).
+	var model = n.get("_model")
+	if model == null:
+		return
+	model.update_movement(Vector3.ZERO, true, false)
+	model.set_process(false)
+	var arms := [model.get("_arm_pivot_left"), model.get("_arm_pivot_right")]
+	var elbows := [model.get("_elbow_pivot_left"), model.get("_elbow_pivot_right")]
+	for i in 2:
+		if not both and i == 0:
+			continue
+		if arms[i]:
+			arms[i].rotation_degrees = Vector3(-rng.randf_range(150.0, 175.0), 0.0, (16.0 if i == 0 else -16.0))
+		if elbows[i]:
+			elbows[i].rotation_degrees = Vector3(-rng.randf_range(5.0, 35.0), 0.0, 0.0)
 
 
 # ─── Terrain-aware helpers ──────────────────────────────────────────────
