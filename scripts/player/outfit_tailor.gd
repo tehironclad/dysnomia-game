@@ -96,7 +96,7 @@ func _sew(body: String, kind: String) -> Dictionary:
 				var mname := mat.resource_name if mat else ""
 				# The parts import with stub materials (stub_*.tres: no textures to load).
 				var atlas := "Peasant" if mname.containsn("peasant") else ("Ranger" if mname.containsn("ranger") else "skin")
-				_append(atlas, mi.mesh, si, flags)
+				_append(atlas, mi.mesh, si, flags, p.contains("Hood"))
 		scene.free()
 	_tail = _acc()
 	_tailor(body, d.get("extras", []))
@@ -122,13 +122,23 @@ func _sew(body: String, kind: String) -> Dictionary:
 	return {"mesh": mesh, "skin": _skin, "atlases": atlases, "anchors": _anchors()}
 
 
-func _append(atlas: String, mesh: Mesh, si: int, flags: Color) -> void:
+## HOOD_SCALE: a hood is cut for a human head; the creature heads are bigger.
+const HOOD_SCALE := 1.38
+
+
+func _append(atlas: String, mesh: Mesh, si: int, flags: Color, hood: bool = false) -> void:
 	if not _groups.has(atlas):
 		_groups[atlas] = _acc()
 	var g: Dictionary = _groups[atlas]
 	var a := mesh.surface_get_arrays(si)
 	var verts: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
 	var nv := verts.size()
+	if hood:  # widen it about the head (its opening and drape stay in place below the chin)
+		var c := _bone("Head") + Vector3(0.0, 0.06, 0.015)
+		for k in nv:
+			var d := verts[k] - c
+			var lift := clampf((d.y + 0.12) / 0.12, 0.0, 1.0)  # neck-level folds widen less
+			verts[k] = c + d * lerpf(1.08, HOOD_SCALE, lift) + Vector3(0, 0.02 * lift, 0)
 	var base := (g["v"] as PackedVector3Array).size()
 	g["v"].append_array(verts)
 	g["n"].append_array(a[Mesh.ARRAY_NORMAL])
@@ -333,8 +343,8 @@ func _tailor(body: String, extras: Array) -> void:
 				_skirt(_bone("thigh_l").y - 0.05, _bone("calf_l").y + 0.02, deg_to_rad(16.0), 0.25, Slot.MAIN)
 			"coat_short":
 				_skirt(_bone("thigh_l").y - 0.03, _bone("thigh_l").y - 0.2, deg_to_rad(22.0), 0.1, Slot.MAIN)
-			"robe":
-				_skirt(_bone("thigh_l").y - 0.04, 0.09, 0.0, 0.1, Slot.MAIN)
+			"robe":  # the skirt matches the robe's top (the Peasant shirt reads as light cloth)
+				_skirt(_bone("thigh_l").y - 0.0, 0.09, 0.0, 0.1, Slot.LIGHT)
 				_hem_trim(0.09)
 			"collar":
 				_collar(0.012, 0.07, 0.03, Slot.ACCENT)
