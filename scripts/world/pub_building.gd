@@ -148,6 +148,14 @@ func play_house_cheer() -> void:
 	_life.play_house_cheer(lights, base)
 
 
+func get_board_anchor() -> Transform3D:
+	## LOCAL transform reserved for a 3.2 m x 1.8 m media billboard, off the porch's front-left
+	## corner. Origin is on the ground at the board's centre line, +Y up, -Z = board front
+	## (faces the forecourt and the approach from the west). Stand the board so its bottom
+	## edge is ~1.2 m above the origin. Nothing else is placed in a ~3.6 x 1.2 m footprint there.
+	return _layout.board_anchor if _layout else Transform3D()
+
+
 func is_player_at_bar() -> bool:
 	return _player_at_bar
 

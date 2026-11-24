@@ -58,6 +58,7 @@ var dart_throw: Vector3
 var jukebox_pos: Vector3
 var arcade_pos: Vector3
 var display_pos: Vector3
+var board_anchor: Transform3D          # Reserved spot for a 3.2 x 1.8 m media billboard
 
 
 func _init(params: Dictionary) -> void:
@@ -127,6 +128,11 @@ func _init(params: Dictionary) -> void:
 	jukebox_pos = Vector3(w - 0.95, FY, d - 0.5)
 	arcade_pos = Vector3(w - 2.3, FY, d - 0.55)
 	display_pos = Vector3((xa + xb) * 0.5, FY + 3.05, -d + 0.17)
+	# Billboard: free-standing off the front-left corner of the porch, angled to face both the
+	# forecourt and the approach from the west (spawn side). Origin on the ground, -Z = board front.
+	var porch_end := d + T + PORCH_D
+	var face := Vector3(-0.55, 0.0, 0.85).normalized()
+	board_anchor = Transform3D(Basis.looking_at(face, Vector3.UP), Vector3(-w + 0.4, 0.0, porch_end + 1.7))
 
 
 func roof_y(x: float) -> float:

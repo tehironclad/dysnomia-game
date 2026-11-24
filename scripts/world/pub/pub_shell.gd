@@ -26,7 +26,7 @@ var _wains: BaseMaterial3D
 var _steel: StandardMaterial3D
 var _dark: StandardMaterial3D
 var _glass: StandardMaterial3D
-var _frosted: StandardMaterial3D
+var _frosted: ShaderMaterial
 var _concrete: BaseMaterial3D
 
 
@@ -48,8 +48,9 @@ func build(root: Node3D, layout: PubLayout, body: StaticBody3D) -> void:
 	_dark = PubKit.flat(Color(0.05, 0.05, 0.055), 0.6, 0.5)
 	_glass = PubKit.glass(Color(0.55, 0.68, 0.72, 0.16))
 	# Side windows: frosted, faintly lit so they read as glass from both sides (no black voids)
-	_frosted = PubKit.glass(Color(0.6, 0.68, 0.74, 0.62), Color(0.5, 0.58, 0.7), 0.35)
-	_frosted.roughness = 0.45
+	# Side windows: dark reflective night glass, faint stars, frosted edges, low cyan glow
+	_frosted = ShaderMaterial.new()
+	_frosted.shader = load("res://assets/shaders/pub_window.gdshader")
 	_concrete = PubKit.pbr("brushed_concrete", 1.8, Color(0.62, 0.6, 0.58), true, 1.0, 0.0)
 
 	_build_plinth_and_floor()
@@ -381,13 +382,20 @@ func _build_porch() -> void:
 		var sz := z1 + tread * (float(i) + 0.5)
 		_b.box_at(Vector3(2.8, top + 1.0, tread), Vector3(0, (top - 1.0) * 0.5, sz), _concrete)
 		_b.box_at(Vector3(2.8, 0.025, 0.05), Vector3(0, top + 0.002, sz + tread * 0.5 - 0.03), PubKit.flat(Color(0.9, 0.65, 0.1), 0.5, 0.3))
-	var apron := PubKit.pbr("brushed_concrete", 2.0, Color(0.5, 0.48, 0.46), true, 0.9, 0.0)
+		# Riser light strip under each nosing
+		_b.box_at(Vector3(2.6, 0.02, 0.02), Vector3(0, top - 0.05, sz + tread * 0.5 + 0.005), PubKit.neon(Color(1.0, 0.72, 0.4), 3.0))
+	# Forecourt: timber deck boards on a concrete base, steel edge, corner bollard lights
+	var apron := PubKit.pbr("brown_planks_05", 1.6, Color(0.72, 0.6, 0.5), true, 0.9, 0.0)
 	var az := z1 + tread * float(n_steps)
 	var ad := 2.2
-	_b.box_at(Vector3(5.0, apron_top + 1.0, ad), Vector3(0, (apron_top - 1.0) * 0.5, az + ad * 0.5), apron)
-	_b.box_at(Vector3(5.06, 0.05, 0.08), Vector3(0, apron_top + 0.005, az + ad), _steel)
+	_b.box_at(Vector3(5.0, 0.06, ad), Vector3(0, apron_top - 0.03, az + ad * 0.5), apron)
+	_b.box_at(Vector3(4.96, apron_top + 0.94, ad - 0.04), Vector3(0, (apron_top - 0.06 - 1.0) * 0.5, az + ad * 0.5), _concrete)
+	_b.box_at(Vector3(5.08, 0.07, 0.09), Vector3(0, apron_top + 0.005, az + ad), _steel)
 	for sx in [-1.0, 1.0]:
-		_b.box_at(Vector3(0.08, 0.05, ad), Vector3(sx * 2.53, apron_top + 0.005, az + ad * 0.5), _steel)
+		_b.box_at(Vector3(0.09, 0.07, ad), Vector3(sx * 2.54, apron_top + 0.005, az + ad * 0.5), _steel)
+		var bp := Vector3(sx * 2.3, apron_top, az + ad - 0.25)
+		_b.add_mesh(PubKit.cyl(0.07, 0.08, 0.6, 12), Transform3D(Basis(), bp + Vector3(0, 0.3, 0)), _steel)
+		PubKit.mesh_instance(PubKit.cyl(0.072, 0.072, 0.1, 12), bp + Vector3(0, 0.52, 0), PubKit.neon(Color(1.0, 0.75, 0.45), 4.0), _root)
 	# Walkable collision: steps as a ramp, the forecourt slab, and a lip ramp down to grade
 	_ramp(Vector3(0, fy, z1 - 0.05), Vector3(0, apron_top, az + 0.1), 2.8)
 	_coll(Vector3(5.0, 0.4, ad), Vector3(0, apron_top - 0.2, az + ad * 0.5))
@@ -420,7 +428,10 @@ func _build_porch() -> void:
 	var awn_mat := PubKit.pbr("container_side", 1.8, (_L.p["shell_tint"] as Color).darkened(0.5), true)
 	_b.box_at(Vector3(2.0 * px + 0.4, 0.05, pd + 0.5), Vector3(0, (ay0 + ay1) * 0.5, (z0 + z1) * 0.5 + 0.1), awn_mat, Vector3(slope, 0, 0))
 	_b.box_at(Vector3(2.0 * px + 0.4, 0.16, 0.12), Vector3(0, ay1 - 0.1, z1 - 0.1), _steel)
-	var post_xs := [-px + 0.06, -2.3, 2.3, px - 0.06]
+	# Inner posts stand outboard of the front windows, so nothing blocks the door or the glass;
+	# a deeper header beam carries the long middle span.
+	var post_xs := [-px + 0.06, -(w * 0.55 + 1.6), w * 0.55 + 1.6, px - 0.06]
+	_b.box_at(Vector3(2.0 * px + 0.4, 0.14, 0.14), Vector3(0, ay1 - 0.28, z1 - 0.1), _steel)
 	for x in post_xs:
 		_b.box_at(Vector3(0.12, ay1 - fy, 0.12), Vector3(x, fy + (ay1 - fy) * 0.5, z1 - 0.1), _steel)
 		_coll(Vector3(0.14, 2.6, 0.14), Vector3(x, fy + 1.3, z1 - 0.1))
@@ -433,7 +444,7 @@ func _build_porch() -> void:
 		for k in range(1, n):
 			var t := float(k) / float(n)
 			var p := a.lerp(b, t)
-			p.y -= sin(t * PI) * 0.28
+			p.y -= sin(t * PI) * clampf(a.distance_to(b) * 0.035, 0.2, 0.42)
 			bulbs.append(p)
 	# ...and a second strand zig-zagging under the awning
 	for i in 9:
@@ -724,7 +735,19 @@ func _build_annex() -> void:
 	_b.box_at(Vector3(0.2, 0.26, 0.18), Vector3(cx - 1.2, 0.15 + 2.75, sz - 0.1), _dark)
 	PubKit.mesh_instance(PubKit.cyl(0.07, 0.07, 0.16, 10), Vector3(cx - 1.2, 0.15 + 2.68, sz - 0.2),
 		PubKit.neon(Color(1.0, 0.85, 0.6), 6.0), _root)
-	_spot(Vector3(cx - 1.2, 0.15 + 2.6, sz - 0.3), Vector3(0.25, -1.0, -0.55), Color(1.0, 0.82, 0.6), 5.0, 7.0, 55.0)
+	# Wall-pack flood over the shutter: warm pool on the yard and the door itself lit
+	_b.box_at(Vector3(0.42, 0.22, 0.24), Vector3(sx, 0.15 + 3.35, sz - 0.3), _dark)
+	_b.box_at(Vector3(0.36, 0.03, 0.18), Vector3(sx, 0.15 + 3.23, sz - 0.32), PubKit.neon(Color(1.0, 0.85, 0.6), 7.0))
+	_spot(Vector3(sx, 0.15 + 3.2, sz - 0.4), Vector3(0.0, -1.0, -0.75), Color(1.0, 0.8, 0.55), 10.0, 9.0, 62.0)
+	# Loading pad for the flood to land on, and cyan edge lights tracing the annex roofline
+	_b.box_at(Vector3(3.2, 1.15, 2.4), Vector3(sx, -0.425, sz - 1.25), _concrete)
+	_b.box_at(Vector3(3.24, 0.04, 0.08), Vector3(sx, 0.15, sz - 2.45), PubKit.flat(Color(0.9, 0.65, 0.1), 0.5, 0.3))
+	var cyan_edge := PubKit.neon(Color(0.25, 0.9, 1.0), 3.5)
+	_b.box_at(Vector3(4.9, 0.035, 0.035), Vector3(cx, 0.15 + ah - 0.05, az1 - 0.08), cyan_edge)
+	for e in [ax0 - 0.08, ax1 + 0.08]:
+		_b.box_at(Vector3(0.035, ah - 0.3, 0.035), Vector3(e, 0.15 + ah * 0.5, az1 - 0.08), cyan_edge)
+	# Dysnomia-cyan strip along the shutter head
+	_b.box_at(Vector3(2.4, 0.04, 0.04), Vector3(sx, 0.15 + 2.5, sz - 0.27), PubKit.neon(Color(0.25, 0.9, 1.0), 5.0))
 	# Side door with a wired-glass light, and louvred vents on the left face
 	var lx := ax0 - 0.03
 	_b.box_at(Vector3(0.05, 2.1, 0.95), Vector3(lx, 0.15 + 1.05, cz - 0.6), plate2)

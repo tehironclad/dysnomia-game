@@ -47,7 +47,8 @@ func setup(layout: PubLayout, interior: PubInterior, shell_neon: Array[MeshInsta
 	# Bartender works a loop on the duckboards behind the counter: taps → register → shelves
 	var wz := _L.walkway_z
 	var by := fy + PubLayout.PLATFORM_H
-	_bartender_loop = [Vector3(_L.tap_x, by, wz), Vector3(_L.bar_x1 - 1.1, by, wz),
+	# Stops sit beside the tap tower, never directly behind it
+	_bartender_loop = [Vector3(_L.tap_x + 0.75, by, wz), Vector3(_L.bar_x1 - 1.1, by, wz),
 		Vector3(_L.bar_cx - 0.2, by, wz - 0.15), Vector3(_L.bar_x0 + 1.3, by, wz)]
 	bartender = _spawn(_rng.randi(), _bartender_loop, Vector3.ZERO)
 	bartender.name = "Bartender"
@@ -61,21 +62,20 @@ func setup(layout: PubLayout, interior: PubInterior, shell_neon: Array[MeshInsta
 	var sofa := fy + 0.41 - 0.45
 	var wander := [Vector3(_L.order_x + 0.3, fy, _L.counter_front + 0.75), Vector3(0.0, fy, -_L.d + 4.4),
 		Vector3(g0.x, fy, g0.z + 1.35), Vector3(_L.w - 2.6, fy, _L.d - 3.4), Vector3(1.6, fy, _L.d - 3.7)]
-	var spots: Array = [
-		["walk", wander, Vector3.ZERO, ""],
-		["idle", h0 + Vector3(-0.62, 0, 0.0), Vector3(1, 0, 0.1), "stand"],
-		["idle", h0 + Vector3(0.62, 0, 0.0), Vector3(-1, 0, -0.1), "stand"],
-	]
-	if _L.sit_stools.size() > 0:
-		spots.append(["idle", _L.stools[_L.sit_stools[0]] + Vector3(0, seat - fy, 0.06), Vector3(0.1, 0, -1), "sit"])
-	spots.append(["idle", la + Vector3(-0.45, sofa - fy, 1.05), Vector3(0.1, 0, -1), "sit"])
-	spots.append(["idle", la + Vector3(0.4, sofa - fy, -1.05), Vector3(-0.1, 0, 1), "sit"])
-	if _L.occupied_stools.size() > 0:
-		spots.append(["idle", _L.stools[_L.occupied_stools[0]] + Vector3(0, 0, 0.1), Vector3(0, 0, -1), "lean"])
+	# Seats fill first: booth pair, sofa, bar stools; then one regular walks the room.
+	var spots: Array = []
 	if not _L.booths.is_empty():
 		spots.append(["idle", Vector3(_L.booth_x + 0.1, fy + 0.05, _L.booths[0] + 0.72), Vector3(0, 0, -1), "sit"])
+	spots.append(["idle", la + Vector3(-0.45, sofa - fy, 1.05), Vector3(0.1, 0, -1), "sit"])
+	if _L.sit_stools.size() > 0:
+		spots.append(["idle", _L.stools[_L.sit_stools[0]] + Vector3(0, seat - fy, 0.06), Vector3(0.1, 0, -1), "sit"])
+	spots.append(["walk", wander, Vector3.ZERO, ""])
+	if not _L.booths.is_empty():
+		spots.append(["idle", Vector3(_L.booth_x + 0.1, fy + 0.05, _L.booths[0] - 0.72), Vector3(0, 0, 1), "sit"])
+	spots.append(["idle", la + Vector3(0.4, sofa - fy, -1.05), Vector3(-0.1, 0, 1), "sit"])
 	if _L.sit_stools.size() > 1:
 		spots.append(["idle", _L.stools[_L.sit_stools[1]] + Vector3(0, seat - fy, 0.06), Vector3(-0.2, 0, -1), "sit"])
+	spots.append(["idle", h0 + Vector3(-0.62, 0, 0.0), Vector3(1, 0, 0.1), "stand"])
 	var count: int = mini(int(_L.p["patron_count"]), 7)   # + bartender ≤ 8 NPCs
 	for i in mini(count, spots.size()):
 		var sp: Array = spots[i]
@@ -160,7 +160,7 @@ func play_drink_served(drink_id: String) -> void:
 	var rounds := 3 if drink_id == "house_round" else 1
 
 	# Bartender steps to the taps for the pour, then goes back to the loop
-	_send_bartender(Vector3(_L.tap_x, fy, _L.walkway_z), 6.0)
+	_send_bartender(Vector3(_L.tap_x + 0.7, fy, _L.walkway_z), 6.0)
 
 	# Tap handle pull + back-bar light pulse
 	if not _interior.tap_handles.is_empty():
@@ -219,7 +219,7 @@ func _drop_glass(g: Node3D) -> void:
 func _make_glass(col: Color, kind: String) -> Node3D:
 	var g := Node3D.new()
 	g.name = "ServedGlass"
-	var glass := PubKit.glass(Color(0.9, 0.95, 1.0, 0.22))
+	var glass := PubKit.drinkware()
 	var liquid_mat := PubKit.glass(Color(col.r, col.g, col.b, 0.85), col, 2.2)
 	var dims := {"shot": [0.028, 0.024, 0.07], "rocks": [0.045, 0.042, 0.09], "pint": [0.045, 0.036, 0.16],
 		"coupe": [0.05, 0.03, 0.08], "highball": [0.036, 0.034, 0.17], "fizz": [0.036, 0.034, 0.17]}
