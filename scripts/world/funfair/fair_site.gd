@@ -402,7 +402,14 @@ func preview_game(id: String, phase: String, codes: Array = []) -> void:
 			g.set_aim(Vector2(presses[i][1], presses[i][2]))
 			g.press()
 			i += 1
-		elif phase == "result" and g.sim.accepts() and (g.sim.phase_t > 20 or id == "motzkin"):
+		elif phase == "result" and id == "motzkin" and g.sim.accepts():
+			for k in g.sim.schedule.size():  # the preview shoots the primes it sees
+				var e: Array = g.sim.schedule[k]
+				if g.sim.target_up(k, g.sim.tick) and g.sim.tick - int(e[1]) > 12 and MidwaySim.is_prime(int(e[3])):
+					g.set_aim(Vector2(int(MidwaySim.SLOTS_X[int(e[0]) % 4]) * MidwaySim.AIM / 1800, (int(MidwaySim.SLOTS_Y[int(e[0]) / 4]) - 1825) * MidwaySim.AIM / 700))
+					g.press()
+					break
+		elif phase == "result" and id != "motzkin" and g.sim.accepts() and g.sim.phase_t > 20:
 			g.press()
 		g.sim.step()
 	if presses.size() > 0:

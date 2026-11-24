@@ -25,7 +25,7 @@ func build() -> void:
 	FairKit.box(self, Vector3(W, H, 0.08), Vector3(0, 0.95 + H * 0.5, 0), panel)
 	FairKit.box(self, Vector3(W + 0.06, 0.05, 0.12), Vector3(0, 0.95 + H + 0.02, 0), FairKit.glow(Color(1.0, 0.45, 0.25), 3.0, 1.0))
 	FairKit.box(self, Vector3(W + 0.06, 0.05, 0.12), Vector3(0, 0.93, 0), FairKit.glow(Color(1.0, 0.45, 0.25), 3.0, 1.0))
-	var t := FairKit.label(self, "UPSILON ROCKET · PLAY EVERY GAME", Vector3(0, 2.62, 0.05), 40, Color(1.0, 0.75, 0.45) * 1.6, 0.0, Color(0.02, 0.01, 0.03), 0.0055)
+	var t := FairKit.label(self, "UPSILON ROCKET · PLAY EVERY GAME", Vector3(0, 2.62, 0.05), 40, Color(1.0, 0.75, 0.45) * 1.6, 0.0, Color(0.02, 0.01, 0.03), 0.0045)
 	t.width = 520
 	_on = FairKit.glow(Color(0.4, 1.0, 0.55), 6.0, 3.0)
 	_off = FairKit.paint(Color(0.16, 0.17, 0.2), 0.4, 0.4)
