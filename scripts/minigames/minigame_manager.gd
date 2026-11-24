@@ -1,10 +1,11 @@
 extends Node
-## Manages pub minigame sessions: opening/closing games, score persistence,
-## and mapping game table indices to game types.
+## Manages Cantina minigame sessions: opening/closing games, personal bests and the
+## per-QING record table (MinigameRecords), and feeding results to the QuestBoard.
 
 signal minigame_opened(game_type: String)
 signal minigame_closed
 signal minigame_score(game_type: String, score: int)
+signal minigame_result(game_type: String, result: Dictionary, records: Dictionary)
 
 const GAME_TYPES: Array[String] = ["entropy_dice", "waat_slots", "territory_trivia", "card_match"]
 
@@ -19,80 +20,74 @@ const GAME_NAMES: Dictionary = {
 	"entropy_dice": "Entropy Dice",
 	"waat_slots": "WAAT Slots",
 	"territory_trivia": "Territory Trivia",
-	"card_match": "Card Match",
+	"card_match": "Contract Match",
+}
+
+const GAME_BLURBS: Dictionary = {
+	"entropy_dice": "Push-your-luck dice rolled from this QING's entropy. Beat the house line.",
+	"waat_slots": "Reels of contracts, crystals, teddies and rockets. Hunt the Motzkin jackpot.",
+	"territory_trivia": "Ten questions from the chain: real QINGs, live charge, contracts, the bar menu.",
+	"card_match": "Timed memory pairs with Dysnomia's contracts. Learn the whole stack.",
 }
 
 var _active_game: PanelContainer = null
 var _active_game_type: String = ""
-var _high_scores: Dictionary = {}  # game_type → int
 var _hud: CanvasLayer
-var _save_path: String = "user://minigame_scores.json"
 
 
 func initialize(hud: CanvasLayer) -> void:
 	_hud = hud
-	_load_scores()
 
 
 func open_game(table_index: int) -> void:
 	## Open a minigame by table index (0-3 maps to game type).
 	if _active_game:
 		return  # Already playing
-
 	var type_idx := clampi(table_index, 0, GAME_TYPES.size() - 1)
-	var game_type: String = GAME_TYPES[type_idx]
-	open_game_by_type(game_type)
+	open_game_by_type(GAME_TYPES[type_idx])
 
 
 func open_game_by_type(game_type: String) -> void:
-	## Open a specific minigame by type name.
 	if _active_game:
-		close_game()
-
+		_free_active()
 	if not GAME_SCRIPTS.has(game_type):
-		print("[MinigameManager] Unknown game type: %s" % game_type)
+		push_warning("[MinigameManager] Unknown game type: %s" % game_type)
 		return
-
-	var script_path: String = GAME_SCRIPTS[game_type]
-	var script = load(script_path)
+	var script = load(GAME_SCRIPTS[game_type])
 	if not script:
-		print("[MinigameManager] Failed to load script: %s" % script_path)
+		push_warning("[MinigameManager] Failed to load script: %s" % GAME_SCRIPTS[game_type])
 		return
 
 	_active_game_type = game_type
-
-	# Create the game panel
 	_active_game = PanelContainer.new()
 	_active_game.set_script(script)
 	_active_game.name = "ActiveMinigame"
-
+	_active_game.set("_game_type", game_type)
 	if _hud:
 		_hud.add_child(_active_game)
+	else:
+		add_child(_active_game)
 
-	# Set high score before it renders
-	var hs: int = _high_scores.get(game_type, 0)
-	if _active_game.has_method("_set_high_score"):
-		_active_game._set_high_score(hs)
-
-	# Connect signals
-	_active_game.game_ended.connect(_on_game_ended)
+	if _active_game.has_method("set_records"):
+		_active_game.set_records(MinigameRecords.personal_best(game_type), MinigameRecords.qing_record(game_type))
+	_active_game.game_result.connect(_on_game_result)
 	_active_game.game_closed.connect(close_game)
+	_active_game.replay_requested.connect(func(): open_game_by_type.call_deferred(_active_game_type))
 
-	# Show mouse for minigame interaction
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-
 	minigame_opened.emit(game_type)
-	print("[MinigameManager] Opened: %s" % GAME_NAMES.get(game_type, game_type))
 
 
 func close_game() -> void:
-	## Close the currently active minigame.
+	_free_active()
+	_active_game_type = ""
+	minigame_closed.emit()
+
+
+func _free_active() -> void:
 	if _active_game:
 		_active_game.queue_free()
 		_active_game = null
-
-	_active_game_type = ""
-	minigame_closed.emit()
 
 
 func is_game_active() -> bool:
@@ -103,55 +98,46 @@ func get_active_game_type() -> String:
 	return _active_game_type
 
 
+func get_active_game() -> Control:
+	return _active_game
+
+
 func get_high_score(game_type: String) -> int:
-	return _high_scores.get(game_type, 0)
+	return MinigameRecords.personal_best(game_type)
 
 
-func _on_game_ended(score: int) -> void:
-	## Called when a minigame round finishes.
+func get_bests() -> Dictionary:
+	## Personal bests + per-QING records, ready for the community layer to broadcast.
+	return MinigameRecords.get_bests()
+
+
+func _on_game_result(result: Dictionary) -> void:
 	var game_type := _active_game_type
 	if game_type.is_empty():
 		return
+	var score: int = result.get("score", 0)
+	var won: bool = result.get("won", false)
+	var rec := MinigameRecords.submit(game_type, score, won)
 
-	# Update high score
-	var current_hs: int = _high_scores.get(game_type, 0)
-	if score > current_hs:
-		_high_scores[game_type] = score
-		_save_scores()
-		print("[MinigameManager] New high score for %s: %d" % [game_type, score])
+	var title_names: Array = []
+	var on_title := func(t: Dictionary) -> void: title_names.append(t["name"])
+	QuestBoard.bus.title_unlocked.connect(on_title)
+	var completed: Array = []
+	completed += QuestBoard.report("minigame_played", {"game": game_type, "score": score})
+	if won:
+		completed += QuestBoard.report("minigame_win", {"game": game_type, "score": score})
+	completed += QuestBoard.report("minigame_score", {"game": game_type, "score": score,
+		"jackpot": result.get("jackpot", false), "perfect": result.get("perfect", false)})
+	QuestBoard.bus.title_unlocked.disconnect(on_title)
 
 	minigame_score.emit(game_type, score)
-
-
-func _load_scores() -> void:
-	## Load high scores from user://minigame_scores.json.
-	if not FileAccess.file_exists(_save_path):
-		return
-
-	var file := FileAccess.open(_save_path, FileAccess.READ)
-	if not file:
-		return
-
-	var json := JSON.new()
-	var err := json.parse(file.get_as_text())
-	file.close()
-
-	if err != OK:
-		print("[MinigameManager] Failed to parse scores file")
-		return
-
-	var data = json.data
-	if data is Dictionary:
-		_high_scores = data
-		print("[MinigameManager] Loaded scores: %s" % str(_high_scores))
-
-
-func _save_scores() -> void:
-	## Save high scores to user://minigame_scores.json.
-	var file := FileAccess.open(_save_path, FileAccess.WRITE)
-	if not file:
-		print("[MinigameManager] Failed to save scores")
-		return
-
-	file.store_string(JSON.stringify(_high_scores, "\t"))
-	file.close()
+	minigame_result.emit(game_type, result, rec)
+	if _active_game and _active_game.has_method("show_result"):
+		var info := result.duplicate()
+		info["personal_best"] = rec["personal_best"]
+		info["qing_record"] = rec["qing_record"]
+		info["rank"] = rec["rank"]
+		info["quests"] = completed
+		info["title"] = ", ".join(title_names)
+		_active_game.set_records(MinigameRecords.personal_best(game_type), MinigameRecords.qing_record(game_type))
+		_active_game.show_result(info)

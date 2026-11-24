@@ -1,196 +1,225 @@
 extends MinigameBase
-## Territory Trivia — questions about Dysnomia lore and current territory state.
+## Territory Trivia — ten questions generated from real Dysnomia data (see TriviaBank):
+## real QING names, this QING's live charge and bars, contract roles, the Motzkin prime,
+## chain id 369, the fair's rides and the bar's AFFECTION drinks.
+## Difficulty ramps 1 → 3, the clock tightens, a streak multiplies your points and you get
+## one 50/50 per game. 6/10 passes; 10/10 is a perfect round.
+
+const TIME_BY_DIFF := {1: 15.0, 2: 13.0, 3: 11.0}
+const PASS_MARK := 6
 
 var _question_label: RichTextLabel
+var _fact_label: Label
 var _answer_buttons: Array[Button] = []
-var _timer_label: Label
+var _timer_bar: ProgressBar
 var _round_label: Label
+var _streak_label: Label
+var _fifty_btn: Button
 var _timer: float = 15.0
-var _current_question: int = 0
-var _total_questions: int = 10
-var _questions: Array[Dictionary] = []
-var _waiting_for_answer: bool = false
+var _time_max: float = 15.0
+var _current: int = 0
+var _questions: Array = []
+var _waiting: bool = false
 var _correct_index: int = 0
-var _answered_this_round: bool = false
+var _correct_count: int = 0
+var _streak: int = 0
+var _best_streak: int = 0
+var _fifty_used: bool = false
+var _tick_second: int = -1
 
 
 func _ready() -> void:
-	_init_ui("Territory Trivia")
+	_init_ui("Territory Trivia", "%s · questions from the chain itself" % DysnomiaLore.qing_label(), Vector2(500, 560))
 	_build_game_ui()
-	_generate_questions()
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	_questions = TriviaBank.build_game(TriviaBank.live_context(), rng)
 	start_game()
 	_show_question()
 
 
 func _build_game_ui() -> void:
-	# Round indicator
-	_round_label = Label.new()
-	_round_label.text = "Question 1 / 10"
-	_round_label.add_theme_font_size_override("font_size", 13)
-	_round_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
-	_round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_content_vbox.add_child(_round_label)
+	var top := HBoxContainer.new()
+	_content_vbox.add_child(top)
+	_round_label = _label("", 13, DysnomiaLore.DIM)
+	_round_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(_round_label)
+	_streak_label = _label("", 13, PINK)
+	top.add_child(_streak_label)
 
-	# Question text
+	_timer_bar = ProgressBar.new()
+	_timer_bar.show_percentage = false
+	_timer_bar.custom_minimum_size = Vector2(0, 8)
+	_timer_bar.max_value = 1.0
+	_timer_bar.step = 0.001
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.15, 0.12, 0.22)
+	bg.set_corner_radius_all(4)
+	var fg := StyleBoxFlat.new()
+	fg.bg_color = PULSE
+	fg.set_corner_radius_all(4)
+	_timer_bar.add_theme_stylebox_override("background", bg)
+	_timer_bar.add_theme_stylebox_override("fill", fg)
+	_content_vbox.add_child(_timer_bar)
+
 	_question_label = RichTextLabel.new()
 	_question_label.bbcode_enabled = true
 	_question_label.fit_content = true
-	_question_label.custom_minimum_size = Vector2(0, 80)
-	_question_label.add_theme_font_size_override("normal_font_size", 16)
+	_question_label.scroll_active = false
+	_question_label.custom_minimum_size = Vector2(0, 74)
+	_question_label.add_theme_font_size_override("normal_font_size", 19)
+	_question_label.add_theme_font_size_override("bold_font_size", 19)
 	_content_vbox.add_child(_question_label)
 
-	# Timer
-	_timer_label = Label.new()
-	_timer_label.text = "15s"
-	_timer_label.add_theme_font_size_override("font_size", 20)
-	_timer_label.add_theme_color_override("font_color", Color(0.9, 0.5, 0.3))
-	_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_content_vbox.add_child(_timer_label)
-
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 8)
-	_content_vbox.add_child(spacer)
-
-	# 4 answer buttons
-	for i in range(4):
-		var btn := Button.new()
-		btn.text = "Answer %d" % (i + 1)
-		btn.custom_minimum_size = Vector2(0, 36)
-		var idx := i
-		btn.pressed.connect(func(): _on_answer(idx))
+	for i in 4:
+		var btn := _button("…", Color(0.4, 0.35, 0.6), Vector2(0, 46))
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.clip_text = true
+		btn.add_theme_font_size_override("font_size", 15)
+		btn.pressed.connect(_on_answer.bind(i))
 		_content_vbox.add_child(btn)
 		_answer_buttons.append(btn)
 
+	_fact_label = _center_label(" ", 12, Color(0.75, 0.75, 0.88))
+	_fact_label.custom_minimum_size = Vector2(0, 36)
+	_content_vbox.add_child(_fact_label)
 
-func _generate_questions() -> void:
-	_questions.clear()
-
-	# Static lore questions
-	_questions.append({"q": "What is the MOTZKIN_PRIME constant?",
-		"answers": ["953467954114363", "999999999999989", "1000000000000003", "736281946291739"],
-		"correct": 0})
-	_questions.append({"q": "What blockchain does Dysnomia run on?",
-		"answers": ["PulseChain", "Ethereum", "Solana", "Avalanche"], "correct": 0})
-	_questions.append({"q": "What celestial body is Eris named after?",
-		"answers": ["A dwarf planet", "A star", "A moon of Jupiter", "An asteroid"], "correct": 0})
-	_questions.append({"q": "How many biome types exist?",
-		"answers": ["4", "6", "8", "2"], "correct": 0})
-	_questions.append({"q": "What creature type is fastest?",
-		"answers": ["Stalker", "Crawler", "Floater", "Burrower"], "correct": 0})
-	_questions.append({"q": "What does HECKE.Compliment() return?",
-		"answers": ["Longitude & Latitude", "Name & Address", "Power & Energy", "Hash & Nonce"], "correct": 0})
-	_questions.append({"q": "What contract handles terraform ops?",
-		"answers": ["AFFECTION", "META", "VOID", "LAU"], "correct": 0})
-	_questions.append({"q": "What does META.Beat() do?",
-		"answers": ["State aggregation", "Mine tokens", "Transfer ownership", "Deploy contract"], "correct": 0})
-	_questions.append({"q": "How many QING territories exist?",
-		"answers": ["~263", "~100", "~500", "~1000"], "correct": 0})
-	_questions.append({"q": "What is the player character?",
-		"answers": ["Teddy bear astronaut", "Robot soldier", "Space marine", "Alien explorer"], "correct": 0})
-	_questions.append({"q": "What vehicle is unlocked first?",
-		"answers": ["Rover", "Hoverbike", "Tank", "Shuttle"], "correct": 0})
-	_questions.append({"q": "What key opens the World Map?",
-		"answers": ["M", "W", "G", "Tab"], "correct": 0})
-	_questions.append({"q": "What does the tesseract represent?",
-		"answers": ["Territory energy core", "Player health", "Time cycle", "Wallet balance"], "correct": 0})
-	_questions.append({"q": "What gravity multiplier is used?",
-		"answers": ["~0.33x Earth", "1x Earth", "0.1x Earth", "2x Earth"], "correct": 0})
-	_questions.append({"q": "How many weapon types are there?",
-		"answers": ["4", "2", "6", "8"], "correct": 0})
-
-	# Shuffle and pick 10
-	_questions.shuffle()
-	if _questions.size() > _total_questions:
-		_questions.resize(_total_questions)
-
-	# Shuffle answers for each question (keeping track of correct)
-	for q in _questions:
-		var correct_answer: String = q["answers"][q["correct"]]
-		q["answers"].shuffle()
-		q["correct"] = q["answers"].find(correct_answer)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_content_vbox.add_child(row)
+	_fifty_btn = _button("50/50", PINK, Vector2(110, 34))
+	_fifty_btn.pressed.connect(_on_fifty)
+	row.add_child(_fifty_btn)
 
 
 func _show_question() -> void:
-	if _current_question >= _questions.size():
-		_finish_game()
+	if _current >= _questions.size():
+		_finish_trivia()
 		return
-
-	var q: Dictionary = _questions[_current_question]
-	_round_label.text = "Question %d / %d" % [_current_question + 1, _total_questions]
+	var q: Dictionary = _questions[_current]
+	var diff: int = q["difficulty"]
+	_round_label.text = "Question %d / %d   ·   %s" % [_current + 1, _questions.size(), ["", "warm-up", "regular", "deep lore"][diff]]
 	_question_label.clear()
-	_question_label.append_text("[color=#e0e0ff][b]%s[/b][/color]" % q["q"])
-
+	_question_label.append_text("[b]%s[/b]" % q["q"])
 	_correct_index = q["correct"]
-	for i in range(4):
-		_answer_buttons[i].text = q["answers"][i]
-		_answer_buttons[i].disabled = false
-		_answer_buttons[i].modulate = Color.WHITE
-
-	_timer = 15.0
-	_waiting_for_answer = true
-	_answered_this_round = false
+	for i in 4:
+		var b := _answer_buttons[i]
+		b.text = "  %s   %s" % [["A", "B", "C", "D"][i], q["answers"][i]]
+		b.disabled = false
+		b.visible = true
+		b.modulate = Color.WHITE
+	_fact_label.text = " "
+	_time_max = TIME_BY_DIFF[diff]
+	_timer = _time_max
+	_tick_second = -1
+	_waiting = true
+	_fifty_btn.disabled = _fifty_used
+	_update_streak()
+	_question_label.modulate.a = 0.0
+	_question_label.create_tween().tween_property(_question_label, "modulate:a", 1.0, 0.25)
 
 
 func _process(delta: float) -> void:
-	if _waiting_for_answer:
-		_timer -= delta
-		_timer_label.text = "%.0fs" % maxf(0, _timer)
-
-		if _timer <= 5.0:
-			_timer_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.2))
-		else:
-			_timer_label.add_theme_color_override("font_color", Color(0.9, 0.5, 0.3))
-
-		if _timer <= 0.0:
-			_waiting_for_answer = false
-			_on_timeout()
+	_base_process(delta)
+	if not _waiting:
+		return
+	_timer -= delta
+	var frac := maxf(0.0, _timer / _time_max)
+	_timer_bar.value = frac
+	var fill: StyleBoxFlat = _timer_bar.get_theme_stylebox("fill")
+	fill.bg_color = PULSE.lerp(DysnomiaLore.BAD, clampf(1.0 - frac * 2.5, 0.0, 1.0))
+	if _timer <= 4.0 and int(_timer) != _tick_second and _timer > 0.0:
+		_tick_second = int(_timer)
+		_sfx("tick", 1.0 + (4.0 - _timer) * 0.1)
+	if _timer <= 0.0:
+		_waiting = false
+		_on_timeout()
 
 
 func _on_answer(idx: int) -> void:
-	if not _waiting_for_answer or _answered_this_round:
+	if not _waiting:
 		return
-	_answered_this_round = true
-	_waiting_for_answer = false
-
-	# Highlight correct answer
-	_answer_buttons[_correct_index].modulate = Color(0.3, 1.0, 0.3)
-
+	_waiting = false
+	var q: Dictionary = _questions[_current]
+	var diff: int = q["difficulty"]
+	_answer_buttons[_correct_index].modulate = Color(0.5, 1.4, 0.6)
+	for b in _answer_buttons:
+		b.disabled = true
 	if idx == _correct_index:
-		var bonus: int = 50 if _timer > 10.0 else 0
-		_update_score(100 + bonus)
-		_question_label.append_text("\n[color=#22cc55]Correct!%s[/color]" % (
-			" +50 speed bonus!" if bonus > 0 else ""))
+		_correct_count += 1
+		_streak += 1
+		_best_streak = maxi(_best_streak, _streak)
+		var speed := int(50.0 * diff * clampf(_timer / _time_max, 0.0, 1.0))
+		var mult := minf(1.0 + 0.25 * (_streak - 1), 2.0)
+		var pts := int(round((100 * diff + speed) * mult))
+		_update_score(pts)
+		_float_text("+%d" % pts, DysnomiaLore.OK, _answer_buttons[idx])
+		_punch(_answer_buttons[idx], 0.06)
+		_sfx("win" if _streak < 3 else "big")
+		_fact_label.add_theme_color_override("font_color", DysnomiaLore.OK)
+		_fact_label.text = ("Correct! " if mult <= 1.0 else "Correct! Streak ×%.2f. " % mult) + q["fact"]
 	else:
-		_answer_buttons[idx].modulate = Color(1.0, 0.3, 0.3)
-		_update_score(-50)
-		_question_label.append_text("\n[color=#cc3333]Wrong! -50[/color]")
-
-	# Disable all buttons
-	for btn in _answer_buttons:
-		btn.disabled = true
-
-	# Next question after delay
-	get_tree().create_timer(1.5).timeout.connect(_next_question)
+		_answer_buttons[idx].modulate = Color(1.5, 0.5, 0.5)
+		_streak = 0
+		_shake(5.0, 0.25)
+		_sfx("miss")
+		_fact_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.6))
+		_fact_label.text = "Not quite. " + q["fact"]
+	_update_streak()
+	get_tree().create_timer(2.2).timeout.connect(_next_question)
 
 
 func _on_timeout() -> void:
-	_answer_buttons[_correct_index].modulate = Color(0.3, 1.0, 0.3)
-	for btn in _answer_buttons:
-		btn.disabled = true
-	_question_label.append_text("\n[color=#cc8833]Time's up![/color]")
-	get_tree().create_timer(1.5).timeout.connect(_next_question)
+	var q: Dictionary = _questions[_current]
+	_answer_buttons[_correct_index].modulate = Color(0.5, 1.4, 0.6)
+	for b in _answer_buttons:
+		b.disabled = true
+	_streak = 0
+	_sfx("miss")
+	_fact_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
+	_fact_label.text = "Time! " + q["fact"]
+	_update_streak()
+	get_tree().create_timer(2.2).timeout.connect(_next_question)
+
+
+func _on_fifty() -> void:
+	if _fifty_used or not _waiting:
+		return
+	_fifty_used = true
+	_fifty_btn.disabled = true
+	var wrong: Array = []
+	for i in 4:
+		if i != _correct_index:
+			wrong.append(i)
+	wrong.shuffle()
+	for i in wrong.slice(0, 2):
+		_answer_buttons[i].disabled = true
+		_answer_buttons[i].modulate = Color(1, 1, 1, 0.25)
+	_sfx("nudge")
+
+
+func _update_streak() -> void:
+	_streak_label.text = ("Streak %d" % _streak) if _streak >= 2 else ("%d correct" % _correct_count)
 
 
 func _next_question() -> void:
-	_current_question += 1
+	if not is_inside_tree():
+		return
+	_current += 1
 	_show_question()
 
 
-func _finish_game() -> void:
+func _finish_trivia() -> void:
+	_waiting = false
+	for b in _answer_buttons:
+		b.visible = false
+	_fifty_btn.visible = false
 	_question_label.clear()
-	_question_label.append_text("[color=#FFD700][b]Game Over![/b][/color]\n\nFinal Score: %d" % _score)
-	_timer_label.text = ""
-	_round_label.text = "Complete!"
-	for btn in _answer_buttons:
-		btn.visible = false
-	end_game()
+	_question_label.append_text("[center][b]%d / %d[/b][/center]" % [_correct_count, _questions.size()])
+	var perfect := _correct_count == _questions.size() and _questions.size() >= 10
+	var won := _correct_count >= PASS_MARK
+	var head := "SAGE OF ERIS" if perfect else ("YOU KNOW YOUR QING" if won else "BACK TO THE ARCHIVES")
+	var lines: Array = ["%d / %d correct · best streak %d" % [_correct_count, _questions.size(), _best_streak]]
+	if not won and _correct_count == PASS_MARK - 1:
+		lines.append("One answer short of a pass.")
+	finish(won, {"headline": head, "lines": lines, "perfect": perfect})
