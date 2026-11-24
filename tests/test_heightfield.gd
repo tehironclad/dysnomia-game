@@ -4,7 +4,10 @@ extends TestCase
 const ILLINOIS := "0xd127839b83cbf537c29b7d268c135f745a0da2e8"
 ## Pinned at n=33. If the mapping changes on purpose, bump
 ## JuliaHeightfield.VERSION (invalidates caches) and update this.
-const PINNED := {"0xd127839b83cbf537c29b7d268c135f745a0da2e8": 2150460801384600463}
+## v3 (2026-11-24): SIZE_M 512 → 724 m. The chain → shape mapping (Deep Field
+## params, relief_params, the Julia frame) is unchanged; the frame is drawn over
+## the larger square, so the same samples land on different metres.
+const PINNED := {"0xd127839b83cbf537c29b7d268c135f745a0da2e8": 3309458385701477657}
 
 
 func _q(addr: String) -> Dictionary:

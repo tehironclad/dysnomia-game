@@ -19,11 +19,11 @@ const PLAZA_R := 30.0          ## round terrace that carries the tower (fixed fo
 const RING_R := 14.0           ## the landing zone's terrace
 const LIFT_HALF := 2.0         ## the glass lift shaft is 4 × 4 m
 const LIFT_GAP := 1.5          ## clearance between the shaft and the tower's face
-const PREFER := Vector2(0.0, -150.0)  ## north, beyond the skyline: seen ahead on arrival
+const PREFER := Vector2(0.0, -150.0 * TerritoryLayout.SCALE)  ## north (≈212 m), beyond the skyline: seen ahead on arrival
 const KEEP_CLEAR := [Vector2(0, 0), Vector2(26, 18), Vector2(-26, 18), Vector2(0, -11.5), Vector2(0, 16)]
 const CORE_CLEAR := 84.0       ## skyline ring (≤ 46 m) + plaza + margin
 const JUMP_MIN_M := 24.0       ## the least drop that is a base jump
-const BORDER_KEEP := 232.0     ## footprints stay inside |x|, |z| ≤ this (the force fields stand at 256 m)
+const BORDER_KEEP := TerritoryLayout.BORDER_KEEP_M  ## footprints stay inside |x|, |z| ≤ this (338 m; the force fields stand at 362 m)
 
 ## Development tier → landmark. Heights are roof metres at the bottom and top of
 ## the tier's log10 band (the top tier's band is open; it is capped).
@@ -242,11 +242,12 @@ static func orient(s: Dictionary, ring_a: float, core_a: float) -> float:
 static func find_site(height_fn: Callable, radius: float, avoid: Array, prefer: Vector2, land_floor: float = -2.5, prefer_w: float = 0.05, ideal_dist: float = -1.0, from: Vector2 = Vector2.ZERO) -> Dictionary:
 	var best := {"ok": false, "score": INF}
 	var fallback := {"ok": false, "land": -1.0}
-	for gx in range(-13, 14):
-		for gz in range(-13, 14):
+	var g := TerritoryLayout.grid_steps()
+	for gx in range(-g, g + 1):
+		for gz in range(-g, g + 1):
 			var c := Vector2(gx * 16.0, gz * 16.0)
 			if maxf(absf(c.x), absf(c.y)) + radius > BORDER_KEEP:
-				continue  # clear of the border fields at ±256 m
+				continue  # clear of the border fields
 			var clear := true
 			for a in avoid:
 				if c.distance_to(a[0]) < float(a[1]):

@@ -201,7 +201,7 @@ func _frame(view: String) -> void:
 		camera.fov = 65.0
 	elif view == "ground":
 		camera.position = Vector3(0.0, core_h + 2.0, 40.0)
-		camera.look_at(Vector3(0.0, core_h + 40.0, -120.0))
+		camera.look_at(Vector3(0.0, core_h + 40.0, -170.0))
 		camera.fov = 70.0
 	elif view == "core":
 		camera.position = Vector3(6.0, core_h + 4.0, 34.0)
@@ -227,7 +227,8 @@ func _frame(view: String) -> void:
 		camera.look_at(camera.position + Vector3(-0.55, 0.62, 0.55))
 		camera.fov = 80.0
 	else:
-		camera.position = Vector3(0.0, 330.0, 330.0)
+		var d := 330.0 * TerritoryLayout.SCALE  # the whole territory in frame
+		camera.position = Vector3(0.0, d, d)
 		camera.look_at(Vector3(0.0, 0.0, 10.0))
 		camera.fov = 55.0
 

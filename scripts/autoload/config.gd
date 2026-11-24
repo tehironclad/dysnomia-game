@@ -10,7 +10,9 @@ signal auto_changed(text: String)
 
 # Graphics
 var graphics_quality: int = 2  # 0 potato · 1 low · 2 medium · 3 high · 4 ultra (Medium until the player picks)
-var render_distance: float = 900.0  # camera far plane, metres
+const RENDER_DEFAULT := 1300.0  # a 724 m territory's diagonal is 1024 m, plus the neighbours' ground
+const OLD_RENDER_DEFAULT := 900.0  # the default before territories grew from 512 m to 724 m
+var render_distance: float = RENDER_DEFAULT  # camera far plane, metres
 ## Pick the level from the hardware on first launch, then follow the frame rate.
 var auto_quality := true
 ## The renderer the hardware asks for ("forward_plus" | "gl_compatibility"; "" until detected).
@@ -345,6 +347,8 @@ func load_settings() -> void:
 		return
 	graphics_quality = int(c.get_value("graphics", "quality", graphics_quality))
 	render_distance = float(c.get_value("graphics", "render_distance", render_distance))
+	if is_equal_approx(render_distance, OLD_RENDER_DEFAULT):
+		render_distance = RENDER_DEFAULT  # saved before the territories grew: the far border would be cut off
 	auto_quality = bool(c.get_value("graphics", "auto", auto_quality))
 	renderer_pref = String(c.get_value("graphics", "renderer", renderer_pref))
 	mouse_sensitivity = float(c.get_value("controls", "mouse_sensitivity", mouse_sensitivity))

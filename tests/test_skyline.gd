@@ -173,8 +173,10 @@ func test_turning_and_edge() -> void:
 	var y := J.turn(J.Mode.WINGSUIT, 0.0, 1.0, 1.0)
 	near(y, -J.TURN[J.Mode.WINGSUIT], 1e-5, "right turns clockwise (yaw down)")
 	eq(J.edge_push(Vector3(100, 0, -50)), Vector3.ZERO, "no push inside")
-	check(J.edge_push(Vector3(240, 0, 0)).x < 0.0, "pushed back from the east edge")
-	check(J.edge_push(Vector3(0, 0, -240)).z > 0.0, "and the north edge")
+	eq(J.edge_push(Vector3(J.EDGE - 1.0, 0, 0)), Vector3.ZERO, "no push just inside the edge wind")
+	check(J.edge_push(Vector3(J.EDGE + 12.0, 0, 0)).x < 0.0, "pushed back from the east edge")
+	check(J.edge_push(Vector3(0, 0, -(J.EDGE + 12.0))).z > 0.0, "and the north edge")
+	check(J.EDGE < JuliaHeightfield.SIZE_M * 0.5 - 20.0, "the wind turns you well before the force field")
 
 
 func test_wind_is_the_territorys() -> void:

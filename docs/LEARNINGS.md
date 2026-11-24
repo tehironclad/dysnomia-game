@@ -664,7 +664,7 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
 - **Flight** (`JumpPhysics`, pure): the player's own gravity 3.2 m/s²; freefall terminal 30 m/s
   (44 head-down); wingsuit settles to 22 fwd / 6.8 sink (glide ≈ 3.2), dive and flare change it;
   canopy 8 / 3.0, flare (hold jump) 3 / 0.6 for 2.2 s. Wind is per territory (`String.hash` of the
-  lower-cased address; 1.5–4.5 m/s with gusts). An edge wind turns you back at |x|,|z| > 228 m.
+  lower-cased address; 1.5–4.5 m/s with gusts). An edge wind turns you back at |x|,|z| > half the edge − 28 m (334 m).
   An automatic canopy fires below 30 m AGL in a fast freefall.
 - **Score:** horizontal metres flown + ring points (≤ 3 m 1000, ≤ 8 m 600, ≤ 14 m 300, else
   200 − d), times the landing (stand-up 1.0, skid 0.6, impact 0.25). Bests are local

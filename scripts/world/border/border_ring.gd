@@ -2,7 +2,7 @@ class_name BorderRing
 extends Node3D
 ## A territory's four borders (WP: neighbours). On each side stands a
 ## translucent force field; beyond it lies the neighbouring QING's own ground
-## (its Deep Field heightfield at 129², drawn in its own colours) under its
+## (its Deep Field heightfield at 181², drawn in its own colours) under its
 ## real name, or nothing at all where no QING lies that way (the edge of the map).
 ## Which QING is next door comes from Neighbours (HECKE coordinates, checked
 ## against MAP.GetMapQing). Everything drawn depends only on territory state.
@@ -14,7 +14,7 @@ extends Node3D
 ## Admitted. Only an Admitted(LAU) read from the chain opens the way; crossing
 ## then loads the neighbour with you at its matching edge.
 
-const SAMPLES := 129  ## the neighbour's ground: 4 m spacing
+const SAMPLES := int(JuliaHeightfield.SIZE_M / 4.0) + 1  ## the neighbour's ground: 4 m spacing (181²)
 const WALL_H := 90.0
 const REACH_M := 7.0  ## how close to the field its prompt appears
 const CROSS_M := 1.6  ## walking this close to an open field crosses it

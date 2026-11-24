@@ -84,15 +84,18 @@ func test_real_registry_neighbours() -> void:
 
 
 func test_border_geometry() -> void:
-	var b := Neighbours.nearest_border(10.0, -250.0)
+	# Written against the half-edge H (362 m since territories grew from 512 to 724 m).
+	var H := JuliaHeightfield.SIZE_M * 0.5
+	var b := Neighbours.nearest_border(10.0, -(H - 6.0))
 	eq(b["side"], "n")
 	near(b["inside_m"], 6.0, 1e-6)
-	eq(Neighbours.nearest_border(253.0, 0.0)["side"], "e")
-	eq(Neighbours.arrival("n", 10.0), Vector2(10.0, 250.0), "out north → in at the neighbour's south edge")
-	eq(Neighbours.arrival("w", -40.0), Vector2(250.0, -40.0), "out west → in at its east edge")
-	eq(Neighbours.arrival("e", 999.0), Vector2(-250.0, 250.0), "clamped along the edge")
-	eq(Neighbours.offset("e"), Vector3(512, 0, 0))
-	eq(Neighbours.offset("n"), Vector3(0, 0, -512))
+	eq(Neighbours.nearest_border(H - 3.0, 0.0)["side"], "e")
+	eq(Neighbours.arrival("n", 10.0), Vector2(10.0, H - 6.0), "out north → in at the neighbour's south edge")
+	eq(Neighbours.arrival("w", -40.0), Vector2(H - 6.0, -40.0), "out west → in at its east edge")
+	eq(Neighbours.arrival("e", 999.0), Vector2(-(H - 6.0), H - 6.0), "clamped along the edge")
+	eq(Neighbours.offset("e"), Vector3(2.0 * H, 0, 0))
+	eq(Neighbours.offset("n"), Vector3(0, 0, -2.0 * H))
+	eq(Neighbours.offset("e"), Vector3(724, 0, 0), "the territory edge is 724 m")
 
 
 func test_border_ring_builds_from_territory_state() -> void:

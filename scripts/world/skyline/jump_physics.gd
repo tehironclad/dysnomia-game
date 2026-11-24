@@ -10,7 +10,7 @@ enum Mode { FREEFALL, WINGSUIT, CANOPY }
 const FREEFALL_VT := 30.0   ## belly-to-earth terminal speed, m/s
 const DIVE_VT := 44.0       ## head-down (sprint) terminal speed
 const TRACK_A := 3.0        ## horizontal push while tracking in freefall, m/s²
-const EDGE := 228.0         ## |x| or |z| past this: the territory's edge wind turns you back
+const EDGE := JuliaHeightfield.SIZE_M * 0.5 - 28.0  ## |x| or |z| past this (334 m): the territory's edge wind turns you back
 
 ## Steady airspeed (forward, sink) per mode at pitch input −1 (flare/brakes), 0, +1 (dive).
 const GLIDE := {
