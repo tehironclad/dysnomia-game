@@ -1,7 +1,7 @@
 class_name PubLife
 extends Node3D
 ## The people of Sunny's Pub: Sunny behind the bar and a handful of regulars
-## who sit, lean and chat, all on v2's avatar (HumanAvatar: the Quaternius body
+## who sit, lean and chat, each in an outfit, on v2's avatar (HumanAvatar: the Quaternius rig
 ## and its UAL clip library, which has real Sitting_Idle / Sitting_Talking /
 ## Idle_Talking clips). They are the room's furniture of life, not players:
 ## nothing about them is read from, or claimed to be, the chain.
@@ -37,7 +37,7 @@ func setup(p_room: PubRoom) -> void:
 	name = "PubLife"
 	_rng.seed = 0x50a1
 	# Sunny: the sun-headed bartender, on the duckboards.
-	sunny = _avatar("sunny", Color(0.92, 0.9, 0.84), Color(0.45, 0.28, 0.14), "male")
+	sunny = _avatar("sunny", Color(0.92, 0.9, 0.84), Color(0.45, 0.28, 0.14), "male", "formal")
 	sunny.name = "Sunny"
 	var h := sunny.find_child("Head_sunny", true, false)
 	if h:
@@ -56,15 +56,17 @@ func setup(p_room: PubRoom) -> void:
 		["rat", Color(0.82, 0.83, 0.86), "male", la + Vector3(0.35, 0, -0.78), Vector3(0, 0, 1), "Sitting_Idle"],
 		["robot", Color(0.30, 0.34, 0.18), "female", ht + Vector3(0.62, 0, 0.15), Vector3(-1, 0, -0.2), "Idle"],
 	]
-	for c in cast:
-		var p := _avatar(c[0], c[1], c[1].darkened(0.35), c[2])
+	var wear := ["street", "pilot", "overalls", "robe", "formal", "longcoat"]  # one each, in cast order
+	for ci in cast.size():
+		var c: Array = cast[ci]
+		var p := _avatar(c[0], c[1], c[1].darkened(0.35), c[2], wear[ci % wear.size()])
 		p.position = c[3]
 		p.rotation.y = atan2(c[4].x, c[4].z)
 		p.hold_clip = c[5]
 		p.hold_speed = _rng.randf_range(0.85, 1.1)
 		patrons.append(p)
 	# One regular walks a slow loop: the darts, the pool table, the bar end.
-	_walker = _avatar("dog", Color(0.12, 0.16, 0.34), Color(0.12, 0.16, 0.34).darkened(0.35), "male")
+	_walker = _avatar("dog", Color(0.12, 0.16, 0.34), Color(0.12, 0.16, 0.34).darkened(0.35), "male", "hoodie")
 	_walker_pts = [Vector3(7.0, 0, -3.3), Vector3(6.6, 0, 0.2), Vector3(4.2, 0, -0.4), Vector3(5.2, 0, -4.4)]
 	_walker.position = _walker_pts[0]
 	_walker_pause = 3.0
@@ -75,10 +77,12 @@ func setup(p_room: PubRoom) -> void:
 	_build_confetti()
 
 
-func _avatar(head: String, fabric: Color, armour: Color, body: String) -> HumanAvatar:
+func _avatar(head: String, fabric: Color, armour: Color, body: String, outfit: String = "street") -> HumanAvatar:
 	var a := HumanAvatar.new()
-	a.civilian = true  # off duty: no armour or jetpack (a third of the meshes)
+	a.civilian = true  # off duty: no badge or jetpack
 	a.body_kind = body
+	a.outfit_kind = outfit
+	a.outfit_seed = _rng.randi() & 0xffff
 	add_child(a)
 	a.set_head(head)
 	a.set_suit_colors(fabric, armour)

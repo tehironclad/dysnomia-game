@@ -33,6 +33,7 @@ var guide: GuidePanel
 var opportunities: OpportunitiesPanel
 var score: TerritoryScore
 var border: BorderRing
+var roads: TerritoryRoads  # the Core's ring road and roads to every place (scripts/world/roads/)
 var chat_life: ChatLife  # room chat in the world: bubbles, echoes, glow, tower markers
 var _settings: PanelContainer
 var _monitor: Control
@@ -191,6 +192,10 @@ func _ready() -> void:
 	if view == "":
 		border.place_arrival()
 	# --- end Borders
+	roads = TerritoryRoads.new()
+	roads.name = "Roads"
+	add_child(roads)
+	_build_roads()
 	# --- Online (Net): other players here, free chat and voice; nothing when offline.
 	if view == "":
 		var presence := NetPresence.new()
@@ -222,7 +227,7 @@ func _frame(view: String) -> void:
 		camera.fov = 65.0
 	elif view == "ground":
 		camera.position = Vector3(0.0, core_h + 2.0, 40.0)
-		camera.look_at(Vector3(0.0, core_h + 40.0, -120.0))
+		camera.look_at(Vector3(0.0, core_h + 40.0, -170.0))
 		camera.fov = 70.0
 	elif view == "core":
 		camera.position = Vector3(6.0, core_h + 4.0, 34.0)
@@ -252,7 +257,8 @@ func _frame(view: String) -> void:
 		camera.look_at(camera.position + Vector3(-0.55, 0.62, 0.55))
 		camera.fov = 80.0
 	else:
-		camera.position = Vector3(0.0, 330.0, 330.0)
+		var d := 330.0 * TerritoryLayout.SCALE  # the whole territory in frame
+		camera.position = Vector3(0.0, d, d)
 		camera.look_at(Vector3(0.0, 0.0, 10.0))
 		camera.fov = 55.0
 
@@ -319,6 +325,8 @@ func _set_development(tier: int, hypo: PackedInt64Array, energy: float, board: A
 		exchanges.set_development(dev_tier)
 	terrain.set_development(dev_tier, energy)
 	sky.set_aurora(energy if dev_tier >= 4 else 0.0)
+	if roads:
+		_build_roads()
 
 
 static func _dec(v) -> String:
@@ -327,6 +335,32 @@ static func _dec(v) -> String:
 
 static func _tok(v) -> String:
 	return TokenFormat.wei_to_tokens(BigInt.coerce(v))
+
+
+# --- Roads (scripts/world/roads/) ------------------------------------------------
+
+## The places a road reaches (Core-relative = world x, z: the Core stands at the
+## origin). A new building adds itself here: {name, at, r[, from]}.
+func _road_places() -> Array:
+	var out: Array = [
+		{"name": "vehicle pad", "at": Vector2(garage.position.x, garage.position.z), "r": GarageSite.RADIUS},
+		{"name": "Affection Fair", "at": Vector2(fair.position.x, fair.position.z), "r": FairSite.RADIUS},
+	]
+	if landmark and not LandmarkPlan.spec(dev_tier, 0.0).is_empty():  # the landmark stands from Settlement up
+		var t := Vector2(landmark.position.x, landmark.position.z)
+		var r := landmark.ring_local()
+		out.append({"name": "skyline landmark", "at": t, "r": LandmarkPlan.PLAZA_R})
+		out.append({"name": "landing ring", "at": Vector2(r.x, r.z), "r": LandmarkPlan.RING_R, "from": t})
+	return out
+
+
+func _build_roads() -> void:
+	var gates: Array = []
+	for side in Neighbours.SIDES:
+		if border and border.sides.has(side):  # a road to every border with a QING beyond it
+			gates.append(Neighbours.outward(side) * (JuliaHeightfield.SIZE_M * 0.5))
+	roads.build(func(x, z): return terrain.get_height_at(x, z), terrain.material, _road_places(), gates,
+		dev_tier, DeepField.to_color(terrain.params["color"]))
 
 
 # --- Skyline landmark + base jumping (scripts/world/skyline/) ------------------

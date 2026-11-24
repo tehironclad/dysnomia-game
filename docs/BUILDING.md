@@ -85,9 +85,23 @@ The budgets are for a mid-range GPU at High:
 | object growth per frame | ≤ 0.05 | 0.0 |
 | script cost | — | ≈ 0.4 ms/frame |
 
-With the borders (four fields, three or four neighbour grounds at 129²), RatKing, `perf.gd` default
+With the borders (four fields, three or four neighbour grounds at 181²), RatKing, `perf.gd` default
 camera, 500 frames: 164 draw calls, 520 objects, 0.30 M primitives, object growth 0.04 (a one-off:
 the fair opening mid-sample; 200 frames read 0.12 for the same reason).
+
+724 m territories (2026-11-24): the ground mesh is 363² (2 m, 0.26 M triangles, was 0.13 M) and each
+neighbour ground 181² (4 m, 65 k triangles, was 33 k), so a view with all of it adds ≈ 0.26 M primitives
+Roads cost no draw calls (the terrain shader reads a 512² distance texture); their lamps are one
+MultiMesh pair (+2 draw calls). Measured on RatKing, 30 frames (2026-11-24):
+
+| View | before (512 m) | after (724 m) |
+|---|---|---|
+| player camera | 376 draw calls, 787 objects, 0.36 M prims | 299, 793, 0.60 M |
+| `--view=aerial` | 1,309 draw calls, 2,611 objects, 0.96 M prims (master with the fair games) | 1,302, 2,622, 1.15 M |
+| headless wall time | 7.4 ms/frame | 7.2 ms/frame |
+
+The aerial view (whole territory, grand fair, Burj) was already over the draw-call and object budgets
+before the resize; the resize adds only primitives.
 
 Script cost is measured headless: wall time minus the empty-scene floor (`--disable=.`).
 
@@ -115,3 +129,8 @@ Other performance measures in the build:
 
 Signing needs a real browser wallet. Follow [`WALLET_TESTS.md`](WALLET_TESTS.md) with a fresh wallet and
 an onboarded one.
+
+Avatars in outfits (2026-11-24, `perf.gd`, lavapipe): Sunny's Pub `--view=room` 512 draw calls, 833 objects,
+0.37 M primitives; the full fair at `--qing=0xe416…400b --view=fair` (24 visitors + staff) 874 draw calls,
+2,135 objects (over the 1,500 budget: most are the creature heads' primitive meshes, ~15 per avatar; the
+outfit itself is one mesh of 3–4 surfaces with merged LODs), 0.94 M primitives.

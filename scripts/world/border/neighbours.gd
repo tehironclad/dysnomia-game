@@ -15,7 +15,7 @@ extends RefCounted
 ## with no QING in its quarter is empty (the edge of the map): nothing is drawn.
 ## All arithmetic is BigInt on the raw words; nothing passes through a float.
 ##
-## World axes: north is −Z, east is +X; each territory is 512 m square.
+## World axes: north is −Z, east is +X; each territory is JuliaHeightfield.SIZE_M (724 m) square.
 
 const SIDES := ["n", "e", "s", "w"]
 const OPPOSITE := {"n": "s", "e": "w", "s": "n", "w": "e"}

@@ -1,15 +1,15 @@
 class_name DeepFieldTerrain
 extends Node3D
-## A territory's walkable ground (WP 2.2). Heights: JuliaHeightfield at 513²
-## (1 m spacing, the collider's native resolution). Mesh: every `mesh_step`-th
+## A territory's walkable ground (WP 2.2). Heights: JuliaHeightfield at 725²
+## (1 m spacing over 724 m, the collider's native resolution). Mesh: every `mesh_step`-th
 ## sample. Light: deep_field_terrain.gdshader, the Julia set per pixel in
 ## world space. Everything derives from the territory's Entropy() + address.
 
 const SHADER := preload("res://assets/shaders/deep_field_terrain.gdshader")
 const STYLE_INDEX := {"glow": 0, "duo": 1, "bands": 2, "ember": 3, "gilded": 4, "prism": 5}
-const SAMPLES := 513  ## 512 m / 512 intervals = 1 m spacing
+const SAMPLES := int(JuliaHeightfield.SIZE_M) + 1  ## 1 m spacing (725 over 724 m)
 
-@export var mesh_step := 2  ## 2 → 257² mesh vertices
+@export var mesh_step := 2  ## 2 → 363² mesh vertices (2 m)
 var heightfield: JuliaHeightfield
 var params: Dictionary = {}
 var material: ShaderMaterial
@@ -18,7 +18,7 @@ var _body: StaticBody3D
 
 
 ## Builds ground for a Registry territory record. Blocks while the heightfield
-## computes the first time (~4 s); later loads come from the disk cache.
+## computes the first time (~8 s at 725²); later loads come from the disk cache.
 func build(q: Dictionary) -> void:
 	params = DeepField.for_territory(q)
 	heightfield = JuliaHeightfield.for_territory(q, SAMPLES)
@@ -176,6 +176,6 @@ func _build_collider() -> void:
 	_body = StaticBody3D.new()
 	_body.name = "GroundBody"
 	var cs := CollisionShape3D.new()
-	cs.shape = shape  # 1 m spacing at 513 samples: no scaling needed, centred on the origin
+	cs.shape = shape  # 1 m spacing (SAMPLES = SIZE_M + 1): no scaling needed, centred on the origin
 	_body.add_child(cs)
 	add_child(_body)

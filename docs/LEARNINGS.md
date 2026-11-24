@@ -469,10 +469,26 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   - outside: the flank falls with the distance estimate in terraces, a crest on the boundary, and
     **canyons along the external rays** at angles j/rays turns. The angle is Böttcher's, branch-tracked
     (`Θ ← D·Θ + arg(1 + c/z^D)`, angle = Θ/D^n); the arg of the last iterate alone draws D^n combs;
-  - the Core keeps a flat plain to 90 m (relief full from 160 m), so landmarks, towers and the fair
+  - the Core keeps a flat plain to 120 m (relief full from 190 m), so landmarks, towers and the fair
     have flat land; the outer 40 m of every border eases to 0 m, so neighbours meet level at the wall.
-  - Heights 0–55 m, slope p95 30–39°, > 40° on 1–5 % of the ground. Previews: `preview_terrain.gd`
+  - Heights 0–55 m, slope p95 30–35° (at 1 m), > 40° on 0.3–1.7 % of the ground. Previews: `preview_terrain.gd`
     writes `relief.png` (height-tinted hillshade, contour every 2 m).
+- **Size** (2026-11-24, heightfield v4): the territory is **724 m square** (`JuliaHeightfield.SIZE_M`; was
+  512 m: √2 × the edge, twice the area, per the owner). The Julia frame scales with the edge (the same set,
+  drawn larger: `world_to_z` divides by the half-edge); every landform width (coast, falloff, crest, terrace,
+  canyon, edge blend) stays in metres, so the larger set carries more highland at the same human scale. The
+  chain → shape mapping (`DeepField` params, `relief_params`) did not change. Ground 725² (1 m, the
+  collider's own spacing), mesh 363² (2 m); neighbours 181² (4 m). The escape pass runs on a few Threads,
+  each with its own copy of the params (shared Dictionaries made the threads run in lockstep); ~8 s for a
+  first visit on a loaded 4-core box, then the disk cache.
+- **Layout** (`TerritoryLayout`): spots tuned on the 512 m map scale by `SCALE` = √2. The Core's cluster
+  keeps its size; the fair prefers ≈158 m south and stays ≥ 110 m out, the skyline landmark ≈212 m north
+  and ≥ 119 m out, footprints inside `BORDER_KEEP_M` (338 m). **Roads** (`TerritoryRoads`): a ring road
+  round the Core (r 60 m), an avenue from the Room's door, and a road to each place's rim and to the middle
+  of every border with a QING beyond it, routed by AStarGrid2D over the heights (cost grows with slope;
+  later roads reuse earlier ones). The terrain shader draws them from a 512² distance texture (no draw
+  calls); lamps are one MultiMesh pair (markers when Wild/Outpost, lit from Settlement). A new building
+  adds itself to `territory_v2._road_places()`.
 - **Identity art:** Aura = `uint160(addr) % P` drawn the same way. YI icon = a Rod/Cone Lissajous from SHA
   registers (`yi.html:193-374`).
 - **Player creature gear from chain facts** (`lib/avatar.js`):
@@ -681,7 +697,7 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   RatKing (log10 ≈ 9.1 at block 28,135,887): Burj, 111 floors, roof 444 m, spire tip 586 m.
 - **Site:** `LandmarkPlan.find_site` is the fair's search (round footprint fully on the plateau,
   flattest, clear of the Core, arcade, monolith, plinth, arrival, the skyline ring, the fair and the vehicle pad, 24 m inside the border fields),
-  preferring the north. The plaza (r 30 m) and the landing ring (r 14 m, 90–220 m away) are terraces
+  ≥ 119 m from the Core, preferring ≈212 m north. The plaza (r 30 m) and the landing ring (r 14 m, 90–220 m away) are terraces
   in the terrain's own material. The site does not depend on the tier, so it never moves.
 - **Lit windows** follow Development energy (Epibar total); **signs** are the QING's name (registry
   snapshot of `name()`), the Hypobar total with its block, and the top Hypobar holder's
@@ -695,7 +711,7 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
 - **Flight** (`JumpPhysics`, pure): the player's own gravity 3.2 m/s²; freefall terminal 30 m/s
   (44 head-down); wingsuit settles to 22 fwd / 6.8 sink (glide ≈ 3.2), dive and flare change it;
   canopy 8 / 3.0, flare (hold jump) 3 / 0.6 for 2.2 s. Wind is per territory (`String.hash` of the
-  lower-cased address; 1.5–4.5 m/s with gusts). An edge wind turns you back at |x|,|z| > 228 m.
+  lower-cased address; 1.5–4.5 m/s with gusts). An edge wind turns you back at |x|,|z| > half the edge − 28 m (334 m).
   An automatic canopy fires below 30 m AGL in a fast freefall.
 - **Score:** horizontal metres flown + ring points (≤ 3 m 1000, ≤ 8 m 600, ≤ 14 m 300, else
   200 − d), times the landing (stand-up 1.0, skid 0.6, impact 0.25). Bests are local

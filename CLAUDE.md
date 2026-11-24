@@ -58,9 +58,15 @@
   previews against the chain (Su, Beat, door, room and Void lines, World watch). It is read-only.
 - `tools/perf.gd` samples draw calls, objects, primitives and object growth (under Xvfb), or script cost
   (headless; `--disable=<node>` to profile).
-- The avatar is `scripts/player/human_avatar.gd`: a Quaternius CC0 body plus animation library in
-  `assets/characters/quaternius/` (same 65-bone rig, so the clips play directly). Creature heads go on
-  `neck_01` while the `Head` bone is collapsed. Crow and flames: `avatar_extras.gd`.
+- The avatar is `scripts/player/human_avatar.gd`: regular-proportioned bodies dressed in outfits, on the
+  Quaternius CC0 Universal rig, animated by the UAL clips in `assets/characters/quaternius/` (same 65 bones).
+  Outfits (`outfits.gd`: 8 designs, palettes, `for_identity(wallet)` = what everyone sees, `local_choice` = the
+  player's own pick, this machine only) are sewn by `outfit_tailor.gd` into ONE skinned mesh per (body, design),
+  cached: Quaternius "Modular Character Outfits – Fantasy" parts (`assets/characters/outfits/`, merged per atlas
+  with their import LODs) plus generated coats/robes/collars/ties/bands. `outfit.gdshader` re-colours the
+  atlases from `T_*_Mask.png` (`tools/outfit_masks.gd`). API: `wear_identity(wallet)`, `set_outfit(kind, seed)`
+  (the hook for a network-synced choice), `set_suit_colors`. No human head: creature heads (and the "human"
+  helmet) ride `neck_01`. Crow and flames: `avatar_extras.gd`.
 - Places (`scripts/places/`): `qing_hall.gd` (the room, built from `assets/buildings/scifi`, Quaternius
   Modular Sci-Fi MegaKit, CC0, 4 m grid) and `void_place.gd`; both use `ChatController` (history, live tail,
   post, Join) and `SpeakerEchoes`. Render: `screenshot.gd -- --scene=res://scenes/places/qing_hall.tscn --qing=0x…`.
@@ -105,8 +111,11 @@
   Walk-through on purpose: the Heart, beacon/spire (sky), well basins, landing pads, floor lamps.
 - Borders (`scripts/world/border/`): `Neighbours` picks the nearest QING in each quarter of the raw HECKE
   plane (BigInt, LEARNINGS §6); `BorderRing` draws force fields (`border_field.gdshader`), the neighbours'
-  ground at 129² and their names, and runs the crossing (Admitted(LAU) read back; Join if not admitted).
+  ground at 181² and their names, and runs the crossing (Admitted(LAU) read back; Join if not admitted).
   Terrain relief model: LEARNINGS §11 "Relief". Shots: `--view=relief` and `--view=border_n|e|s|w`.
+- Size and layout: a territory is 724 m square (`JuliaHeightfield.SIZE_M`; LEARNINGS §11 "Size"). Place
+  new buildings with `LandmarkPlan.find_site` inside `TerritoryLayout.BORDER_KEEP_M`, clear of the sites
+  already placed, and add them to `territory_v2._road_places()` so a road (`scripts/world/roads/`) reaches them.
 - Automatic graphics (`Config.recommend/decide`): on first launch the GPU (name and type), cores and RAM pick
   the level and renderer; a software or old Intel GPU relaunches the game itself with
   `--rendering-method gl_compatibility` (an explicit `--rendering-method`/`--quality=` on the command line is
@@ -120,7 +129,8 @@
   `ChatFeed.bubble_for(wallet)`/`register_speaker`, rising echoes, crown glow, top-speaker tower markers).
   Check: `tools/live_chat.gd` (read-only). Shots: `--chat=bar|history [--chat-text=…] --chat-replay=N`, `--view=chat`.
 - Textures: `assets/textures/polyhaven` (CC0 moon regolith in the terrain shader; metal plates).
-- `tools/avatar_sheet.gd -- --out=<png> --mode=heads|poses|closeup [--head=rat --acc=crown]` renders the
+- `tools/avatar_sheet.gd -- --out=<png> --mode=heads|poses|closeup|outfits [--head=rat --acc=crown]
+  [--outfit=robe --seed=3 --body=female --pose=idle|walk|run --only=a,b --civilian --wallet=0x…]` renders the
   avatar in a studio (needs Xvfb). Heads come from the LAU's Username/name/symbol (`AvatarHeads`).
 - No hard-coded keys: add an input action in `project.godot` and list it in `ControlsHelp.ACTIONS`
   (a test checks every listed action is bound).

@@ -17,14 +17,18 @@ extends RefCounted
 ##                            terraces, cut by canyons along the external rays
 ##                            (the arg of the escaping orbit);
 ## - the centre             → the Core's plain: a flat disc, relief fades in
-##                            between 40 m and 120 m from the Core;
+##                            between PLAIN_IN_M and PLAIN_OUT_M from the Core;
 ## - the border             → the land eases down to 0 m over the outer 40 m,
 ##                            so neighbours meet level at the force-field wall.
 ## What sets each landform: relief_params().
 ##
 ## World ↔ complex plane: z = R(rotation) · (x, z_world) / half_size · extent.
 
-const SIZE_M := 512.0  ## territory edge length (metres)
+## Territory edge length (metres). 724 m since 2026-11-24 (was 512 m): √2 × the
+## edge, twice the area. The Julia frame scales with it (the same set, drawn
+## larger); every landform width below stays in metres, so terraces, crests,
+## coasts and canyons keep their human scale and the larger set gets more of them.
+const SIZE_M := 724.0
 const MAX_ITER := 140
 const PLATEAU_M := 22.0
 const CREST_W_M := 3.0
@@ -32,11 +36,11 @@ const FALLOFF_W_M := 46.0  ## how fast land drops outside the set
 const COAST_W_M := 34.0  ## highlands reach full height this far inside the coast
 const CORE_RADIUS_M := 24.0
 const CORE_BLEND_M := 14.0
-const PLAIN_IN_M := 90.0  ## relief starts this far from the Core…
-const PLAIN_OUT_M := 160.0  ## …and is full from here
+const PLAIN_IN_M := 120.0  ## relief starts this far from the Core… (90 on the 512 m map)
+const PLAIN_OUT_M := 190.0  ## …and is full from here (160 on the 512 m map): room for the fair and the landmark
 const EDGE_BLEND_M := 40.0  ## land eases to 0 m over the border's outer metres
 const CACHE_DIR := "user://cache/terrain"
-const VERSION := 2  ## bump when the mapping changes (invalidates caches)
+const VERSION := 4  ## bump when the mapping changes (invalidates caches). 3: SIZE_M 512 → 724; 4: the Core plain 120/190 m
 
 var n := 257  ## samples per side
 var heights := PackedFloat32Array()  ## row-major, n*n, metres
@@ -227,7 +231,8 @@ static func exterior_height(de_m: float, ray_m: float, rp: Dictionary) -> float:
 	return h - float(rp["canyon"]) * exp(-off * off / (w * w)) * smoothstep(4.0, 22.0, de_m)
 
 
-## Computes the heightfield (blocking). `samples` should be 2^k + 1.
+## Computes the heightfield (blocking). `samples` − 1 should be even (the ground
+## mesh takes every 2nd sample); SIZE_M + 1 gives 1 m spacing.
 static func compute(p: Dictionary, addr: String, samples: int = 257) -> JuliaHeightfield:
 	var hf := JuliaHeightfield.new()
 	hf.n = samples
@@ -235,36 +240,37 @@ static func compute(p: Dictionary, addr: String, samples: int = 257) -> JuliaHei
 	hf.address = addr.to_lower()
 	var spacing := sample_spacing(samples)
 	var half := SIZE_M * 0.5
-	var mpu := half / float(p["extent"])  # metres per complex unit
 	var rp := relief_params(p)
 	var count := samples * samples
-	# Pass 1: escape data per sample. Single-threaded: deterministic and simple
-	# (a WorkerThreadPool version stalled in headless runs).
+	# Pass 1: escape data per sample, rows split over a few threads (each sample is
+	# independent, so the result is the same however it is split; 64-bit doubles,
+	# no shared state). Plain Threads: a WorkerThreadPool version stalled in headless runs.
 	var ins := PackedByteArray()
 	var sv := PackedFloat32Array()  # inside: sqrt(trap); outside: de in metres
 	var av := PackedFloat32Array()  # outside: metres to the nearest canyon ray
-	ins.resize(count)
-	sv.resize(count)
-	av.resize(count)
-	var rays: int = rp["rays"]
-	var power: int = p["power"]
 	var interior_s := PackedFloat32Array()
-	for row in samples:
-		var zw := -half + row * spacing
-		for col in samples:
-			var z := world_to_z(p, -half + col * spacing, zw)
-			var pr := probe(p, z[0], z[1])
-			var k := row * samples + col
-			if pr[0]:
-				ins[k] = 1
-				sv[k] = sqrt(float(pr[1]))
-				interior_s.append(sv[k])
-			else:
-				sv[k] = float(pr[2]) * mpu
-				av[k] = 1e6
-				if sv[k] > 4.0:  # canyons fade in from 4 m off the set
-					var ang := external_angle(p, z[0], z[1], int(pr[4]))
-					av[k] = ray_offset_m(ang, int(pr[4]), power, float(pr[5]), sv[k], rays)
+	var parts := clampi(OS.get_processor_count() - 1, 1, 6) if count >= 65536 else 1
+	var bounds: Array = []
+	for t in parts:
+		bounds.append([samples * t / parts, samples * (t + 1) / parts])
+	var results: Array = []
+	if parts == 1:
+		results.append(_escape_rows(p, rp, samples, 0, samples))
+	else:
+		var threads: Array = []
+		for b in bounds:
+			var th := Thread.new()
+			# Own copies: shared Dictionaries/Arrays make every read an atomic
+			# refcount on the same cache line, and the threads run in lockstep.
+			th.start(_escape_rows.bind(p.duplicate(true), rp.duplicate(true), samples, b[0], b[1]))
+			threads.append(th)
+		for th in threads:
+			results.append(th.wait_to_finish())
+	for r in results:
+		ins.append_array(r[0])
+		sv.append_array(r[1])
+		av.append_array(r[2])
+		interior_s.append_array(r[3])
 	# The territory's own scale for s: its 98th percentile inside.
 	var s_max := 1.0
 	if interior_s.size() > 8:
@@ -292,6 +298,40 @@ static func compute(p: Dictionary, addr: String, samples: int = 257) -> JuliaHei
 	hf._flatten_core()
 	hf._ease_border()
 	return hf
+
+
+## Pass 1 of compute() for rows [r0, r1): [inside, s or de (m), ray offset (m), interior s].
+static func _escape_rows(p: Dictionary, rp: Dictionary, samples: int, r0: int, r1: int) -> Array:
+	var spacing := sample_spacing(samples)
+	var half := SIZE_M * 0.5
+	var mpu := half / float(p["extent"])  # metres per complex unit
+	var rays: int = rp["rays"]
+	var power: int = p["power"]
+	var cnt := (r1 - r0) * samples
+	var ins := PackedByteArray()
+	var sv := PackedFloat32Array()
+	var av := PackedFloat32Array()
+	var interior_s := PackedFloat32Array()
+	ins.resize(cnt)
+	sv.resize(cnt)
+	av.resize(cnt)
+	for row in range(r0, r1):
+		var zw := -half + row * spacing
+		for col in samples:
+			var z := world_to_z(p, -half + col * spacing, zw)
+			var pr := probe(p, z[0], z[1])
+			var k := (row - r0) * samples + col
+			if pr[0]:
+				ins[k] = 1
+				sv[k] = sqrt(float(pr[1]))
+				interior_s.append(sv[k])
+			else:
+				sv[k] = float(pr[2]) * mpu
+				av[k] = 1e6
+				if sv[k] > 4.0:  # canyons fade in from 4 m off the set
+					var ang := external_angle(p, z[0], z[1], int(pr[4]))
+					av[k] = ray_offset_m(ang, int(pr[4]), power, float(pr[5]), sv[k], rays)
+	return [ins, sv, av, interior_s]
 
 
 ## Distance (metres) from each inside sample to the nearest outside one, by a

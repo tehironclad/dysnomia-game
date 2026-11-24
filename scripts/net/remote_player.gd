@@ -92,6 +92,12 @@ func apply_info(info: Dictionary) -> void:
 		avatar.set_head(head, acc)
 	elif not avatar.is_inside_tree():
 		avatar.ready.connect(func(): apply_info(info), CONNECT_ONE_SHOT)
+	if avatar.is_inside_tree():
+		# The outfit everyone sees comes from the wallet alone (Outfits.for_identity);
+		# a synced "outfit" kind (the player's own pick) wins once the server carries one.
+		var o := Outfits.for_identity(wallet)
+		var synced := String(info.get("outfit", ""))
+		avatar.set_outfit(synced if Outfits.DESIGNS.has(synced) else String(o["kind"]), int(o["seed"]))
 
 
 ## A pose from NetInterp.sample().

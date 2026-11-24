@@ -37,7 +37,7 @@ extends CharacterBody3D
 
 const SAFETY_TELEPORT_THRESHOLD: float = 5.0
 const BOUNDARY_MARGIN: float = 5.0
-const TERRAIN_HALF_SIZE: float = JuliaHeightfield.SIZE_M * 0.5  # 512 m territories
+const TERRAIN_HALF_SIZE: float = JuliaHeightfield.SIZE_M * 0.5  # 724 m territories
 
 signal player_jumped
 

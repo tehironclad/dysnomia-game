@@ -271,6 +271,8 @@ func make_avatar() -> Node3D:
 	if model and is_instance_valid(model) and "head_kind" in model:
 		if "body_kind" in model and model.body_kind != a.body_kind and a.has_method("set_body"):
 			a.set_body(model.body_kind)
+		if "outfit_kind" in model and a.has_method("set_outfit"):
+			a.set_outfit(String(model.outfit_kind), int(model.outfit_seed))
 		a.set_head(String(model.head_kind))
 	return a
 

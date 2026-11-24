@@ -14,11 +14,13 @@ extends Node3D
 ## Development tier (0..5) → fair tier: Wild/Outpost = surveyed lot, Settlement =
 ## night market + carousel, Town = + wheel and drop tower, City/Capital = grand fair.
 
-const AT := Vector2(0.0, 112.0)   ## preferred spot (relative to the Core); the search starts here
+const AT := Vector2(0.0, 112.0 * TerritoryLayout.SCALE)   ## preferred spot (relative to the Core), ≈158 m south
+const REACH := 205.0 * TerritoryLayout.SCALE  ## the search covers centres this far from the Core (≈290 m)
 const HALF := 40.0                ## the fair builds within ±38 m
 const RADIUS := 42.0              ## round terrace that carries it
 const KEEP_CLEAR := [Vector2(0, 0), Vector2(26, 18), Vector2(-26, 18), Vector2(0, -11.5), Vector2(0, 16)]  ## Core, arcade, monolith, plinth, arrival
 const CLEAR_M := 62.0             ## how far the fair's centre stays from those
+const MIN_CORE := 78.0 * TerritoryLayout.SCALE  ## and from the Core itself (≈110 m): out beyond the Core's ring road
 
 var _qing := ""
 var _hud: Node
@@ -52,10 +54,11 @@ static func fair_tier(dev_tier: int) -> int:
 static func find_site(height_fn: Callable, land_floor: float = -2.5) -> Dictionary:
 	var best := {"ok": false, "score": INF}
 	var fallback := {"ok": false, "land": -1.0}
-	for gx in range(-12, 13):
-		for gz in range(-12, 13):
+	var g := TerritoryLayout.grid_steps(16.0, REACH)
+	for gx in range(-g, g + 1):
+		for gz in range(-g, g + 1):
 			var c := Vector2(gx * 16.0, gz * 16.0)
-			if c.length() > 205.0:
+			if c.length() > REACH or c.length() < MIN_CORE or not TerritoryLayout.inside(c, RADIUS):
 				continue
 			var clear := true
 			for k in KEEP_CLEAR:
