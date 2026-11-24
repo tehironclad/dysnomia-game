@@ -72,6 +72,10 @@
   board). Render a dive: `screenshot.gd -- --scene=res://scenes/places/arcade_place.tscn
   --dive=void_lanes|entropy_drift|bar_raiser|cart_… [--dive-phase=push|warp|inside|menu] [--classic]`.
   `sunny_pub.gd` (TehSunFlowrScioety QING), both on `GamesPlace`.
+  Pool and Twenty-One are played seated in first person (`scripts/games/seat/`: `TableSeat`, `PoolSeat`,
+  `CardSeat`, pure maths in `PoolAim`). Previews: `screenshot.gd -- --seat=pool|cards
+  --seat-phase=aim|roll|overhead|seated|enter` (practice: nothing posted), `--near=<cabinet id>` (the
+  floating title), and `--view=cabinets` in the arcade place and the pub.
 - Vehicles (`scripts/vehicles/`, LEARNINGS §15): a pad per territory (`scripts/world/garage/garage_site.gd`), five
   vehicles (`MoonVehicle`, specs and pure physics in `VehicleSpecs`), unlocks from real state (`VehicleUnlocks`).
   V in/out, R upright. Shots: `--view=garage`, or `--drive=<kind> [--drive-s=N --steer=left] [--session=0x…]`.

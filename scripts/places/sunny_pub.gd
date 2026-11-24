@@ -358,6 +358,7 @@ const VIEWS := {
 	"room": [Vector3(8.6, 3.8, 7.2), Vector3(-3.0, 0.9, -4.5)],
 	"games": [Vector3(-2.0, 2.4, -3.0), Vector3(-8.0, 1.0, 3.0)],
 	"stools": [Vector3(-2.2, 1.55, -2.6), Vector3(-3.6, 1.1, -6.0)],
+	"cabinets": [Vector3(4.5, 1.7, 0.5), Vector3(-9.3, 1.8, -1.3)],
 }
 
 

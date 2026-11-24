@@ -195,6 +195,7 @@ func ingest(l: Dictionary) -> void:
 			m["players"][1] = from
 			m["status"] = "playing"
 			m["last_block"] = block
+			m["deal_block"] = block
 			if m["kind"] == "pool":
 				m["game"] = EightBall.new()
 			else:

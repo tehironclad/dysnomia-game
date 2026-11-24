@@ -589,6 +589,25 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
     a credit starts the run. **Scores are local** (`ArcadeScores`, `user://arcade_scores.cfg`, top 10
     per QING and cabinet): a game's score is self-reported, so a room line would prove nothing. Every
     entry carries its credit's tx hash and block, and the board says "on this computer (not on chain)".
+- **Sitting at the tables** (`scripts/games/seat/`, 2026-11-24). Using the pool or card table sits you down
+  in first person (`TableSeat`: a camera glide in, Esc glides out, the arcade dive's overlay style); `L`
+  (`table_lobby`) opens the old TablePanel over the seat for challenge / accept / concede / pay.
+  - **Pool** (`PoolSeat`): the eye behind the cue ball, the mouse turns the aim, holding `table_shoot`
+    charges a ping-pong meter. `PoolAim` maps the aim angle to `dx, dy` = unit × 10000 and the charge to
+    power 50–1000 in steps of 10: exactly the shot line's integers. The ghost line is `PoolSim.shoot` on
+    a copy with the preview-only arguments `max_ticks` / `stop_after_contact` (defaults unchanged: a real
+    shot always runs to rest), computed on a WorkerThreadPool task (10–50 ms of GDScript).
+  - Your live game and your shot → the line is posted (TableBook.post) and the cue only strikes when the
+    chain's line is read back and replayed; anyone's shot replays from behind the cue ball they struck.
+    No live game of yours → **PRACTICE**, a local PoolSim, labelled "nothing is posted".
+  - **Twenty-One** (`CardSeat`): two stools on the near arc, the shoe and a "DEALT BY THE CHAIN · block N"
+    sign across (`m["deal_block"]`, the accept line's block), HIT / STAND plates on the felt (click or
+    `table_hit` / `table_stand`), chips = whole Ⓐ of the stake (1–12). Practice is you vs the house
+    (draws below 17), dealt by Duel21 from the **latest block's hash** read from the chain; no hash → no
+    cards, "—".
+- **Cabinet titles:** a backlit marquee topper (1.16 × 0.66 m, wider than the body) whose text
+  `ArcadeCabinet.marquee_fit` sets on one or two lines (never wrapping off the panel), the name on the
+  screen's bottom bezel, and a floating title + "1 Ⓐ a play · press E" over the nearest cabinet within 3.4 m.
 
 ---
 
