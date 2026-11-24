@@ -215,6 +215,13 @@ func _ride_tick(t: float, _delta: float) -> void:
 	_place(_phi, t)
 
 
+func _lod_groups() -> Array:
+	var out: Array = [[self, []], [_wheel, []]]
+	for k in N:
+		out.append([_gondolas[k], [], "wheel_gondola_%d" % (k % 7)])  # one stand-in mesh per colour
+	return out
+
+
 func get_rider_mounts() -> Array:
 	## The level gondolas; Funfair seats a few locals on their benches (sit pose).
 	return _gondolas

@@ -70,11 +70,30 @@ func initialize(seed_value: int, tier: int = 3) -> void:
 			_build_headliner()
 		_build_perimeter()
 	_batch.flush(self)
+	_build_far_proxies()
 	_spawn_visitors(seed_value)
 	for n in find_children("*", "Light3D", true, false):
 		if n.has_meta("base_energy"):
 			_lights.append(n)
 	_apply_time(true)
+
+
+const FAR_CELL_M := 24.0
+
+
+## Far stand-ins (FarProxy) for the static fair: the stalls (with their games' idle props), the
+## arch, kiosks, lamps and dressing, merged per FAR_CELL_M cell; each ride made its own in
+## RideBase.setup. Live: the rides, NPCs, scripted boards and effects, the searchlight heads,
+## labels, bulbs and every shader-driven mesh (FarProxy says which).
+func _build_far_proxies() -> void:
+	for e in _beams:
+		(e[0] as Node).add_to_group(FarProxy.LIVE_GROUP)
+	var members: Array = []
+	for c in get_children():
+		if c is MultiMeshInstance3D:
+			continue  # the fair-wide batches (wires, bulbs, pools): one object each already
+		members.append(c)
+	FarProxy.enqueue_cells(self, members, FAR_CELL_M)
 
 
 ## Playable midway games: [{id (MidwayGame id), pos (local to this node), face}]
@@ -101,6 +120,11 @@ func set_unlock_hint(text: String) -> void:
 
 func _process(_delta: float) -> void:
 	_apply_time(false)
+	if FarProxy.busy():
+		FarProxy.pump()
+		if not FarProxy.busy():
+			print("[Fair] far stand-ins: %d, %d parts behind them · %.0f ms merging, %.0f ms LODs (worker)" % [
+				FarProxy.built, FarProxy.parts_hidden, FarProxy.build_ms, FarProxy.lod_ms])
 	if _beams.size() > 0:
 		var t := Time.get_ticks_msec() * 0.001
 		for e in _beams:
@@ -108,6 +132,10 @@ func _process(_delta: float) -> void:
 			var ph: float = e[1]
 			var yaw: float = e[2] + 0.75 * sin(t * 0.27 + ph)
 			pv.basis = Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, 0.32 + 0.14 * sin(t * 0.19 + ph * 1.7))
+
+
+func _exit_tree() -> void:
+	FarProxy.cancel(self)  # no worker left running on this fair's meshes
 
 
 func _apply_time(force: bool) -> void:

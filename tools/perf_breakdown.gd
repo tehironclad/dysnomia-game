@@ -3,7 +3,9 @@ extends SceneTree
 ## tree and counts visible GeometryInstance3D nodes (a MultiMesh counts once),
 ## their surfaces and shadow casters, grouped by node path (first --depth levels
 ## under the scene root), plus how many sit inside the camera's frustum.
-##   xvfb-run … godot --path . -s res://tools/perf_breakdown.gd -- [--qing=0x…] [--view=…] [--scene=…] [--depth=3]
+##   xvfb-run … godot --path . -s res://tools/perf_breakdown.gd -- [--qing=0x…] [--view=…] [--scene=…] [--depth=3] [--merge-ids]
+## --list=<text> also tallies the in-view instances whose path contains <text> by (parent, class, material).
+## --merge-ids folds numbered siblings into one row (Visitor362, Visitor363 → Visitor#; @Node3D@881 → @Node3D@#).
 ## Instances past their visibility range don't count as in view. "sun-casters": shadow casters
 ## within the sun's shadow reach of the camera, in or out of view (--by-shadow sorts by them). Also prints the renderer's
 ## own visible/shadow split for the frame.
@@ -12,6 +14,10 @@ var _scene := "res://scenes/territory/territory_v2.tscn"
 var _depth := 3
 var _cam_pos := Vector3.ZERO
 var _shadow_d := 0.0  ## the sun's shadow reach (0: no sun shadows)
+var _merge_ids := false
+var _list := ""
+var _tally := {}
+var _numbers := RegEx.create_from_string("[0-9]+")
 
 
 func _initialize() -> void:
@@ -24,6 +30,10 @@ func _run() -> void:
 			_scene = a.substr(8)
 		elif a.begins_with("--depth="):
 			_depth = int(a.substr(8))
+		elif a == "--merge-ids":
+			_merge_ids = true
+		elif a.begins_with("--list="):
+			_list = a.substr(7)
 	change_scene_to_file(_scene)
 	for i in 150:
 		await process_frame
@@ -44,6 +54,11 @@ func _run() -> void:
 	for k in keys.slice(0, 45):
 		var g: Array = groups[k]
 		print("%-56s %6d %6d %5d %6d %6d" % [String(k).left(56), g[0], g[1], g[2], g[3], g[4]])
+	if _list != "":
+		var tk := _tally.keys()
+		tk.sort_custom(func(a, b): return _tally[a] > _tally[b])
+		for k in tk.slice(0, 60):
+			print("  %5d  %s" % [_tally[k], k])
 	print("TOTAL nodes %d, in view %d, surfaces in view %d, shadow casters in view %d, sun casters in reach %d" % total)
 	var vp := root.get_viewport_rid()
 	for t in [["visible", RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE], ["shadow", RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW]]:
@@ -71,9 +86,16 @@ func _walk(n: Node, top: Node, planes: Array[Plane], groups: Dictionary, total: 
 		if _shadow_d > 0.0 and gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 			var c := (gi.global_transform * gi.get_aabb()).get_center()
 			var dc := _cam_pos.distance_to(c)
-			if dc < _shadow_d and (gi.visibility_range_end <= 0.0 or dc < gi.visibility_range_end):
+			if dc < _shadow_d and _in_range(gi, dc):
 				g[4] += 1
 				total[4] += 1
+		if inside and _list != "" and String(gi.get_path()).contains(_list):
+			var mat: Material = gi.material_override
+			if mat == null and gi is MeshInstance3D and (gi as MeshInstance3D).mesh:
+				mat = (gi as MeshInstance3D).mesh.surface_get_material(0)
+			var tk := "%s / %s %s / %s" % [_numbers.sub(String(gi.get_parent().name), "#", true), gi.get_class(),
+				_numbers.sub(String(gi.name), "#", true), (mat.get_class() + (":" + (mat as ShaderMaterial).shader.resource_path.get_file() if mat is ShaderMaterial and (mat as ShaderMaterial).shader else "")) if mat else "-"]
+			_tally[tk] = int(_tally.get(tk, 0)) + 1
 		if inside:
 			var surf := 1
 			if gi is MeshInstance3D and (gi as MeshInstance3D).mesh:
@@ -95,17 +117,34 @@ func _key(n: Node, top: Node) -> String:
 	while p and p != top:
 		parts.push_front(String(p.name))
 		p = p.get_parent()
-	return "/".join(parts.slice(0, _depth))
+	var key := "/".join(parts.slice(0, _depth))
+	return _numbers.sub(key, "#", true) if _merge_ids else key
+
+
+## Within its visibility range (begin and end) at distance d, and its HLOD parent's (a part
+## behind a FarProxy stand-in shows only while the stand-in is nearer than its begin).
+func _in_range(gi: GeometryInstance3D, d: float) -> bool:
+	if gi.visibility_range_end > 0.0 and d > gi.visibility_range_end:
+		return false
+	if gi.visibility_range_begin > 0.0 and d < gi.visibility_range_begin:
+		return false
+	if gi.visibility_parent != NodePath():
+		var p := gi.get_node_or_null(gi.visibility_parent) as GeometryInstance3D
+		if p and p.visibility_range_begin > 0.0:
+			var dp := _cam_pos.distance_to((p.global_transform * p.get_aabb()).get_center())
+			if dp >= p.visibility_range_begin:
+				return false
+	return true
 
 
 func _in_view(gi: GeometryInstance3D, planes: Array[Plane]) -> bool:
-	if planes.is_empty():
-		return true
 	var box := gi.global_transform * gi.get_aabb()
 	var c := box.get_center()
+	if not _in_range(gi, _cam_pos.distance_to(c)):
+		return false  # past its visibility range, or swapped for a stand-in
+	if planes.is_empty():
+		return true
 	var r := box.size.length() * 0.5
-	if gi.visibility_range_end > 0.0 and _cam_pos.distance_to(c) > gi.visibility_range_end:
-		return false  # past its visibility range
 	for pl in planes:
 		if pl.distance_to(c) > r:
 			return false
