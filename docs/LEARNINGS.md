@@ -363,6 +363,14 @@ Rules for the site API:
   - ensure chain 369: switch, or add the chain on error 4902;
   - handle 4001 (user rejected);
   - never report 369 when the switch failed (the game's wallet page does).
+- **The wallet window** (2026-11-24, `tools/e2e_wallet.sh`): raise it *before* the page calls the wallet
+  (the page waits ≤ 4 s for focus), never while the wallet's popup is open (a raise covers the popup).
+  One linked window at a time; an old window (earlier token) reloads itself. A dropped link keeps the
+  address; the page queues answers until it relinks. `chain_changed` must reach `Wallet.chain_id`, and a
+  payment asks the wallet to switch. Brave Wallet can own `window.ethereum` while the player's wallet is an
+  EIP-6963 extension. Send `eth_sendTransaction` as `{from, to, data, chainId:"0x171"[, value]}` with
+  canonical hex quantities; let the wallet estimate gas. (Testing note: a Playwright `route.fulfill` page
+  counts as public, so Chrome's Local Network Access blocks its socket to 127.0.0.1; real pages are fine.)
 
 ---
 

@@ -111,10 +111,23 @@ func _run() -> void:
 	var r: Dictionary = await _AP.transfer_to_qing(qing, "E2E fair ticket", fee)
 	_record("fair ticket", r.get("ok", false) and String(r.get("hash", "")) == hash, _plain(r).merged({"fee_wei": fee, "chain_before": chain_before, "chain_after": _W.chain_id}))
 
-	# 3. An arcade credit (ArcadePay.pay: transfer, verify, local credit)
+	# 3. An arcade credit (ArcadePay.pay: transfer, verify, local credit). The local
+	#    ledger is put back afterwards (the hash is a past transfer, not a new play).
+	var ledger := ConfigFile.new()
+	var had_ledger := ledger.load(_AP.LEDGER) == OK
+	if had_ledger and ledger.has_section_key("credits", "%s@%s" % [_wallet, qing]):
+		var trimmed := ConfigFile.new()
+		trimmed.load(_AP.LEDGER)
+		trimmed.erase_section_key("credits", "%s@%s" % [_wallet, qing])
+		trimmed.save(_AP.LEDGER)
 	var credits_before: int = _AP.credits(_wallet, qing)
 	r = await _AP.pay(qing, "E2E arcade")
-	_record("arcade credit", r.get("ok", false), _plain(r).merged({"credits_before": credits_before, "credits_after": _AP.credits(_wallet, qing)}))
+	var credits_after: int = _AP.credits(_wallet, qing)
+	if had_ledger:
+		ledger.save(_AP.LEDGER)
+	else:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(_AP.LEDGER))
+	_record("arcade credit", r.get("ok", false) and credits_after == credits_before + 1, _plain(r).merged({"credits_before": credits_before, "credits_after": credits_after}))
 
 	# 4. personal_sign round trip (the mock signs with a fixed signature: bytes compared on the JS side)
 	var msg := "Dysnomia e2e sign-in\nnonce: 42 · ünïcödé ✓"

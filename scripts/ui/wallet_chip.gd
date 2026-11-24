@@ -80,12 +80,12 @@ static func chip_state(address: String, chain_id: int, linked: bool, relay_runni
 	var green := Color("#64e3a8")
 	if address == "":
 		if linked and not bool(page_info.get("hasProvider", true)):
-			return {"text": "◌ WALLET · window open, but no wallet extension in that browser (F2 → Test my wallet)", "color": amber}
+			return {"text": "● WALLET · window open, but no wallet extension in that browser (F2 → Test my wallet)", "color": amber}
 		if linked:
-			return {"text": "◌ WALLET · window open: approve the connection in your wallet", "color": amber}
+			return {"text": "● WALLET · window open: approve the connection in your wallet", "color": amber}
 		if relay_running:
-			return {"text": "◌ WALLET · not connected · wallet window not linked (click to open)", "color": amber}
-		return {"text": "◌ WALLET · not connected (click to connect)", "color": grey}
+			return {"text": "● WALLET · not connected · wallet window not linked (click to open)", "color": amber}
+		return {"text": "● WALLET · not connected (click to connect)", "color": grey}
 	var parts: PackedStringArray = ["● %s…%s" % [address.left(6), address.right(4)]]
 	var color := green
 	if chain_id == Contracts.CHAIN_ID:

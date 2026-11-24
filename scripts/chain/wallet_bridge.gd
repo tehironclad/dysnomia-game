@@ -516,7 +516,8 @@ func _poll_unauthed() -> void:
 ## Pure: what a socket's first message means. "ok" (this session's hello), "stale"
 ## (a hello with another token: an old page), or "bad" (anything else).
 static func hello_verdict(text: String, token: String) -> String:
-	var j = JSON.parse_string(text)
+	var p := JSON.new()
+	var j = p.data if p.parse(text) == OK else null
 	if not (j is Dictionary) or String(j.get("type", "")) != "hello":
 		return "bad"
 	var t := String(j.get("token", ""))

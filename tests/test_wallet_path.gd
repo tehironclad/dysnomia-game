@@ -1,0 +1,94 @@
+extends TestCase
+## The payment path's pure parts (the whole path runs in tools/e2e_wallet.sh).
+
+const BRIDGE := "res://scripts/chain/wallet_bridge.gd"
+
+
+func test_quantity_is_canonical_hex() -> void:
+	var W = load("res://scripts/core/wallet.gd")
+	eq(W.quantity("0x0"), "0x0")
+	eq(W.quantity(""), "0x0")
+	eq(W.quantity("0x"), "0x0")
+	eq(W.quantity("0x000de0b6b3a7640000"), "0xde0b6b3a7640000", "leading zeros dropped")
+	eq(W.quantity("0xDE0B6B3A7640000"), "0xde0b6b3a7640000", "lower case")
+	eq(W.quantity("1000000000000000003"), "0xde0b6b3a7640003", "decimal → hex, no float")
+	eq(W.quantity("115792089237316195423570985008687907853269984665640564039457584007913129639935"), "0x" + "f".repeat(64), "2^256-1 exact")
+	eq(W.quantity("-1"), "")
+	eq(W.quantity("1e18"), "")
+	eq(W.quantity("0xzz"), "")
+
+
+func test_tx_hash_shape() -> void:
+	var W = load("res://scripts/core/wallet.gd")
+	check(W.is_tx_hash("0x4a556d285461e5a01d1c857b12efcc5d6f13ce6ae9daaf44b8a7fbb6c0658f3b"))
+	check(not W.is_tx_hash("0x4a556d"), "short")
+	check(not W.is_tx_hash(""), "empty")
+	check(not W.is_tx_hash("4a556d285461e5a01d1c857b12efcc5d6f13ce6ae9daaf44b8a7fbb6c0658f3b00"), "no 0x")
+
+
+func test_stage_words() -> void:
+	var W = load("res://scripts/core/wallet.gd")
+	eq(W.stage_text("sign"), "your wallet's approval")
+	eq(W.stage_text("simulate"), "the chain check (nothing was sent)")
+	eq(W.stage_text("funds · sign"), "moving Ⓐ from your LAU: your wallet's approval")
+	eq(W.stage_text("mystery"), "mystery")
+
+
+func test_fair_fee_code_in_the_last_wei() -> void:
+	# The fair's ticket: 1 Ⓐ + k wei, encoded exactly (never through a float)
+	var fee := FairProgress.fee_wei("regolith")
+	eq(fee, "1000000000000000003")
+	var data := Abi.encode_call("transfer(address,uint256)", ["0x299c56d1e1efa1d662823faa7fe7ccda6a4f35eb", fee])
+	eq(data, "0xa9059cbb000000000000000000000000299c56d1e1efa1d662823faa7fe7ccda6a4f35eb0000000000000000000000000000000000000000000000000de0b6b3a7640003")
+	eq(FairProgress.code_of(BigInt.from_decimal(fee)), 3)
+
+
+func test_hello_verdict() -> void:
+	var B = load(BRIDGE)
+	var tok := "00112233445566778899aabbccddeeff"
+	eq(B.hello_verdict('{"type":"hello","token":"%s"}' % tok, tok), "ok")
+	eq(B.hello_verdict('{"type":"hello","token":"ffff"}', tok), "stale", "an old page reloads")
+	eq(B.hello_verdict('{"type":"hello"}', tok), "bad")
+	eq(B.hello_verdict('{"type":"tx_result","id":1}', tok), "bad", "nothing before hello")
+	eq(B.hello_verdict("not json", tok), "bad")
+	eq(B.hello_verdict('{"type":"hello","token":""}', ""), "bad", "no token, no link")
+
+
+func test_default_browser() -> void:
+	var B = load(BRIDGE)
+	var out := "\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice\r\n    ProgId    REG_SZ    BraveHTML\r\n\r\n"
+	eq(B.parse_reg_progid(out), "BraveHTML")
+	eq(B.parse_reg_progid("ERROR: The system was unable to find the specified registry key or value."), "")
+	eq(B.browser_kind("BraveHTML"), "brave")
+	eq(B.browser_kind("ChromeHTML"), "chrome")
+	eq(B.browser_kind("MSEdgeHTM"), "edge")
+	eq(B.browser_kind("FirefoxURL-308046B0AF4A39CB"), "other", "non-Chromium: open in the default browser")
+	eq(B.browser_kind(""), "")
+	var paths: Array = B.windows_paths("brave", "C:/Users/x/AppData/Local")
+	eq(paths[0], "C:/Users/x/AppData/Local/BraveSoftware/Brave-Browser/Application/brave.exe")
+	check(paths.has("C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe"), "system-wide Brave")
+
+
+func test_chip_states() -> void:
+	var none := WalletChip.chip_state("", 0, false, false, {})
+	check(String(none["text"]).contains("not connected"), none["text"])
+	var no_ext := WalletChip.chip_state("", 0, true, true, {"hasProvider": false})
+	check(String(no_ext["text"]).contains("no wallet extension"), no_ext["text"])
+	var good := WalletChip.chip_state("0x18f621662d6a1f23700ea32d146b32195dc33111", 369, true, true, {"hasProvider": true})
+	check(String(good["text"]).contains("0x18f6…3111") and String(good["text"]).contains("PulseChain") and String(good["text"]).contains("linked"), good["text"])
+	var closed := WalletChip.chip_state("0x18f621662d6a1f23700ea32d146b32195dc33111", 369, false, true, {})
+	check(String(closed["text"]).contains("closed"), closed["text"])
+	var wrong := WalletChip.chip_state("0x18f621662d6a1f23700ea32d146b32195dc33111", 1, true, true, {})
+	check(String(wrong["text"]).contains("chain 1"), wrong["text"])
+
+
+func test_diagnosis_lines() -> void:
+	var steps := [{"id": "relay", "step": "Local wallet relay", "ok": true, "why": "up"},
+		{"id": "window", "step": "Wallet window linked", "ok": false, "why": "closed"},
+		{"id": "chain", "step": "Wallet on PulseChain (369)", "ok": null, "why": "skipped"}]
+	var l := WalletDiagnosis.lines(steps)
+	eq(l[0], "✓ Local wallet relay — up")
+	eq(l[1], "✗ Wallet window linked — closed")
+	eq(l[2], "– Wallet on PulseChain (369) — skipped")
+	eq(WalletDiagnosis.first_failure(steps).get("id", ""), "window")
+	check(WalletDiagnosis.first_failure([steps[0]]).is_empty(), "no failure")

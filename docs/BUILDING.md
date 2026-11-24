@@ -135,6 +135,14 @@ Other performance measures in the build:
 Signing needs a real browser wallet. Follow [`WALLET_TESTS.md`](WALLET_TESTS.md) with a fresh wallet and
 an onboarded one.
 
+`GODOT=godot tools/e2e_wallet.sh` runs the payment path end to end without one: Godot headless serves the
+real `wallet.html` through the real `WalletBridge`; Chromium (Playwright) opens it with a mock EIP-1193
+wallet (recorded requests, strict params) that answers `eth_sendTransaction` with a real past AFFECTION
+transfer hash, so `wait_receipt`/`verify_receipt` read a real receipt. It drives a fair ticket, an arcade
+credit, `personal_sign`, a rejection, a link dropped mid-signature, a simulation revert, the wallet test,
+a scene change, a stale window (old token), a second window and a closed-then-reopened window. Needs
+network to rpc.pulsechain.com; nothing is broadcast. `--keep` keeps the control dir (Godot log, results).
+
 Avatars in outfits (2026-11-24, `perf.gd`, lavapipe): Sunny's Pub `--view=room` 512 draw calls, 833 objects,
 0.37 M primitives; the full fair at `--qing=0xe416…400b --view=fair` (24 visitors + staff) 874 draw calls,
 2,135 objects (over the 1,500 budget: most are the creature heads' primitive meshes, ~15 per avatar; the
