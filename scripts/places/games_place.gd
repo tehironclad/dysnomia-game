@@ -315,13 +315,15 @@ func _refresh_play(note: String = "") -> void:
 	if _cab == null or dive == null:
 		return
 	var n := ArcadePay.credits(Session.wallet, qing)
-	var blocker := _signer_blocker()
+	var blocker := ChatController._signer_blocker()  # paying needs a wallet on PulseChain, not a LAU
 	var title := String(_cab.entry.get("title", ""))
 	dive.menu_title.text = title.to_upper() + " · " + String(territory.get("name", ""))
 	dive.menu_blurb.text = String(_cab.entry.get("blurb", ""))
 	dive.pay_button.text = "Pay %s for a play" % ArcadePay.fee_text()
 	dive.pay_button.visible = _cab.playable() and not _running
-	dive.pay_button.disabled = _busy or blocker != ""
+	# A credit is a plain AFFECTION.transfer from the wallet: no LAU involved, so only
+	# the wallet/chain checks apply (table moves, which are room lines, still need a LAU).
+	dive.pay_button.disabled = _busy or ChatController._signer_blocker() != ""
 	dive.start_button.text = "Play (uses a credit) · %s" % ControlsHelp.key_of("arcade_start")
 	dive.start_button.visible = _cab.playable() and not _running
 	dive.start_button.disabled = _busy or n <= 0
