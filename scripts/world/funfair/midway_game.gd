@@ -12,26 +12,34 @@ extends RefCounted
 
 const GAMES := {
 	"striker": {"title": "TEST YOUR AFFECTION", "mech": "striker",
-		"how": "The power meter swings. Swing the mallet at the top of it: the puck flies up the 7 m pole and rings the bell. Three swings."},
+		"how": "Swing at the top of the meter: the puck rings the bell. Five swings, each meter faster. Bells in a row multiply; the last swing is a FRENZY (×2).",
+		"tips": ["Click at the TOP of the meter", "Ring it in a row: ×2, ×3", "Dead top = PERFECT (150)"]},
 	"entropy": {"title": "ENTROPY TOSS", "mech": "toss",
-		"how": "Aim with the mouse, toss when the power meter is right. The entropy drift pushes every puck sideways: allow for it. Three pucks onto the rings."},
+		"how": "Aim with the mouse, toss when the power meter is right; the drift pushes every puck sideways. From the third puck the rings slide. Bullseye = 150.",
+		"tips": ["Mouse: aim · the meter sets distance", "Allow for the drift arrow", "Lead the sliding rings"]},
 	"regolith": {"title": "REGOLITH RING TOSS", "mech": "rings",
-		"how": "Aim at a peg with the mouse; your hand sways, so throw when the sight sits on the peg. Five rings."},
+		"how": "Aim at a peg; your hand sways more every ring, so throw when the sight sits on it. The GOLD peg pays double. Six rings.",
+		"tips": ["Mouse / WASD: aim at a peg", "Throw when the sight is still", "The gold peg pays double"]},
 	"crystal": {"title": "CRYSTAL SHY", "mech": "shy",
-		"how": "Crystals slide along two rails. Aim (mouse up for the high rail) and lead them: the ball takes a moment to get there. Eight balls."},
+		"how": "Crystals slide along two rails, faster with every one you smash. Aim (up: the high rail) and lead them. Gold crystals pay 250. Eight balls.",
+		"tips": ["Mouse up: the high rail", "Lead them: the ball takes a moment", "Gold crystals: 250"]},
 	"motzkin": {"title": "MOTZKIN PRIME SHOOTER", "mech": "primes",
-		"how": "Numbers pop up for 30 seconds. Shoot only the primes (+100); a number that isn't prime costs 50. Fifteen shots."},
+		"how": "Numbers pop up for 30 seconds. Shoot only the primes: a chain of primes multiplies (up to ×4), a non-prime costs 50 and breaks it. Mersenne primes (3, 7, 31) pay 250. The last 8 s are a FRENZY.",
+		"tips": ["Shoot PRIMES only", "Chain them: up to ×4", "Gold 3 · 7 · 31 = 250"]},
 	"waat": {"title": "WAAT WHEEL OF FORTUNE", "mech": "wheel",
-		"how": "The wheel spins at a speed from your ticket. Brake: it always slows the same way, so time it. Three spins."},
+		"how": "The wheel spins faster every time. Brake: it always slows the same way, so time it to land the 500. Five spins; 100+ in a row multiplies.",
+		"tips": ["Click to brake", "It always slows the same way", "Land 500 for the JACKPOT"]},
 	"saat": {"title": "SAAT FORTUNE TELLER", "mech": "fortune",
-		"how": "The teller lays three cards from your ticket's transaction hash. Turn them one by one."},
+		"how": "Higher or lower? The teller lays a card from your ticket; guess the next one. Seven guesses, right ones in a row multiply (up to ×5). Then she reads your fortune.",
+		"tips": ["Mouse left: LOWER · right: HIGHER", "Right in a row: up to ×5", "Ace low, King high"]},
 }
 
+## Prize tiers: [fraction of the game's par, kind (FairPrizes), text]. A score of 0 wins nothing.
 const PRIZES := [
-	[0.85, "GRAND PRIZE · an Upsilon toy rocket"],
-	[0.6, "a crystal plush moon"],
-	[0.35, "a glow-stick of Eris ice"],
-	[0.0, "a paper Dysnomia pennant"],
+	[1.0, "trophy", "GRAND PRIZE · a crystal trophy"],
+	[0.65, "rocket", "a toy Upsilon rocket"],
+	[0.35, "moon", "a plush moon"],
+	[0.0, "pennant", "a paper Dysnomia pennant"],
 ]
 
 const FORTUNES := [
@@ -70,20 +78,31 @@ static func is_prime(n: int) -> bool:
 	return MidwaySim.is_prime(n)
 
 
-## The best score a game allows (for the prize fraction).
+## The best score a game allows (the rules' bound).
 static func max_score(id: String) -> int:
 	return MidwaySim.max_score(id)
 
 
-static func prize(id: String, score: int) -> String:
-	var m := max_score(id)
-	if m <= 0:
-		return ""
-	var f := clampf(float(score) / m, 0.0, 1.0)
+## The prize tier for a score: [fraction, kind, text], or [] for none (a score of 0).
+static func prize_tier(id: String, score: int) -> Array:
+	var par := MidwaySim.par(id)
+	if par <= 0 or score <= 0:
+		return []
+	var f := float(score) / par
 	for p in PRIZES:
 		if f >= float(p[0]):
-			return String(p[1])
-	return String(PRIZES[-1][1])
+			return p
+	return PRIZES[-1]
+
+
+static func prize(id: String, score: int) -> String:
+	var t := prize_tier(id, score)
+	return String(t[2]) if not t.is_empty() else ""
+
+
+static func prize_kind(id: String, score: int) -> String:
+	var t := prize_tier(id, score)
+	return String(t[1]) if not t.is_empty() else ""
 
 
 static func fortune(seed_v: int) -> String:

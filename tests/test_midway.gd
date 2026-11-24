@@ -26,10 +26,13 @@ func test_primes() -> void:
 
 
 func test_prizes() -> void:
-	check(MidwayGame.prize("striker", 300).begins_with("GRAND"))
+	check(MidwayGame.prize("striker", MidwaySim.par("striker")).begins_with("GRAND"))
+	eq(MidwayGame.prize_kind("striker", MidwaySim.par("striker")), "trophy")
+	eq(MidwayGame.prize_kind("striker", 1), "pennant", "any score wins something")
+	eq(MidwayGame.prize("striker", 0), "", "no score, no prize")
 	check(not MidwayGame.prize("striker", 0).begins_with("GRAND"))
-	eq(MidwayGame.prize("saat", 0), "", "the fortune teller has no score")
-	eq(MidwayGame.max_score("motzkin"), 1500)
+
+	eq(MidwayGame.max_score("motzkin"), 37000, "20 shots of 250 at ×4 in the frenzy, the bound")
 
 
 func test_rocket_voyage_heading_and_ramp() -> void:

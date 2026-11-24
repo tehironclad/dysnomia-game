@@ -31,7 +31,7 @@ static func line_text(game: String, score: int, ticket: String, log: Array) -> S
 ## {} if the text isn't a score line; else {game, score, ticket, version, log_text, log, log_ok}.
 static func parse(text: String) -> Dictionary:
 	if _re == null:
-		_re = RegEx.create_from_string("^🎪 (striker|entropy|regolith|crystal|motzkin|waat) ([0-9]{1,6}) (0x[0-9a-fA-F]{64}) v([0-9]+):([0-9a-z.]*)\\s*$")
+		_re = RegEx.create_from_string("^🎪 (striker|entropy|regolith|crystal|motzkin|waat|saat) ([0-9]{1,6}) (0x[0-9a-fA-F]{64}) v([0-9]+):([0-9a-z.]*)\\s*$")
 	var m := _re.search(text.strip_edges())
 	if m == null:
 		return {}
