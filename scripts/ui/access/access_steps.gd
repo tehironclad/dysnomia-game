@@ -376,18 +376,20 @@ func _start_reads() -> void:
 	var w := Session.wallet
 	if _needs_wallet() and not _reads.has("diag") and not _reading.has("diag") and Wallet.bridge != null and Wallet.bridge.is_server_running():
 		_read_diag()
+	# A door's cover is public: read it with or without a wallet (admission needs the LAU).
+	var can_door := w == "" or Session.player != null
+	var q := String(ctx.get("qing", ""))
+	if _needs("room") and q != "" and not (ctx.get("room") is RoomState or ctx.get("room") is Dictionary) \
+			and not _reads.has("room") and not _reading.has("room") and can_door:
+		_read_door("room", q)
+	var bq := String(ctx.get("border_qing", ""))
+	if _needs("border") and bq != "" and not (ctx.get("border") is RoomState) and not _reads.has("border") \
+			and not _reading.has("border") and can_door:
+		_read_door("border", bq)
 	if w == "":
 		return
 	if _needs("affection") and not _reads.has("aff") and not _reading.has("aff"):
 		_read_aff(w)
-	var q := String(ctx.get("qing", ""))
-	if _needs("room") and q != "" and not (ctx.get("room") is RoomState or ctx.get("room") is Dictionary) \
-			and not _reads.has("room") and not _reading.has("room") and Session.player != null:
-		_read_door("room", q)
-	var bq := String(ctx.get("border_qing", ""))
-	if _needs("border") and bq != "" and not (ctx.get("border") is RoomState) and not _reads.has("border") \
-			and not _reading.has("border") and Session.player != null:
-		_read_door("border", bq)
 	if _needs("fair") and q != "" and not ctx.has("fair") and not _reads.has("fair") and not _reading.has("fair"):
 		_read_fair(w, q)
 

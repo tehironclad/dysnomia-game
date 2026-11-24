@@ -169,4 +169,16 @@
   Screenshot with a remote player: run the server and `tools/net_bot.gd -- --url=ws://127.0.0.1:N`,
   then `screenshot.gd -- --net-url=ws://127.0.0.1:N` (no `--view`).
 
+- Front door (`scripts/ui/front_door.gd`): the title screen over `FieldGlobe` (the moon + every QING; warm halo =
+  developed, ice ring = yours, white ring = here; shared with the Field). Four doors (Connect · Explore · Continue to my
+  QING · The Field), who-you-are, news + status strip. `open_panel(void|identity|guide|opps)`; shot `--open=`.
+- The Field finder: `FieldIndex` (pure rows/search/filters; development from `DevelopmentSnapshot`, unmeasured = "—"),
+  chips mine/joined/fair/YUE/near, keys `field_*`. Shot: `--scene=res://scenes/field/field.tscn --field-search=…
+  --field-filter=mine,yue,fair,near,tier:2`.
+- Access steps (`scripts/ui/access/`): `AccessGates.resolve(goal, facts)` (pure, tested) → numbered ✓/→/✗/checking…/—
+  steps; `AccessSteps` gathers the facts (Session, Wallet, `WalletDiagnosis` verdicts via `AccessGates.from_diagnosis`,
+  balances, doors, fair logs) and draws them, embedded (`embed` + `update_for`) or `popup(host, goal, ctx, handlers)`.
+  Wherever a move is blocked, show the steps, not a refusal. Hooks: `add_provider(callable)`, `set_handler(action, c)`.
+  Shot: `--access=<goal> [--qing=0x… --session=0x… --access-fee=wei]`.
+
 **Research source:** `tehironclad/entropy-ai-pulse`. Attach it read-only when a WP says "port from …".

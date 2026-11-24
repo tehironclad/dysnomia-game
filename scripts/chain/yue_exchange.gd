@@ -174,7 +174,7 @@ static func rated_scan() -> Variant:
 	var rows: Array = []
 	var failed := 0
 	for i in terr.size():
-		if i >= r.size():  # the multicall failed or came back short: those rates are unread, not zero
+		if i >= r.size() or not (r[i] is Dictionary):  # the multicall failed or came back short: those rates are unread, not zero
 			failed += 1
 			continue
 		var v = Multicall.value(r[i], ["uint256"])

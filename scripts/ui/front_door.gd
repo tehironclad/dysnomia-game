@@ -231,7 +231,9 @@ func _style_door(b: Button, primary: bool) -> void:
 		b.add_theme_stylebox_override("hover", sh)
 		b.add_theme_stylebox_override("focus", sh)
 		b.add_theme_color_override("font_color", DeepFieldTheme.ICE)
+		(b.get_node("Sub") as Label).add_theme_color_override("font_color", DeepFieldTheme.INK)
 	else:
+		(b.get_node("Sub") as Label).remove_theme_color_override("font_color")
 		for k in ["normal", "hover", "focus"]:
 			b.remove_theme_stylebox_override(k)
 		b.remove_theme_color_override("font_color")

@@ -525,8 +525,9 @@ func _build_ui() -> void:
 	# Right: the dossier and the Warp button
 	var right := VBoxContainer.new()
 	right.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	right.position = Vector2(-440, 24)
-	right.custom_minimum_size = Vector2(416, 0)
+	right.offset_left = -440
+	right.offset_right = -24
+	right.offset_top = 24
 	right.add_theme_constant_override("separation", 8)
 	ui.add_child(right)
 	_card = TerritoryCard.new()
@@ -540,6 +541,8 @@ func _build_ui() -> void:
 	_warp_btn = Button.new()
 	_warp_btn.visible = false
 	_warp_btn.custom_minimum_size = Vector2(0, 54)
+	_warp_btn.clip_text = true
+	_warp_btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_warp_btn.add_theme_font_override("font", DeepFieldTheme.display_font())
 	_warp_btn.add_theme_font_size_override("font_size", 16)
 	var wsb := DeepFieldTheme.panel_style(DeepFieldTheme.ICE)
@@ -666,7 +669,7 @@ func _read_joined() -> void:
 	var got := {}
 	var answered := 0
 	for k in covered.size():
-		var v = Multicall.value(res[k], ["bool"]) if k < res.size() else null
+		var v = Multicall.value(res[k], ["bool"]) if k < res.size() and res[k] is Dictionary else null
 		if v == null:
 			continue
 		answered += 1
