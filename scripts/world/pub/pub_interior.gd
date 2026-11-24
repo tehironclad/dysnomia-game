@@ -82,8 +82,9 @@ func _build_bar() -> void:
 	var n := int(len / 0.6)
 	for i in n + 1:
 		_b.box_at(Vector3(0.05, ch - 0.25, 0.04), Vector3(x0 + 0.05 + float(i) * (len - 0.1) / float(n), fy + 0.16 + (ch - 0.25) * 0.5, cz + 0.315), _top)
-	var accent: Color = _L.p["accent_color"]
-	_b.box_at(Vector3(len - 0.05, 0.025, 0.03), Vector3(_L.bar_cx, fy + ch - 0.1, cz + 0.36), PubKit.neon(accent, 3.0))
+	# Dysnomia cyan under the bar lip, and a violet kick strip at the floor
+	_b.box_at(Vector3(len - 0.05, 0.025, 0.03), Vector3(_L.bar_cx, fy + ch - 0.1, cz + 0.36), PubKit.neon(Color(0.2, 0.9, 1.0), 4.0))
+	_b.box_at(Vector3(len - 0.05, 0.02, 0.02), Vector3(_L.bar_cx, fy + 0.17, cz + 0.33), PubKit.neon(Color(0.6, 0.3, 1.0), 2.5))
 	# Thick polished top
 	_b.box_at(Vector3(len + 0.08, 0.07, 0.82), Vector3(_L.bar_cx, fy + ch - 0.035, cz + 0.06), _top)
 	# Brass foot rail on brackets
@@ -136,7 +137,7 @@ func _build_bar() -> void:
 		var hm := PubKit.mesh_instance(PubKit.cyl(0.018, 0.026, 0.2, 10), Vector3(hx, top_y + 0.56, tz), PubKit.neon(handle_cols[i], 1.6), _root)
 		tap_handles.append(hm)
 	# Upside-down glasses drying on a mat
-	var gmat := PubKit.glass(Color(0.85, 0.9, 0.95, 0.22))
+	var gmat := PubKit.drinkware()
 	for i in 10:
 		var gx := tx + 0.65 + float(i % 5) * 0.1
 		var gz := tz + float(i / 5) * 0.1
@@ -410,7 +411,7 @@ func _drink_prop(pos: Vector3) -> void:
 	var cols := [Color(1.0, 0.7, 0.2), Color(0.95, 0.3, 0.5), Color(0.3, 0.9, 0.5), Color(0.45, 0.6, 1.0)]
 	var c: Color = cols[_rng.randi() % cols.size()]
 	var h := _rng.randf_range(0.11, 0.17)
-	PubKit.mesh_instance(PubKit.cyl(0.04, 0.034, h, 12), pos + Vector3(0, h * 0.5, 0), PubKit.glass(Color(0.9, 0.95, 1.0, 0.25)), _root)
+	PubKit.mesh_instance(PubKit.cyl(0.04, 0.034, h, 12), pos + Vector3(0, h * 0.5, 0), PubKit.drinkware(), _root)
 	PubKit.mesh_instance(PubKit.cyl(0.034, 0.03, h * 0.7, 12), pos + Vector3(0, h * 0.36, 0), PubKit.glass(Color(c.r, c.g, c.b, 0.85), c, 0.6), _root)
 
 
@@ -563,20 +564,13 @@ func _build_wall_art() -> void:
 	var w := _L.w
 	var d := _L.d
 	# Framed art: between the game-room windows, beside the door, over the kegs
-	PubKit.place(_root, "hanging_picture_frame_01", Vector3(w - 0.04, fy + 2.0, -d + 4.0), -90.0, 1.0)
-	PubKit.place(_root, "hanging_picture_frame_02", Vector3(-(PubLayout.DOOR_W * 0.5 + 0.95), fy + 2.05, d - 0.04), 180.0, 1.0)
-	# Event posters over the kegs, in brass frames
+	PubKit.poster(_root, Vector3(w - 0.02, fy + 2.0, -d + 4.0), -90.0, Vector2(0.62, 0.9), "ERIS RISING", "tours nightly", _rng.randi(), _brass)
+	PubKit.poster(_root, Vector3(-(PubLayout.DOOR_W * 0.5 + 0.95), fy + 2.05, d - 0.02), 180.0, Vector2(0.6, 0.85), "VISIT DYSNOMIA", "", _rng.randi(), _brass)
+	# Event prints over the kegs
 	var bills := [["AFFECTION FAIR", "rides all cycle"], ["WAAT SLOTS", "jackpot night"]]
 	for i in bills.size():
-		var bx := _L.bar_x1 + 1.35 + float(i) * 0.95
-		var col := Color.from_hsv(fmod(0.08 + float(i) * 0.55, 1.0), 0.6, 0.8)
-		_b.box_at(Vector3(0.72, 0.98, 0.03), Vector3(bx, fy + 2.25, -d + 0.03), _brass)
-		_b.box_at(Vector3(0.64, 0.9, 0.01), Vector3(bx, fy + 2.25, -d + 0.05), PubKit.flat(col, 0.8))
-		var t := PubKit.label(bills[i][0] + "\n\n" + bills[i][1], 34, Color(0.06, 0.04, 0.05), 0.0032)
-		t.position = Vector3(bx, fy + 2.28, -d + 0.06)
-		t.width = 180.0
-		t.autowrap_mode = TextServer.AUTOWRAP_WORD
-		_root.add_child(t)
+		PubKit.poster(_root, Vector3(_L.bar_x1 + 1.35 + float(i) * 0.95, fy + 2.25, -d + 0.02), 0.0, Vector2(0.66, 0.92),
+			bills[i][0], bills[i][1], _rng.randi(), _brass)
 	# Neon script over the booth row
 	var bz := d - 3.0
 	if not _L.booths.is_empty():
@@ -610,18 +604,11 @@ func _build_wall_art() -> void:
 	_b.box_at(Vector3(0.025, 0.3, 0.025), Vector3(gx, gy - 0.25, gz), cg)
 	_b.box_at(Vector3(0.26, 0.025, 0.025), Vector3(gx, gy - 0.4, gz), cg)
 	PubKit.mesh_instance(_sphere(0.04), Vector3(gx + 0.12, gy + 0.33, gz), PubKit.neon(Color(0.5, 1.0, 0.3), 5.0), _root)
-	# Gig posters by the door (bills pasted on the plank wainscot/brick)
-	var posters := [["LIVE: THE GWATS", "every 7th block"], ["WAAT SLOTS", "jackpot night"], ["LAU MINT\nPARTY", "bring a seed"]]
+	# Gig posters by the door
+	var posters := [["THE GWATS", "every 7th block"], ["LAU MINT PARTY", "bring a seed"], ["LOW-G KARAOKE", "thursdays"]]
 	for i in posters.size():
-		var px := PubLayout.DOOR_W * 0.5 + 0.45 + float(i) * 0.7
-		var pc := Color.from_hsv(_rng.randf(), 0.55, 0.75)
-		_b.box_at(Vector3(0.55, 0.78, 0.01), Vector3(px, fy + 1.95 + _rng.randf_range(-0.08, 0.08), d - 0.03), PubKit.flat(pc, 0.85))
-		var t := PubKit.label(posters[i][0] + "\n\n" + posters[i][1], 32, Color(0.08, 0.05, 0.05), 0.0032)
-		t.position = Vector3(px, fy + 1.98, d - 0.04)
-		t.rotation_degrees.y = 180.0
-		t.width = 150.0
-		t.autowrap_mode = TextServer.AUTOWRAP_WORD
-		_root.add_child(t)
+		PubKit.poster(_root, Vector3(PubLayout.DOOR_W * 0.5 + 0.45 + float(i) * 0.72, fy + 1.95 + _rng.randf_range(-0.06, 0.06), d - 0.02),
+			180.0, Vector2(0.56, 0.8), posters[i][0], posters[i][1], _rng.randi(), _dark)
 	# Rug under the first row of game tables
 	var g0: Vector3 = _L.game_tables[0]
 	_rug(Vector3(g0.x + 1.375, fy + 0.004, g0.z - 0.25), Vector2(5.6, 2.7), 0.0, true)
@@ -663,6 +650,7 @@ func _build_lights() -> void:
 	var lb: Vector3 = _L.lounges[1]
 	_add_light(Vector3(la.x + 1.2, fy + 2.2, la.z), warm.lerp(_L.p["neon_b"], 0.3), 1.4, 6.0)
 	_add_light(Vector3((lb.x + _L.booth_x) * 0.5, fy + 2.3, lb.z - 0.6), warm.lerp(_L.p["neon_a"], 0.2), 1.4, 6.5)
+	_crystal_chandelier(Vector3(_L.order_x - 1.6, _L.eave - 0.75, _L.counter_front + 1.6))
 	_fairy_lights()
 	# Rafter uplights sitting on the tie beams: wash the roof so the ceiling isn't a black void
 	for sx in [-1.0, 1.0]:
@@ -671,6 +659,38 @@ func _build_lights() -> void:
 		_b.box_at(Vector3(0.3, 0.08, 0.2), Vector3(sx * _L.w * 0.45, _L.eave - 0.02, 0.0), _dark)
 	for l in lights:
 		light_base.append(l.light_energy)
+
+
+func _crystal_chandelier(pos: Vector3) -> void:
+	## Dysnomia accent: a brass hoop hung with glowing cyan/violet crystal prisms.
+	var cb := PubKit.Batch.new()
+	var ring := TorusMesh.new()
+	ring.inner_radius = 0.5
+	ring.outer_radius = 0.56
+	ring.rings = 32
+	ring.ring_segments = 8
+	cb.add_mesh(ring, Transform3D(Basis(), pos), _brass)
+	for k in 3:
+		var a := float(k) * TAU / 3.0
+		var foot := pos + Vector3(cos(a) * 0.53, 0, sin(a) * 0.53)
+		var top := Vector3(pos.x, _L.eave - 0.15, pos.z)
+		var len := foot.distance_to(top)
+		cb.add_mesh(PubKit.cyl(0.006, 0.006, len, 4), Transform3D(Basis(Quaternion(Vector3.UP, (top - foot) / len)), (foot + top) * 0.5), _dark)
+	cb.commit(_root, false, "ChandelierFrame")
+	var cyan := PubKit.glass(Color(0.3, 0.9, 1.0, 0.75), Color(0.25, 0.85, 1.0), 3.5)
+	var violet := PubKit.glass(Color(0.7, 0.4, 1.0, 0.75), Color(0.6, 0.3, 1.0), 3.0)
+	var xb := PubKit.Batch.new()
+	var n := 22
+	for i in n:
+		var a := float(i) * TAU / float(n)
+		var r := 0.53 if i % 2 == 0 else 0.3
+		var l := _rng.randf_range(0.22, 0.55) * (1.0 if i % 2 == 0 else 1.3)
+		var prism := PubKit.cyl(0.035, 0.0, l, 6)
+		var p := pos + Vector3(cos(a) * r, -l * 0.5 - 0.02, sin(a) * r)
+		xb.add_mesh(prism, Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), p), cyan if i % 3 != 0 else violet)
+	xb.add_mesh(PubKit.cyl(0.08, 0.0, 0.8, 6), Transform3D(Basis(), pos + Vector3(0, -0.42, 0)), cyan)
+	xb.commit(_root, false, "ChandelierCrystals")
+	_add_light(pos + Vector3(0, -0.5, 0), Color(0.45, 0.85, 1.0), 0.9, 4.5)
 
 
 func _fairy_lights() -> void:

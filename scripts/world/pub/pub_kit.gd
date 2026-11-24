@@ -144,6 +144,55 @@ static func glass(tint: Color = Color(0.75, 0.85, 0.9, 0.18), emission: Color = 
 	return m
 
 
+static func drinkware() -> StandardMaterial3D:
+	## Clear drinking glass: nearly colourless, very smooth, strong specular and a fresnel rim,
+	## so glasses read as glass instead of white blocks.
+	if _mats.has("drinkware"):
+		return _mats["drinkware"]
+	var m := StandardMaterial3D.new()
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(0.32, 0.38, 0.42, 0.14)
+	m.roughness = 0.03
+	m.metallic = 0.1
+	m.metallic_specular = 1.0
+	m.rim_enabled = true
+	m.rim = 0.6
+	m.rim_tint = 0.2
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_mats["drinkware"] = m
+	return m
+
+
+static func poster(parent: Node3D, pos: Vector3, rot_y_deg: float, size: Vector2, title: String,
+		sub: String, seed_value: int, frame_mat: Material) -> void:
+	## Framed retro print (pub_poster.gdshader art) with its title printed in the paper strip.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var n := Node3D.new()
+	n.position = pos
+	n.rotation_degrees.y = rot_y_deg
+	parent.add_child(n)
+	var fr := BoxMesh.new()
+	fr.size = Vector3(size.x + 0.08, size.y + 0.08, 0.03)
+	mesh_instance(fr, Vector3(0, 0, 0.015), frame_mat, n)
+	var q := QuadMesh.new()
+	q.size = size
+	var sm := ShaderMaterial.new()
+	sm.shader = load("res://assets/shaders/pub_poster.gdshader")
+	var hue := rng.randf()
+	sm.set_shader_parameter("sky_top", Color.from_hsv(hue, 0.6, 0.3))
+	sm.set_shader_parameter("sky_low", Color.from_hsv(fmod(hue + 0.12, 1.0), 0.7, 0.95))
+	sm.set_shader_parameter("variant", rng.randf())
+	mesh_instance(q, Vector3(0, 0, 0.032), sm, n)
+	var t := label(title, 40, Color(0.1, 0.06, 0.08), size.x / 260.0 * 0.8)
+	t.position = Vector3(0, -size.y * 0.32, 0.036)
+	n.add_child(t)
+	if not sub.is_empty():
+		var s := label(sub, 26, Color(0.25, 0.12, 0.1), size.x / 260.0 * 0.8)
+		s.position = Vector3(0, -size.y * 0.42, 0.036)
+		n.add_child(s)
+
+
 static func mesh_instance(mesh: Mesh, pos: Vector3, mat: Material, parent: Node3D,
 		shadows: bool = false) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
