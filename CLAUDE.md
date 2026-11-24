@@ -172,6 +172,9 @@
 - Front door (`scripts/ui/front_door.gd`): the title screen over `FieldGlobe` (the moon + every QING; warm halo =
   developed, ice ring = yours, white ring = here; shared with the Field). Four doors (Connect · Explore · Continue to my
   QING · The Field), who-you-are, news + status strip. `open_panel(void|identity|guide|opps)`; shot `--open=`.
+- LAU picker: `LauFinder` (every LAU a wallet owns: address-less OwnershipUpdate logs, each proven by Saat(2) = wallet %
+  Motzkin; switching = `CHO.Enter(lau)`, re-read via GetUserTokenAddress at the receipt block) + `LauPicker` (front door →
+  "Switch LAU…", `--open=laus`). Read-only check: `tools/live_laus.gd [-- --wallet=0x…]`.
 - The Field finder: `FieldIndex` (pure rows/search/filters; development from `DevelopmentSnapshot`, unmeasured = "—"),
   chips mine/joined/fair/YUE/near, keys `field_*`. Shot: `--scene=res://scenes/field/field.tscn --field-search=…
   --field-filter=mine,yue,fair,near,tier:2`.

@@ -14,7 +14,7 @@ extends Control
 const SETTINGS := preload("res://scripts/ui/settings_menu.gd")
 const SKY := preload("res://assets/shaders/deep_field_sky.gdshader")
 const LAST_PATH := "user://travel.cfg"
-const PANELS := ["summary", "void", "identity", "guide", "opps"]
+const PANELS := ["summary", "void", "identity", "guide", "opps", "laus"]
 
 var rows: Array = []
 var featured := {}           ## the QING in the sky (a developed one when the snapshot has some)
@@ -40,6 +40,8 @@ var _sum_state: Label
 var _path: AccessSteps
 var _card: IdentityCard
 var _onboarding: OnboardingPanel
+var _laus: LauPicker
+var _laus_btn: Button
 var _guide: GuidePanel
 var _opps: OpportunitiesPanel
 var _settings: PanelContainer
@@ -361,6 +363,11 @@ func _build_right() -> void:
 	full.text = "Avatar & holdings"
 	full.pressed.connect(func(): open_panel("identity"))
 	brow.add_child(full)
+	_laus_btn = Button.new()
+	_laus_btn.text = "Switch LAU…"
+	_laus_btn.tooltip_text = "Every LAU this wallet owns; pick which one you play as"
+	_laus_btn.pressed.connect(func(): open_panel("laus"))
+	brow.add_child(_laus_btn)
 	var fld := Button.new()
 	fld.text = "My QINGs on the Field"
 	fld.pressed.connect(func(): Travel.field(get_tree()))
@@ -381,6 +388,11 @@ func _build_right() -> void:
 	_onboarding.visible = false
 	_right.add_child(_onboarding)
 	_panels["void"] = _onboarding
+	_laus = LauPicker.new()
+	_laus.visible = false
+	_right.add_child(_laus)
+	_laus.switched.connect(func(_l): _refresh_identity())
+	_panels["laus"] = _laus
 	_guide = GuidePanel.new()
 	_right.add_child(_guide)
 	_panels["guide"] = _guide
@@ -402,6 +414,8 @@ func open_panel(which: String) -> void:
 				p.toggle()
 		else:
 			p.visible = on
+	if which == "laus":
+		_laus.refresh()
 	_back.visible = which != "summary"
 	if which == "summary":
 		_refresh_identity()
