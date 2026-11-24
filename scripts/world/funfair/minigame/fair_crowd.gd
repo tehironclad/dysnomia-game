@@ -10,6 +10,7 @@ const SPOTS := [Vector3(-1.5, 0, 3.4), Vector3(1.5, 0, 3.5), Vector3(-0.6, 0, 4.
 const MAX := 8
 const SPEED := 1.9
 
+var spots: Array = SPOTS     ## where they stand (a stage may set its own)
 var _folk: Array = []       ## [npc, spot, cheer_t, delay, hop_phase]
 var _seed := 1
 var focus := Vector3(0, 1.4, 0)
@@ -32,7 +33,7 @@ func count() -> int:
 
 func _add() -> void:
 	var i := _folk.size()
-	var spot: Vector3 = SPOTS[i]
+	var spot: Vector3 = spots[i % spots.size()]
 	var npc := AmbientNPC.new()
 	npc.name = "Onlooker%d" % i
 	# They come from further out along the line from the stall through their spot
@@ -60,6 +61,12 @@ func hop() -> void:
 			f[2] = 0.9
 			f[3] = randf_range(0.0, 0.2)
 	set_process(true)
+
+
+## Everyone at their spot now (previews).
+func settle() -> void:
+	for f in _folk:
+		f[0].position = f[1]
 
 
 func disperse() -> void:

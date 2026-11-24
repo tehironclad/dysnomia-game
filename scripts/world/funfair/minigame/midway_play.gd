@@ -335,6 +335,20 @@ func begin_play() -> void:
 		_show_tutorial()
 
 
+## Previews: no how-to card.
+func skip_tutorial() -> void:
+	_tut_t = 0.0
+	_tut.visible = false
+
+
+## Previews: what happened so far has been reacted to (the next result gets the effects).
+func mark_seen() -> void:
+	_seen_presses = sim.events.size()
+	_seen_last = sim.last_tick
+	_seen_result = sim.round_i
+	_seen_motz = sim.last_tick
+
+
 ## The first time on this computer, a how-to card for a few seconds (the round waits for it).
 func _seen_before(id: String) -> bool:
 	var c := ConfigFile.new()

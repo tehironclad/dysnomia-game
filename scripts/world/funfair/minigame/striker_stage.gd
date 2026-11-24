@@ -108,6 +108,13 @@ func render() -> void:
 		_bell_light.light_energy = 6.0 * (0.6 + 0.4 * sin(sim.tick * 0.9))
 
 
+func dress() -> void:
+	super.dress()
+	# Onlookers stand off to the sides: the camera steps back to follow the puck up the pole
+	crowd.spots = [Vector3(-2.6, 0, 2.0), Vector3(2.6, 0, 2.2), Vector3(-3.2, 0, 3.0), Vector3(3.3, 0, 3.2),
+		Vector3(-2.3, 0, 3.9), Vector3(2.5, 0, 4.1), Vector3(-3.9, 0, 1.6), Vector3(3.9, 0, 1.8)]
+
+
 func frame_rect() -> Rect2:
 	return Rect2(Vector2(0, 4.05), Vector2(0.8, 6.7))   # chase bulbs up both sides of the track
 
