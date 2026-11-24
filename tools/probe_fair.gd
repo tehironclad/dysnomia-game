@@ -81,6 +81,13 @@ func _run() -> void:
 				presses += 1
 			await process_frame
 		var sc: int = mp.sim.score
+		var crowd: int = mp.stage.crowd.count() if mp.stage.crowd else 0
+		if mp.phase == "celebrate":  # a good round: the wide shot, the crowd, the prize
+			_check(crowd >= 3 and mp.prize_kind != "", "game %-9s celebrates: %d onlookers cheer, prize %s" % [g["id"], crowd, mp.prize_kind])
+			await _press("interact")
+		else:
+			print("     %-9s no celebration (score %d, prize \"%s\", %d onlookers)" % [g["id"], sc, mp.prize_kind, crowd])
+		_check(mp.stage.fx != null and mp.stage.shelf != null, "game %-9s has its effects and a prize shelf" % g["id"])
 		var rep := MidwaySim.replay(mp.game, mp.sim.seed_v, mp.sim.events)
 		var log := MidwaySim.encode_log(mp.game, mp.sim.events)
 		_check(mp.phase == "result" and rep == sc, "game %-9s played: %d presses, %d ticks, score %d, replay %d, log %d chars \"%s\"" % [

@@ -146,6 +146,8 @@ func set_dev_tier(dev_tier: int) -> void:
 	if t > 0 and not _fair.game_spots.is_empty():
 		refresh_boards()
 		refresh_progress()
+		for g in _fair.game_spots:
+			g["stage"].refresh_shelf(_qing)  # the prize shelves: what's left today, and yours
 
 
 static func _compass(v: Vector2) -> String:

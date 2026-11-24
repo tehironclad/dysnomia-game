@@ -12,6 +12,9 @@ var _labels: Array = []
 var _mesh: MeshInstance3D
 var _hilite: MeshInstance3D
 var _values: Array = []
+var _ptr: MeshInstance3D
+var _last_seg := -1
+var _ptr_kick := 0.0
 
 
 func build() -> void:
@@ -35,6 +38,7 @@ func build() -> void:
 		st.set_normal(Vector3.BACK)
 		st.add_vertex(v)
 	var ptr := MeshInstance3D.new()
+	_ptr = ptr
 	ptr.mesh = st.commit()
 	ptr.material_override = FairKit.glow(Color(1.0, 0.82, 0.35), 5.0, 3.0)
 	ptr.position = CENTER + Vector3(0, R + 0.02, 0.08)
@@ -93,4 +97,32 @@ func render() -> void:
 	if sim == null:
 		return
 	_wheel.rotation.z = float(sim.angle) / MidwaySim.TURN * TAU
+	# The clapper: a tick (and a flick of the pointer) at every segment that passes
+	var seg := sim.segment()
+	if seg != _last_seg:
+		if _last_seg >= 0 and sim.phase in ["ready", "brake"]:
+			sound("tick", 0.8 + clampf(sim.speed / 300.0, 0.0, 0.6), -6.0)
+			_ptr_kick = 1.0
+		_last_seg = seg
+	_ptr_kick = maxf(0.0, _ptr_kick - 0.15)
+	_ptr.rotation.z = 0.35 * _ptr_kick
 	_hilite.visible = sim.phase == "show" and (sim.phase_t / 6) % 2 == 0
+
+
+func impact_pos() -> Vector3:
+	return CENTER + Vector3(0, R * 0.68, 0.15)
+
+
+func press_sound() -> String:
+	return "whoosh"
+
+
+func result_sound() -> String:
+	return "bell" if sim.last_bonus else ""
+
+
+func on_result() -> void:
+	FairFx.squash(_ptr, 0.4, Vector3.UP)
+	if sim.last_bonus:
+		fx.sparks(CENTER + Vector3(0, R, 0.15), Color(1.0, 0.85, 0.3), 2.0)
+		kick(0.1, 0.14)

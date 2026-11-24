@@ -29,6 +29,10 @@ func build() -> void:
 			add_child(n)
 			var m := FairKit.mesh(n, FairKit.crystal_mesh(), Vector3.ZERO, FairKit.crystal_mat(FairKit.CRYSTAL_COLORS[(i + row) % 4]), Vector3.ZERO, false)
 			m.scale = Vector3.ONE * 0.44
+			m.name = "Gem"
+			# A gold base under each (lit for the gold crystal of its rail)
+			var base := FairKit.cyl(n, 0.06, 0.075, 0.04, Vector3(0, -0.02, 0), FairKit.paint(Color(0.3, 0.32, 0.36), 0.4, 0.8), 12)
+			base.name = "Base"
 			list.append(n)
 			fell.append(-1)
 		_crystals.append(list)
@@ -53,9 +57,20 @@ func _idle() -> void:
 
 func _begin() -> void:
 	_ball.visible = true
+	if _gold == null:
+		_gold = FairKit.crystal_mat(Color(1.0, 0.82, 0.3))
+		_gold_base = FairKit.glow(Color(1.0, 0.8, 0.3), 6.0, 3.0)
 	for row in 2:
 		for i in MidwaySim.RAIL_N:
 			_fell[row][i] = -1
+			var n: Node3D = _crystals[row][i]
+			var g := i == int(sim.gold[row])
+			var gem: MeshInstance3D = n.get_node("Gem")
+			if _plain.size() < 2 * MidwaySim.RAIL_N:
+				_plain.append(gem.material_override)
+			gem.material_override = _gold if g else _plain[row * MidwaySim.RAIL_N + i]
+			gem.scale = Vector3.ONE * (0.6 if g else 0.44)
+			(n.get_node("Base") as MeshInstance3D).material_override = _gold_base if g else null
 
 
 func eye() -> Transform3D:
@@ -83,6 +98,7 @@ func render() -> void:
 				n.position = Vector3(x, RAIL_Y[row], RAIL_Z[row])
 	var row_aim := 1 if aim.y > 0.0 else 0
 	_reticle.visible = sim.phase == "ready"
+	_reticle_feedback()
 	match sim.phase:
 		"ready":
 			_ball.position = HAND
@@ -93,5 +109,46 @@ func render() -> void:
 			var row := sim.shot_to.y
 			var to := Vector3(sim.shot_to.x / 1000.0, RAIL_Y[row] + 0.12, RAIL_Z[row])
 			_ball.position = arc(HAND, to, u, 0.25)
+			FairFx.stretch(_ball, 0.6 * (1.0 - u))
 		"show":
 			_ball.position = Vector3(sim.shot_to.x / 1000.0, 0.3, RAIL_Z[sim.shot_to.y] + 0.2)
+			_ball.scale = Vector3.ONE
+
+
+var _gold: Material
+var _gold_base: Material
+var _plain: Array = []
+
+
+func _idle_gems() -> void:
+	pass
+
+
+## A crystal will be under the sight when a ball thrown now arrives.
+func aim_hot() -> bool:
+	if sim == null or sim.phase != "ready":
+		return false
+	var row := 1 if aim.y > 0.0 else 0
+	var x := int(clampf(aim.x, -MidwaySim.AIM, MidwaySim.AIM) * 1700.0 / MidwaySim.AIM)
+	for i in MidwaySim.RAIL_N:
+		if (int(sim.knocked[row]) >> i) & 1:
+			continue
+		if absi(sim.crystal_x(row, i, sim.tick + MidwaySim.SHY_FLY[row]) - x) <= MidwaySim.SHY_HIT:
+			return true
+	return false
+
+
+func impact_pos() -> Vector3:
+	return Vector3(sim.shot_to.x / 1000.0, RAIL_Y[sim.shot_to.y] + 0.1, RAIL_Z[sim.shot_to.y] + 0.05) if sim else Vector3(0, 1.6, -0.6)
+
+
+func result_sound() -> String:
+	return "smash" if sim.last_points > 0 else ""
+
+
+func on_result() -> void:
+	if sim.last_points > 0:
+		var c: Color = Color(1.0, 0.82, 0.3) if sim.last_bonus else FairKit.CRYSTAL_COLORS[(sim.hit_index + sim.shot_to.y) % 4]
+		fx.burst(impact_pos(), c, 1.6 if sim.last_bonus else 1.1)
+		fx.sparks(impact_pos(), c.lightened(0.4), 1.0, Vector3(0, 0.6, -1.0))
+		kick(0.05 if not sim.last_bonus else 0.09, 0.06 if not sim.last_bonus else 0.12)
