@@ -1,260 +1,272 @@
 extends MinigameBase
-## Card Match — 4x4 memory grid with contract-themed pairs.
-## Flip two cards at a time, match all 8 pairs to win. Score by moves.
+## Contract Match — memory pairs with Dysnomia contract cards (LAU, QING, AFFECTION, YUE,
+## XIE, HECKE…). Each match reads out that contract's one-line flavour, so a few rounds
+## teach you the whole stack. Three timed rounds that grow 6 → 8 → 10 pairs; consecutive
+## matches build a combo, time left is banked as a bonus. Clear two rounds to win.
+
+const ROUNDS := [
+	{"pairs": 6, "cols": 4, "time": 45.0},
+	{"pairs": 8, "cols": 4, "time": 60.0},
+	{"pairs": 10, "cols": 5, "time": 75.0},
+]
+const WIN_ROUNDS := 2
+
+
+class Card extends Button:
+	var contract: String = ""
+	var face_up: bool = false
+	var matched: bool = false
+
+	func _init() -> void:
+		flat = true
+		focus_mode = Control.FOCUS_NONE
+		custom_minimum_size = Vector2(84, 66)
+		size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	func _draw() -> void:
+		var r := Rect2(Vector2(2, 2), size - Vector2(4, 4))
+		var sb := StyleBoxFlat.new()
+		sb.set_corner_radius_all(7)
+		var font := ThemeDB.fallback_font
+		if not face_up:
+			sb.bg_color = Color(0.13, 0.09, 0.24) if not is_hovered() else Color(0.18, 0.13, 0.32)
+			sb.set_border_width_all(2)
+			sb.border_color = Color(0.62, 0.42, 1.0, 0.55)
+			draw_style_box(sb, r)
+			var c := size * 0.5
+			var pts := PackedVector2Array()
+			for i in 7:
+				pts.append(c + Vector2.from_angle(TAU * i / 6.0 + PI / 6.0) * minf(size.x, size.y) * 0.26)
+			draw_polyline(pts, Color(0.62, 0.42, 1.0, 0.6), 2.0, true)
+			draw_circle(c, 4.0, Color(0.95, 0.42, 0.72, 0.8))
+			return
+		var info: Dictionary = DysnomiaLore.CONTRACTS.get(contract, {})
+		var col: Color = info.get("color", Color.WHITE)
+		sb.bg_color = Color(col.r * 0.22, col.g * 0.22, col.b * 0.22, 0.97)
+		sb.set_border_width_all(3 if matched else 2)
+		sb.border_color = col if not matched else Color(1, 0.9, 0.5)
+		draw_style_box(sb, r)
+		var fs := 17 if contract.length() <= 4 else 12
+		var w := font.get_string_size(contract, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		draw_string(font, Vector2((size.x - w) * 0.5, size.y * 0.5 + 2), contract, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col.lightened(0.25))
+		var role: String = info.get("role", "")
+		var rfs := 9
+		var rw := font.get_string_size(role, HORIZONTAL_ALIGNMENT_LEFT, -1, rfs).x
+		if rw > size.x - 8:
+			role = role.split(" ")[0]
+			rw = font.get_string_size(role, HORIZONTAL_ALIGNMENT_LEFT, -1, rfs).x
+		draw_string(font, Vector2((size.x - rw) * 0.5, size.y * 0.5 + 18), role, HORIZONTAL_ALIGNMENT_LEFT, -1, rfs, Color(0.85, 0.85, 0.92, 0.85))
+
 
 var _grid: GridContainer
-var _cards: Array[Button] = []
-var _card_values: Array[String] = []
-var _revealed: Array[bool] = []
-var _matched: Array[bool] = []
-var _first_pick: int = -1
-var _second_pick: int = -1
+var _cards: Array = []
+var _round_label: Label
+var _timer_label: Label
+var _combo_label: Label
+var _flavour_label: Label
+var _rng := RandomNumberGenerator.new()
+var _round: int = 0
+var _time_left: float = 0.0
+var _running: bool = false
+var _first: Card = null
 var _checking: bool = false
+var _combo: int = 0
+var _matches: int = 0
 var _moves: int = 0
-var _matches_found: int = 0
-var _total_pairs: int = 8
-var _moves_label: Label
-var _result_label: Label
+var _rounds_cleared: int = 0
+var _best_combo: int = 0
 
-const CARD_SYMBOLS: Array[String] = [
-	"QING", "LAU", "AFFECTION", "META",
-	"VOID", "CHOA", "FAUNG", "HECKE"
-]
 
-const CARD_COLORS: Dictionary = {
-	"QING": Color(0.3, 0.7, 0.9),
-	"LAU": Color(0.9, 0.5, 0.3),
-	"AFFECTION": Color(0.9, 0.3, 0.5),
-	"META": Color(0.4, 0.9, 0.4),
-	"VOID": Color(0.6, 0.3, 0.9),
-	"CHOA": Color(0.9, 0.9, 0.3),
-	"FAUNG": Color(0.3, 0.9, 0.7),
-	"HECKE": Color(0.9, 0.6, 0.8),
-}
+static func match_points(combo: int) -> int:
+	return 50 * clampi(combo, 1, 5)
+
+
+static func round_bonus(round_idx: int, time_left: float) -> int:
+	return 200 * (round_idx + 1) + int(time_left) * 10
 
 
 func _ready() -> void:
-	_init_ui("Card Match")
+	_rng.randomize()
+	_init_ui("Contract Match", "%s · match the contracts that run Dysnomia" % DysnomiaLore.qing_label(), Vector2(520, 640))
 	_build_game_ui()
 	start_game()
-	_setup_board()
+	_start_round(0)
 
 
 func _build_game_ui() -> void:
-	# Moves counter
-	_moves_label = Label.new()
-	_moves_label.text = "Moves: 0"
-	_moves_label.add_theme_font_size_override("font_size", 14)
-	_moves_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.8))
-	_moves_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_content_vbox.add_child(_moves_label)
+	var top := HBoxContainer.new()
+	_content_vbox.add_child(top)
+	_round_label = _label("", 14, DysnomiaLore.DIM)
+	_round_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(_round_label)
+	_combo_label = _label("", 14, PINK)
+	top.add_child(_combo_label)
+	_timer_label = _label("", 20, GOLD)
+	_timer_label.custom_minimum_size = Vector2(70, 0)
+	_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	top.add_child(_timer_label)
 
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 6)
-	_content_vbox.add_child(spacer)
-
-	# 4x4 grid
 	_grid = GridContainer.new()
-	_grid.columns = 4
 	_grid.add_theme_constant_override("h_separation", 6)
 	_grid.add_theme_constant_override("v_separation", 6)
 	_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_content_vbox.add_child(_grid)
 
-	# Create 16 card buttons
-	for i in range(16):
-		var btn := Button.new()
-		btn.text = "?"
-		btn.custom_minimum_size = Vector2(80, 60)
-		btn.add_theme_font_size_override("font_size", 11)
-		var idx := i
-		btn.pressed.connect(func(): _on_card_pressed(idx))
-
-		# Card back style
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0.15, 0.15, 0.25)
-		style.set_corner_radius_all(6)
-		style.border_width_left = 1
-		style.border_width_right = 1
-		style.border_width_top = 1
-		style.border_width_bottom = 1
-		style.border_color = Color(0.3, 0.3, 0.5, 0.6)
-		btn.add_theme_stylebox_override("normal", style)
-
-		_grid.add_child(btn)
-		_cards.append(btn)
-
-	# Result label
-	var spacer2 := Control.new()
-	spacer2.custom_minimum_size = Vector2(0, 6)
-	_content_vbox.add_child(spacer2)
-
-	_result_label = Label.new()
-	_result_label.text = "Find all 8 matching pairs!"
-	_result_label.add_theme_font_size_override("font_size", 13)
-	_result_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.7))
-	_result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_result_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_content_vbox.add_child(_result_label)
-
-	# Scoring help
-	var help := Label.new()
-	help.text = "Score: 1000 - (moves * 30)"
-	help.add_theme_font_size_override("font_size", 10)
-	help.add_theme_color_override("font_color", Color(0.4, 0.4, 0.5))
-	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_content_vbox.add_child(help)
+	_flavour_label = _center_label("Flip two cards. Matching pairs read out what that contract does.", 13, Color(0.8, 0.8, 0.92))
+	_flavour_label.custom_minimum_size = Vector2(0, 40)
+	_content_vbox.add_child(_flavour_label)
 
 
-func _setup_board() -> void:
-	# Create pairs of symbols
-	_card_values.clear()
-	_revealed.clear()
-	_matched.clear()
-	_first_pick = -1
-	_second_pick = -1
+func _start_round(idx: int) -> void:
+	_round = idx
+	var cfg: Dictionary = ROUNDS[idx]
+	for c in _cards:
+		c.queue_free()
+	_cards.clear()
+	_grid.columns = cfg["cols"]
+	var pool: Array = DysnomiaLore.CONTRACTS.keys()
+	var chosen: Array = []
+	while chosen.size() < cfg["pairs"]:
+		var c: String = pool.pop_at(_rng.randi() % pool.size())
+		chosen.append(c)
+	var deck: Array = chosen + chosen
+	for i in range(deck.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var t = deck[i]
+		deck[i] = deck[j]
+		deck[j] = t
+	var rows := ceili(float(cfg["pairs"] * 2) / float(cfg["cols"]))
+	var h := minf(118.0, (390.0 - 6.0 * (rows - 1)) / float(rows))
+	for name in deck:
+		var card := Card.new()
+		card.contract = name
+		card.custom_minimum_size.y = h
+		card.pressed.connect(_on_card.bind(card))
+		_grid.add_child(card)
+		_cards.append(card)
+	_matches = 0
+	_first = null
 	_checking = false
-	_moves = 0
-	_matches_found = 0
-
-	for symbol in CARD_SYMBOLS:
-		_card_values.append(symbol)
-		_card_values.append(symbol)
-
-	# Shuffle using territory seed for variety
-	var rng := RandomNumberGenerator.new()
-	rng.seed = GameManager.terrain_seed + 42
-	for i in range(_card_values.size() - 1, 0, -1):
-		var j := rng.randi_range(0, i)
-		var tmp := _card_values[i]
-		_card_values[i] = _card_values[j]
-		_card_values[j] = tmp
-
-	# Initialize state
-	for i in range(16):
-		_revealed.append(false)
-		_matched.append(false)
-		_cards[i].text = "?"
-		_cards[i].disabled = false
-		_cards[i].modulate = Color.WHITE
-
-		# Reset to back style
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0.15, 0.15, 0.25)
-		style.set_corner_radius_all(6)
-		style.border_width_left = 1
-		style.border_width_right = 1
-		style.border_width_top = 1
-		style.border_width_bottom = 1
-		style.border_color = Color(0.3, 0.3, 0.5, 0.6)
-		_cards[i].add_theme_stylebox_override("normal", style)
-
-	_moves_label.text = "Moves: 0"
-	_result_label.text = "Find all 8 matching pairs!"
+	_time_left = cfg["time"]
+	_running = true
+	_round_label.text = "Round %d / %d  ·  %d pairs" % [idx + 1, ROUNDS.size(), cfg["pairs"]]
+	_combo_label.text = ""
+	# Deal-in animation
+	for i in _cards.size():
+		var c: Card = _cards[i]
+		c.modulate.a = 0.0
+		c.create_tween().tween_property(c, "modulate:a", 1.0, 0.2).set_delay(i * 0.02)
 
 
-func _on_card_pressed(idx: int) -> void:
-	if _checking:
+func _process(delta: float) -> void:
+	_base_process(delta)
+	if not _running:
 		return
-	if _matched[idx] or _revealed[idx]:
+	var before := ceili(_time_left)
+	_time_left -= delta
+	_timer_label.text = "%ds" % maxi(0, ceili(_time_left))
+	_timer_label.add_theme_color_override("font_color", DysnomiaLore.BAD if _time_left < 10.0 else GOLD)
+	if _time_left < 10.0 and ceili(_time_left) != before:
+		_sfx("tick", 1.3)
+		_punch(_timer_label, 0.15)
+	if _time_left <= 0.0:
+		_running = false
+		_out_of_time()
+
+
+func _on_card(card: Card) -> void:
+	if not _running or _checking or card.face_up or card.matched:
 		return
-
-	# Reveal this card
-	_reveal_card(idx)
-
-	if _first_pick < 0:
-		# First card of the pair
-		_first_pick = idx
+	_flip(card, true)
+	if _first == null:
+		_first = card
+		return
+	_moves += 1
+	_checking = true
+	var a := _first
+	_first = null
+	if a.contract == card.contract:
+		get_tree().create_timer(0.3).timeout.connect(_on_match.bind(a, card))
 	else:
-		# Second card
-		_second_pick = idx
-		_moves += 1
-		_moves_label.text = "Moves: %d" % _moves
-		_checking = true
-
-		# Check for match after brief delay
-		get_tree().create_timer(0.7).timeout.connect(_check_match)
+		get_tree().create_timer(0.75).timeout.connect(_on_miss.bind(a, card))
 
 
-func _reveal_card(idx: int) -> void:
-	_revealed[idx] = true
-	var symbol: String = _card_values[idx]
-	_cards[idx].text = symbol
-	var card_color: Color = CARD_COLORS.get(symbol, Color(0.5, 0.5, 0.5))
-
-	# Show revealed style
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(card_color.r * 0.3, card_color.g * 0.3, card_color.b * 0.3, 0.9)
-	style.set_corner_radius_all(6)
-	style.border_width_left = 2
-	style.border_width_right = 2
-	style.border_width_top = 2
-	style.border_width_bottom = 2
-	style.border_color = card_color
-	_cards[idx].add_theme_stylebox_override("normal", style)
-	_cards[idx].add_theme_color_override("font_color", card_color)
+func _flip(card: Card, up: bool) -> void:
+	_sfx("flip", 1.0 if up else 0.85)
+	card.pivot_offset = card.size * 0.5
+	var tw := card.create_tween()
+	tw.tween_property(card, "scale:x", 0.0, 0.08)
+	tw.tween_callback(func():
+		card.face_up = up
+		card.queue_redraw())
+	tw.tween_property(card, "scale:x", 1.0, 0.1)
 
 
-func _hide_card(idx: int) -> void:
-	_revealed[idx] = false
-	_cards[idx].text = "?"
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.15, 0.15, 0.25)
-	style.set_corner_radius_all(6)
-	style.border_width_left = 1
-	style.border_width_right = 1
-	style.border_width_top = 1
-	style.border_width_bottom = 1
-	style.border_color = Color(0.3, 0.3, 0.5, 0.6)
-	_cards[idx].add_theme_stylebox_override("normal", style)
-	_cards[idx].remove_theme_color_override("font_color")
-
-
-func _check_match() -> void:
-	if _first_pick < 0 or _second_pick < 0:
-		_checking = false
+func _on_match(a: Card, b: Card) -> void:
+	if not is_inside_tree():
 		return
+	_checking = false
+	a.matched = true
+	b.matched = true
+	a.queue_redraw()
+	b.queue_redraw()
+	_combo += 1
+	_best_combo = maxi(_best_combo, _combo)
+	var pts := match_points(_combo)
+	_update_score(pts)
+	_float_text("+%d" % pts, GOLD if _combo > 1 else DysnomiaLore.OK, b)
+	_punch(a, 0.12)
+	_punch(b, 0.12)
+	_sfx("match", 1.0 + 0.08 * mini(_combo, 5))
+	_combo_label.text = "Combo ×%d" % mini(_combo, 5) if _combo > 1 else ""
+	var info: Dictionary = DysnomiaLore.CONTRACTS[a.contract]
+	_flavour_label.add_theme_color_override("font_color", (info["color"] as Color).lightened(0.3))
+	_flavour_label.text = "%s — %s" % [a.contract, info["flavour"]]
+	_matches += 1
+	if _matches >= int(ROUNDS[_round]["pairs"]):
+		_round_clear()
 
-	if _card_values[_first_pick] == _card_values[_second_pick]:
-		# Match found!
-		_matched[_first_pick] = true
-		_matched[_second_pick] = true
-		_matches_found += 1
 
-		# Dim matched cards
-		_cards[_first_pick].modulate = Color(0.6, 0.6, 0.6, 0.7)
-		_cards[_second_pick].modulate = Color(0.6, 0.6, 0.6, 0.7)
-		_cards[_first_pick].disabled = true
-		_cards[_second_pick].disabled = true
-
-		_result_label.add_theme_color_override("font_color", Color(0.3, 0.9, 0.4))
-		_result_label.text = "Matched: %s!" % _card_values[_first_pick]
-
-		if _matches_found >= _total_pairs:
-			_finish_game()
-	else:
-		# No match — hide both
-		_hide_card(_first_pick)
-		_hide_card(_second_pick)
-		_result_label.add_theme_color_override("font_color", Color(0.8, 0.5, 0.3))
-		_result_label.text = "No match — try again"
-
-	_first_pick = -1
-	_second_pick = -1
+func _on_miss(a: Card, b: Card) -> void:
+	if not is_inside_tree():
+		return
+	_combo = 0
+	_combo_label.text = ""
+	_flip(a, false)
+	_flip(b, false)
 	_checking = false
 
 
-func _finish_game() -> void:
-	# Score: 1000 - (moves * 30), minimum 100
-	var final_score := maxi(100, 1000 - _moves * 30)
-	_update_score(final_score)
+func _round_clear() -> void:
+	_running = false
+	_rounds_cleared += 1
+	var bonus := round_bonus(_round, _time_left)
+	_update_score(bonus)
+	_float_text("ROUND CLEAR +%d" % bonus, GOLD, _timer_label, 24)
+	_sfx("big")
+	if _round + 1 >= ROUNDS.size():
+		_finish_cards("FULL STACK DEPLOYED")
+		return
+	_round_label.text = "Round %d cleared! Next: %d pairs" % [_round + 1, ROUNDS[_round + 1]["pairs"]]
+	get_tree().create_timer(1.6).timeout.connect(func():
+		if is_inside_tree():
+			_start_round(_round + 1))
 
-	_result_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
-	_result_label.text = "All pairs found in %d moves! +%d points" % [_moves, final_score]
 
-	# Disable all cards
-	for btn in _cards:
-		btn.disabled = true
+func _out_of_time() -> void:
+	_sfx("bust")
+	_shake(6.0, 0.3)
+	for c in _cards:
+		if not c.matched:
+			c.face_up = true
+			c.modulate = Color(1, 1, 1, 0.5)
+			c.queue_redraw()
+	_finish_cards("OUT OF BLOCKS" if _rounds_cleared < WIN_ROUNDS else "STACK HOLDS")
 
-	end_game()
+
+func _finish_cards(headline: String) -> void:
+	var won := _rounds_cleared >= WIN_ROUNDS
+	var lines: Array = ["%d round%s cleared · %d moves · best combo ×%d" % [
+		_rounds_cleared, "" if _rounds_cleared == 1 else "s", _moves, mini(_best_combo, 5)]]
+	finish(won, {"headline": headline, "lines": lines, "rounds": _rounds_cleared})
