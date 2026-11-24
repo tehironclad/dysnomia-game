@@ -234,6 +234,29 @@ func send_raw(tx: Dictionary) -> int:
 	return tx_id
 
 
+var _relay_next := 1
+var _relay_waiting := {}
+var _relay_results := {}
+
+
+## Sends one JSON-RPC body through the wallet page's fetch (the browser's network).
+## {ok, code, body}; {ok:false} if the page isn't linked or doesn't answer in 25 s.
+func relay_rpc(body: String) -> Dictionary:
+	if _state != State.CONNECTED or not _authed:
+		return {"ok": false}
+	var rid := _relay_next
+	_relay_next += 1
+	_relay_waiting[rid] = true
+	_send_json({"type": "rpc", "id": rid, "body": body})
+	var t0 := Time.get_ticks_msec()
+	while not _relay_results.has(rid) and Time.get_ticks_msec() - t0 < 25000:
+		await get_tree().create_timer(0.05).timeout
+	_relay_waiting.erase(rid)
+	var r: Dictionary = _relay_results.get(rid, {"ok": false})
+	_relay_results.erase(rid)
+	return r
+
+
 func is_authenticated() -> bool:
 	return _authed
 
@@ -528,6 +551,12 @@ func _handle_ws_message(text: String) -> void:
 			var error: String = data.get("error", "Unknown error")
 			if tx_id >= 0:
 				tx_failed.emit(tx_id, error)
+
+		"rpc_result":
+			var rid: int = data.get("id", -1)
+			if _relay_waiting.has(rid):
+				_relay_results[rid] = {"ok": bool(data.get("ok", false)), "code": int(data.get("status", 0)), "body": String(data.get("body", ""))}
+				_relay_waiting.erase(rid)
 
 		"pong":
 			pass  # Keepalive response

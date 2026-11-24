@@ -19,6 +19,15 @@ const TIMEOUT_S := 25.0
 signal _slot_freed
 
 var endpoint: String = Contracts.DEFAULT_RPC
+## Public PulseChain nodes tried in order when the current one can't be reached
+## (DNS, TLS, firewall, timeouts). All verified to answer eth_chainId = 0x171.
+const FALLBACKS := ["https://rpc.pulsechain.com", "https://pulsechain-rpc.publicnode.com",
+	"https://rpc-pulsechain.g4mm4.io", "https://pulsechain.publicnode.com", "https://rpc.pulsechainrpc.com"]
+## Last resort: a Callable(body: String) -> {ok, code, body} that sends the request
+## through the browser wallet window (the same network the site uses). Set by Wallet.
+var relay: Callable = Callable()
+var last_error := ""
+var _logged := {}
 var _in_flight := 0
 var _next_id := 1
 ## Counters for diagnostics overlays.
@@ -37,21 +46,52 @@ func request(method: String, params: Array = []) -> Dictionary:
 		res = await _send_once(method, params)
 		if res["ok"] or res["kind"] != "transport":
 			break
+	# The node can't be reached at all: fail over to the other public nodes…
+	if not res["ok"] and res["kind"] == "transport":
+		_log_once(endpoint, String(res["error"]["message"]))
+		for alt in FALLBACKS:
+			if alt == endpoint:
+				continue
+			var r2 := await _send_once(method, params, alt)
+			if r2["ok"] or r2["kind"] != "transport":
+				print("[Rpc] %s unreachable (%s) — switched to %s" % [endpoint, res["error"]["message"], alt])
+				endpoint = alt
+				res = r2
+				break
+			_log_once(alt, String(r2["error"]["message"]))
+	# …and finally through the browser wallet window, if it is linked.
+	if not res["ok"] and res["kind"] == "transport" and relay.is_valid():
+		var body := JSON.stringify({"jsonrpc": "2.0", "id": _next_id, "method": method, "params": params})
+		_next_id += 1
+		var rr: Dictionary = await relay.call(body)
+		if rr.get("ok", false):
+			res = classify(HTTPRequest.RESULT_SUCCESS, int(rr.get("code", 200)), String(rr.get("body", "")).to_utf8_buffer())
+			if res["ok"] and not _logged.has("relay"):
+				_logged["relay"] = true
+				print("[Rpc] direct connections failed — reading the chain through the wallet window")
 	if not res["ok"] and res["kind"] == "transport":
 		stats["failures"] += 1
+		last_error = String(res["error"]["message"])
 	_in_flight -= 1
 	_slot_freed.emit()
 	return res
 
 
-func _send_once(method: String, params: Array) -> Dictionary:
+func _log_once(url: String, why: String) -> void:
+	if _logged.has(url):
+		return
+	_logged[url] = true
+	print("[Rpc] cannot reach %s: %s" % [url, why])
+
+
+func _send_once(method: String, params: Array, url: String = "") -> Dictionary:
 	stats["requests"] += 1
 	var http := HTTPRequest.new()
 	http.timeout = TIMEOUT_S
 	add_child(http)
 	var body := JSON.stringify({"jsonrpc": "2.0", "id": _next_id, "method": method, "params": params})
 	_next_id += 1
-	var err := http.request(endpoint, PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, body)
+	var err := http.request(url if url != "" else endpoint, PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, body)
 	if err != OK:
 		http.queue_free()
 		return {"ok": false, "kind": "transport", "error": {"message": "request error %d" % err}}
@@ -63,7 +103,7 @@ func _send_once(method: String, params: Array) -> Dictionary:
 ## Pure: turns an HTTPRequest completion into a result Dictionary.
 static func classify(result_code: int, http_code: int, body: PackedByteArray) -> Dictionary:
 	if result_code != HTTPRequest.RESULT_SUCCESS:
-		return {"ok": false, "kind": "transport", "error": {"message": "http result %d" % result_code}}
+		return {"ok": false, "kind": "transport", "error": {"message": _result_name(result_code)}}
 	if http_code == 429 or http_code >= 500:
 		return {"ok": false, "kind": "transport", "error": {"message": "http %d" % http_code}}
 	var json := JSON.new()
@@ -156,3 +196,15 @@ func gas_price() -> Dictionary:
 	if r["ok"]:
 		r["wei"] = BigInt.from_hex(String(r["result"]))
 	return r
+
+
+static func _result_name(code: int) -> String:
+	match code:
+		HTTPRequest.RESULT_CANT_CONNECT: return "can't connect (firewall or offline?)"
+		HTTPRequest.RESULT_CANT_RESOLVE: return "can't resolve the host name (DNS)"
+		HTTPRequest.RESULT_CONNECTION_ERROR: return "connection error"
+		HTTPRequest.RESULT_TLS_HANDSHAKE_ERROR: return "TLS handshake error (antivirus HTTPS scanning or a proxy?)"
+		HTTPRequest.RESULT_NO_RESPONSE: return "no response"
+		HTTPRequest.RESULT_TIMEOUT: return "timed out"
+		HTTPRequest.RESULT_BODY_SIZE_LIMIT_EXCEEDED: return "response too large"
+	return "http result %d" % code

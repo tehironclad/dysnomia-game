@@ -28,6 +28,10 @@ func _ready() -> void:
 	bridge = load("res://scripts/chain/wallet_bridge.gd").new()
 	bridge.name = "Bridge"
 	add_child(bridge)
+	# Last-resort chain reads through the browser window (after every autoload is up)
+	(func() -> void:
+		if Chain and Chain.rpc:
+			Chain.rpc.relay = bridge.relay_rpc).call_deferred()
 	bridge.wallet_connected.connect(_on_connected)
 	bridge.wallet_disconnected.connect(_on_disconnected)
 	bridge.tx_result.connect(func(id, hash): _results[id] = {"hash": hash})
