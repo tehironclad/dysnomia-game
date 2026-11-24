@@ -1,0 +1,116 @@
+# Release: on a version tag (v1.2.3), check → export Windows/Linux/macOS with release
+# templates → zip → SHA-256 → upload to the public download bucket (Cloudflare R2) →
+# update latest.json, which the site (systm0.vercel.app/download) reads.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY  — an R2 API token scoped to the bucket only
+#   R2_BUCKET            — e.g. dysnomia-downloads
+#   R2_PUBLIC_BASE_URL   — the bucket's public URL, e.g. https://pub-xxxx.r2.dev or https://dl.systm0.app
+# The source stays private; only the built zips, SHA256SUMS and latest.json are public.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (e.g. 0.9.0) — uploads only when run from a tag"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: "4.6.1"
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Version
+        id: v
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then V="${GITHUB_REF#refs/tags/v}"; else V="${{ github.event.inputs.version }}"; fi
+          [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad version '$V'"; exit 1; }
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          # The binary reports the same version as the tag
+          sed -i "s/^config\/version=.*//" project.godot
+          sed -i "/^\[application\]/a config/version=\"$V\"" project.godot
+
+      - name: Godot + export templates
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          curl -fsSL -o tpl.tpz   "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q godot.zip && mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot
+          dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dest" && unzip -q tpl.tpz -d tpl && mv tpl/templates/* "$dest/"
+
+      - name: Checks (import, compile, shaders, unit tests)
+        run: GODOT=./godot tools/check.sh
+
+      - name: Export
+        run: |
+          set -e
+          V=${{ steps.v.outputs.version }}
+          mkdir -p build/windows build/linux build/macos dist
+          ./godot --headless --path . --export-release "Windows" build/windows/Dysnomia.exe
+          ./godot --headless --path . --export-release "Linux"   build/linux/Dysnomia.x86_64
+          ./godot --headless --path . --export-release "macOS"   build/macos/Dysnomia.zip
+          (cd build/windows && zip -qr9 "../../dist/Dysnomia-${V}-windows-x86_64.zip" .)
+          (cd build/linux   && chmod +x Dysnomia.x86_64 && zip -qr9 "../../dist/Dysnomia-${V}-linux-x86_64.zip" .)
+          cp build/macos/Dysnomia.zip "dist/Dysnomia-${V}-macos-universal.zip"
+          # Nothing from user:// or the dev tree may ride along
+          for z in dist/*.zip; do
+            if unzip -l "$z" | grep -Eq '(\.env|settings\.cfg|arcade_credits|\.claude/|/tools/|/tests/)'; then echo "unexpected file in $z"; exit 1; fi
+          done
+          (cd dist && sha256sum *.zip > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: Manifest
+        run: |
+          V=${{ steps.v.outputs.version }}
+          python3 - "$V" "${{ secrets.R2_PUBLIC_BASE_URL }}" "$GITHUB_SHA" <<'EOF'
+          import hashlib, json, os, sys, datetime
+          v, base, sha = sys.argv[1], sys.argv[2].rstrip("/"), sys.argv[3]
+          files = []
+          for name in sorted(os.listdir("dist")):
+              if not name.endswith(".zip"):
+                  continue
+              p = os.path.join("dist", name)
+              plat = "windows" if "windows" in name else "macos" if "macos" in name else "linux"
+              files.append({"platform": plat, "name": name, "size": os.path.getsize(p),
+                            "sha256": hashlib.sha256(open(p, "rb").read()).hexdigest(),
+                            "url": f"{base}/releases/{v}/{name}"})
+          json.dump({"version": v, "commit": sha, "published": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                     "files": files, "sums": f"{base}/releases/{v}/SHA256SUMS"},
+                    open("dist/latest.json", "w"), indent=2)
+          EOF
+          cat dist/latest.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dysnomia-${{ steps.v.outputs.version }}
+          path: dist/
+
+      - name: Upload to R2 (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          V=${{ steps.v.outputs.version }}
+          EP="https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
+          B="${{ secrets.R2_BUCKET }}"
+          aws s3 cp dist/ "s3://$B/releases/$V/" --recursive --exclude latest.json --endpoint-url "$EP"
+          # latest.json last, so the site never points at files that aren't there yet
+          aws s3 cp dist/latest.json "s3://$B/latest.json" --endpoint-url "$EP" \
+            --cache-control "no-cache" --content-type "application/json"
