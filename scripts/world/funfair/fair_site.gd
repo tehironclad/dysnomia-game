@@ -9,8 +9,11 @@ extends Node3D
 ## Development tier (0..5) → fair tier: Wild/Outpost = surveyed lot, Settlement =
 ## night market + carousel, Town = + wheel and drop tower, City/Capital = grand fair.
 
-const AT := Vector2(0.0, 112.0)   ## relative to the Core, south of the arrival point
+const AT := Vector2(0.0, 112.0)   ## preferred spot (relative to the Core); the search starts here
 const HALF := 40.0                ## the fair builds within ±38 m
+const RADIUS := 42.0              ## round terrace that carries it
+const KEEP_CLEAR := [Vector2(0, 0), Vector2(26, 18), Vector2(-26, 18), Vector2(0, -11.5), Vector2(0, 16)]  ## Core, arcade, monolith, plinth, arrival
+const CLEAR_M := 62.0             ## how far the fair's centre stays from those
 
 var _qing := ""
 var _hud: Node
@@ -20,26 +23,71 @@ var _tier := -1
 var _focus: RideBase = null
 var _riding: RideBase = null
 var _paying := false
+var _ground_mat: Material = null  ## the terrain's own material (colours by world XZ) so the terrace continues the land
 
 
 static func fair_tier(dev_tier: int) -> int:
 	return [0, 0, 1, 2, 3, 3][clampi(dev_tier, 0, 5)]
 
 
-func setup(qing: String, hud: Node, player: CharacterBody3D, height_fn: Callable) -> void:
+## Finds where the fair belongs on this territory's land: every sample of the round
+## footprint on the plateau (height ≥ land_floor, relative to the Core), the flattest
+## such spot, clear of the Core's landmarks, preferring the south side near arrival.
+## Pure and deterministic (same terrain → same spot). Returns {ok, at, top, low, land}.
+static func find_site(height_fn: Callable, land_floor: float = -2.5) -> Dictionary:
+	var best := {"ok": false, "score": INF}
+	var fallback := {"ok": false, "land": -1.0}
+	for gx in range(-12, 13):
+		for gz in range(-12, 13):
+			var c := Vector2(gx * 16.0, gz * 16.0)
+			if c.length() > 205.0:
+				continue
+			var clear := true
+			for k in KEEP_CLEAR:
+				if c.distance_to(k) < CLEAR_M:
+					clear = false
+					break
+			if not clear:
+				continue
+			var top := -INF
+			var low := INF
+			var on_land := 0
+			var n := 0
+			for ring in [0.0, 0.5, 1.0]:
+				var steps := 1 if ring == 0.0 else 12
+				for i in steps:
+					var a := TAU * i / steps
+					var p: Vector2 = c + Vector2(cos(a), sin(a)) * RADIUS * ring
+					var h: float = height_fn.call(p.x, p.y)
+					top = maxf(top, h)
+					low = minf(low, h)
+					n += 1
+					if h >= land_floor:
+						on_land += 1
+			var land := float(on_land) / n
+			if land > fallback["land"]:
+				fallback = {"ok": false, "at": c, "top": top, "low": low, "land": land}
+			if on_land < n:
+				continue
+			# Flat, close to arrival, south side preferred
+			var score := (top - low) * 4.0 + c.distance_to(AT) * 0.05
+			if score < best["score"]:
+				best = {"ok": true, "at": c, "top": top, "low": low, "land": 1.0, "score": score}
+	return best if best["ok"] else fallback
+
+
+func setup(qing: String, hud: Node, player: CharacterBody3D, height_fn: Callable, tint: Color = Color(0.6, 0.8, 1.0), ground_mat: Material = null) -> void:
+	_ground_mat = ground_mat
 	_qing = qing.to_lower()
 	_hud = hud
 	_player = player
-	# Deck height: the highest ground under the footprint, so nothing is buried
-	var top := -INF
-	var low := INF
-	for ix in range(-4, 5):
-		for iz in range(-4, 5):
-			var h: float = height_fn.call(position.x + ix * HALF / 4.0, position.z + iz * HALF / 4.0)
-			top = maxf(top, h)
-			low = minf(low, h)
-	position.y = top + 0.15
-	_build_deck(position.y - low + 2.0)
+	var site := find_site(height_fn)
+	var at: Vector2 = site.get("at", AT)
+	position = Vector3(at.x, 0.0, at.y)
+	# Terrace top just above the highest ground in the footprint; on the plateau the
+	# relief is ~3 m, so the sloped rim stays low and reads as built ground.
+	position.y = float(site.get("top", 0.0)) + 0.12
+	_build_terrace(position.y - float(site.get("low", position.y)) + 1.5, tint)
 
 
 func set_dev_tier(dev_tier: int) -> void:
@@ -106,42 +154,61 @@ func _on_finished(ride: RideBase) -> void:
 		_riding = null
 
 
-func _build_deck(depth: float) -> void:
+func _build_terrace(depth: float, tint: Color) -> void:
+	## A round regolith terrace (same Poly Haven moon_dusted_02 as the terrain shader,
+	## tinted with the territory colour) whose sides slope out into the ground like an
+	## embankment, plus a faint ring of light at the rim. No square slab.
+	var rd := "res://assets/textures/polyhaven/moon_dusted_02/moon_dusted_02_"
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.32, 0.33, 0.36)
-	mat.roughness = 0.85
-	mat.metallic = 0.25
-	var m := BoxMesh.new()
-	m.size = Vector3(HALF * 2.0, depth, HALF * 2.0)
+	mat.albedo_texture = load(rd + "diff_1k.jpg")
+	mat.normal_enabled = true
+	mat.normal_texture = load(rd + "nor_gl_1k.jpg")
+	mat.roughness_texture = load(rd + "rough_1k.jpg")
+	mat.albedo_color = Color(0.55, 0.55, 0.58).lerp(tint, 0.18)
+	mat.uv1_triplanar = true
+	mat.uv1_scale = Vector3(0.25, 0.25, 0.25)
+	var slope := clampf(depth * 2.2, 3.0, 14.0)
+	var m := CylinderMesh.new()
+	m.top_radius = RADIUS
+	m.bottom_radius = RADIUS + slope
+	m.height = depth
+	m.radial_segments = 64
+	m.rings = 1
 	var mi := MeshInstance3D.new()
 	mi.mesh = m
-	mi.material_override = mat
+	# Prefer the terrain's own shader: it colours by world position, so the terrace
+	# carries the territory's contours and glow straight across instead of a flat disc.
+	mi.material_override = _ground_mat if _ground_mat else mat
 	mi.position = Vector3(0, -depth * 0.5 - 0.02, 0)
 	add_child(mi)
+	# Walkable: flat top + the sloped sides (players can walk straight up the rim)
 	var body := StaticBody3D.new()
 	var cs := CollisionShape3D.new()
-	var sh := BoxShape3D.new()
-	sh.size = m.size
+	var sh := CylinderShape3D.new()
+	sh.radius = RADIUS
+	sh.height = depth
 	cs.shape = sh
 	cs.position = mi.position
 	body.add_child(cs)
+	var rim := CollisionShape3D.new()
+	rim.shape = m.create_convex_shape()
+	rim.position = mi.position
+	body.add_child(rim)
 	add_child(body)
-	# Ramp down to the arrival side so the deck can be walked onto
-	var ramp_len := clampf(depth * 3.0, 6.0, 40.0)
-	var rm := BoxMesh.new()
-	rm.size = Vector3(10.0, 0.4, ramp_len)
-	var ramp := MeshInstance3D.new()
-	ramp.mesh = rm
-	ramp.material_override = mat
-	var ang := atan2(depth - 2.0, ramp_len)
-	ramp.rotation.x = -ang
-	ramp.position = Vector3(0, -(depth - 2.0) * 0.5, -HALF - cos(ang) * ramp_len * 0.5 + 0.5)
-	add_child(ramp)
-	var rb := StaticBody3D.new()
-	var rc := CollisionShape3D.new()
-	var rs := BoxShape3D.new()
-	rs.size = rm.size
-	rc.shape = rs
-	rb.add_child(rc)
-	rb.transform = ramp.transform
-	add_child(rb)
+	# Rim light: a thin emissive ring in the territory colour
+	var glow := StandardMaterial3D.new()
+	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glow.albedo_color = tint
+	glow.emission_enabled = true
+	glow.emission = tint
+	glow.emission_energy_multiplier = 1.4
+	var ring := TorusMesh.new()
+	ring.inner_radius = RADIUS - 0.12
+	ring.outer_radius = RADIUS + 0.12
+	ring.rings = 96
+	var ri := MeshInstance3D.new()
+	ri.mesh = ring
+	ri.material_override = glow
+	ri.scale = Vector3(1.0, 0.25, 1.0)
+	ri.position.y = 0.03
+	add_child(ri)

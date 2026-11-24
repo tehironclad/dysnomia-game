@@ -105,8 +105,9 @@ func _ready() -> void:
 	fair = FairSite.new()
 	fair.name = "AffectionFair"
 	core.add_child(fair)
-	fair.position = Vector3(FairSite.AT.x, 0.0, FairSite.AT.y)
-	fair.setup(String(territory["address"]), hud, player, func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y)
+	fair.setup(String(territory["address"]), hud, player,
+		func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y,
+		DeepField.to_color(terrain.params["color"]), terrain.material)
 	fair.set_dev_tier(0)
 	lattice = WorldLattice.new()
 	lattice.name = "WorldLattice"
