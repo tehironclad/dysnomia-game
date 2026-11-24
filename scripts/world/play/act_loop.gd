@@ -259,8 +259,13 @@ func steward_text() -> String:
 		lines.append("◆ %s" % String(a["title"]).to_upper())
 		lines.append("   %s" % a.get("lore", ""))
 		var d := String(a.get("detail", ""))
-		var why := "" if a["doable"] or String(a.get("blocker", "")) == "" else "  · not yet: " + String(a["blocker"])
-		lines.append("   %s · %s%s" % [a["call"], d, why])
+		var blk := String(a.get("blocker", ""))
+		if blk == PlayLoop.NO_WALLET:
+			blk = "needs a wallet (the button below)"  # you are already at the Steward
+		if d == String(a.get("blocker", "")):
+			d = ""
+		var why := "" if a["doable"] or blk == "" else "not yet: " + blk
+		lines.append("   %s" % " · ".join(PackedStringArray([String(a["call"]), d, why].filter(func(x): return x != ""))))
 	lines.append("")
 	lines.append("YOUR GOALS (from the chain)")
 	for g in goals:

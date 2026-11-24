@@ -31,7 +31,7 @@ func _ready() -> void:
 	_collisions()
 	exit_at = Vector3(0, 0, PLATFORM_R - 1.2)
 	setup_player(Vector3(0, 0.1, 3.5), 0.0)
-	add_door("curtain", 2.9, 2.9, Vector3(0, 0.25, PLATFORM_R - 0.4), DeepFieldTheme.ICE, true)
+	add_door("curtain", 2.9, 2.9, Vector3(0, 0.25, PLATFORM_R - 0.4), DeepFieldTheme.ICE, true, false)  # open space: no wall to stop the camera at
 	exit_radius = 2.0
 	setup_hud("THE VOID")
 	info_label.text = "One board for everyone: Fomalhaute's lines from block %d, written by LAU.Chat. Reading…" % Contracts.VOID_CHAT_FROM_BLOCK

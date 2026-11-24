@@ -489,6 +489,9 @@ func _refresh_identity() -> void:
 			"not-ready": "not ready", "fragile": "ready · fragile", "ready": "ready"}.get(rd.state, rd.state))
 	if Session.record != null:
 		lines.append(Session.record.describe())
+	if ps.has_yue() and Session.bars_block > 0 and mine.is_empty():
+		# Ready but no bars anywhere yet: say what the first move is, and where.
+		lines.append("NEXT   a Su at any QING builds your first bar (Opportunities: where Ω is highest)")
 	_sum_state.text = "\n".join(lines)
 	_fill_qings(mine.slice(0, 4))
 
@@ -628,9 +631,14 @@ func _build_bottom() -> void:
 	col.add_child(go)
 	# News, bottom left
 	_news = _label("", "MonoLabel", 13)
+	# As wide as the doors (it ran under the globe's labels) and growing upward from the strip.
 	_news.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	_news.position = Vector2(112, -112 - 92)
-	_news.custom_minimum_size = Vector2(960, 0)
+	_news.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_news.offset_left = 112
+	_news.offset_right = 112 + 620
+	_news.offset_top = -106
+	_news.offset_bottom = -106
+	_news.custom_minimum_size = Vector2(620, 0)
 	add_child(_news)
 	# The status strip
 	var strip := PanelContainer.new()

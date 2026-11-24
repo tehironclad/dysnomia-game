@@ -19,6 +19,7 @@ var _near_exit := false
 ## The entrance (add_door): a door on the +Z side, the way in and out.
 var door: PassDoor
 var _spawn := Vector3.ZERO
+var help: ControlsHelp  ## F1 (the hint promises it)
 
 
 ## Flat floor for the player controller's height queries.
@@ -71,14 +72,21 @@ func setup_hud(title: String) -> void:
 	prompt_label.position = Vector2(-400, -110)
 	prompt_label.size = Vector2(800, 30)
 	prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	prompt_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	prompt_label.add_theme_constant_override("outline_size", 6)
 	root.add_child(prompt_label)
 	var hint := Label.new()
 	hint.theme_type_variation = "MutedLabel"
 	hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.position = Vector2(20, -36)
+	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))  # readable over the floor rings
+	hint.add_theme_constant_override("outline_size", 6)
 	hint.text = "%s  speak   ·   %s  at the exit: leave   ·   %s  controls" % [
 		ControlsHelp.key_of("chat"), ControlsHelp.key_of("interact"), ControlsHelp.key_of("controls_help")]
 	root.add_child(hint)
+	help = ControlsHelp.new()
+	help.position = Vector2(20, 130)
+	root.add_child(help)
 
 
 func setup_chat(mode: String, q: Dictionary, history: int = 80) -> void:
@@ -100,11 +108,37 @@ func setup_chat(mode: String, q: Dictionary, history: int = 80) -> void:
 ## The entrance: `style` "slide" or "curtain" (round = a disc), its threshold
 ## middle at `at` on the floor, facing ±Z. The player arrives through it and
 ## leaves through it (DoorSequence).
-func add_door(style: String, width: float, height: float, at: Vector3, color := DeepFieldTheme.ICE, round := false) -> PassDoor:
+func add_door(style: String, width: float, height: float, at: Vector3, color := DeepFieldTheme.ICE, round := false, camera_stop := true) -> PassDoor:
 	door = PassDoor.make(style, width, height, color, round)
 	add_child(door)
 	door.position = at
+	if camera_stop:
+		_camera_stop(width, height, at)
 	return door
+
+
+## A body in the doorway that only the camera's spring arm hits (never the player):
+## behind a player who has just walked in, the arm would otherwise pass out through
+## the gap in the wall and show the back of the shut door instead of the room.
+const CAMERA_ONLY_LAYER := 1 << 15
+
+
+func _camera_stop(width: float, height: float, at: Vector3) -> void:
+	var body := StaticBody3D.new()
+	body.name = "DoorCameraStop"
+	body.collision_layer = CAMERA_ONLY_LAYER
+	body.collision_mask = 0
+	var cs := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(width + 0.4, height + 0.4, 0.3)
+	cs.shape = shape
+	cs.position = Vector3(0, height * 0.5, 0)
+	body.add_child(cs)
+	body.position = at
+	add_child(body)
+	var arm: SpringArm3D = player.get_node_or_null("CameraRig/SpringArm3D") if player else null
+	if arm:
+		arm.collision_mask |= CAMERA_ONLY_LAYER
 
 
 func _door_at() -> Vector3:
@@ -158,8 +192,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("interact") and _near_exit:
 		get_viewport().set_input_as_handled()
 		_leave()
-	elif event.is_action_pressed("controls_help"):
-		pass
+	elif event.is_action_pressed("controls_help") and help:
+		get_viewport().set_input_as_handled()
+		help.toggle()
 
 
 static func load_piece(name: String) -> Node3D:

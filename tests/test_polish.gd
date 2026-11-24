@@ -11,6 +11,19 @@ func test_every_listed_control_is_bound() -> void:
 	eq(ControlsHelp.key_of("open_field"), "M")
 
 
+func test_keys_read_as_keycaps() -> void:
+	# Players see "/", not Godot's "Slash"; letters and named keys pass through.
+	eq(ControlsHelp.key_label("Slash"), "/")
+	eq(ControlsHelp.key_label("BracketRight"), "]")
+	eq(ControlsHelp.key_label("Equal"), "=")
+	eq(ControlsHelp.key_label("Shift"), "Shift")
+	eq(ControlsHelp.key_of("field_search"), "/")
+	var rows := ControlsHelp.rows()
+	eq(rows.size(), ControlsHelp.ACTIONS.size() + 3, "every action plus mouse, click and Esc")
+	for r in rows:
+		check(not String(r[0]).contains("Slash") and not String(r[0]).contains("Bracket"), "keycap shown: " + String(r[0]))
+
+
 func test_score_voices_are_deterministic_and_loop() -> void:
 	var q := Registry.get_territory("0xd127839b83cbf537c29b7d268c135f745a0da2e8")
 	var p := DeepField.for_territory(q)

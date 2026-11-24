@@ -28,7 +28,7 @@ var _label := ""
 func _init() -> void:
 	theme = DeepFieldTheme.get_theme()
 	var sb := DeepFieldTheme.panel_style(Color(0.66, 0.9, 1.0, 0.45))
-	sb.bg_color.a = 0.96
+	sb.bg_color.a = 1.0  # an opaque modal: the hall's glowing boards showed through 0.96
 	add_theme_stylebox_override("panel", sb)
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_STOP

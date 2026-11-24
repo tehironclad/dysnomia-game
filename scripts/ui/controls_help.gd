@@ -16,7 +16,7 @@ const ACTIONS := [
 	["chat_history", "Room chat history (scroll; hover a line for its block)"], ["chat_quick_1", "Quick line 1 into the chat bar (2–4: more; Enter sends)"], ["chat_recall_prev", "Chat bar: recall the previous line"], ["chat_mode", "Chat bar: say (free) / post (on chain), when the presence server is up"], ["push_to_talk", "Push to talk (online voice; turn the mic on in Settings · Online & voice)"],
 ]
 
-var _text: Label
+var _cols: Array[GridContainer] = []
 
 
 func _init() -> void:
@@ -30,12 +30,63 @@ func _init() -> void:
 	add_child(col)
 	var title := Label.new()
 	title.theme_type_variation = "DisplayLabel"
-	title.text = "CONTROLS"
+	title.text = "CONTROLS  ·  %s closes" % key_of("controls_help")
 	col.add_child(title)
-	_text = Label.new()
-	_text.theme_type_variation = "MonoLabel"
-	_text.add_theme_font_size_override("font_size", 13)
-	col.add_child(_text)
+	# Two columns, each key beside its words (the words wrap): the list fits a
+	# 1280x720 screen instead of running off the bottom and the right edge.
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 28)
+	col.add_child(row)
+	for i in 2:
+		var g := GridContainer.new()
+		g.columns = 2
+		g.add_theme_constant_override("h_separation", 12)
+		g.add_theme_constant_override("v_separation", 2)
+		row.add_child(g)
+		_cols.append(g)
+
+
+## [[key, words]] for every listed action, then the fixed mouse/Esc rows.
+static func rows() -> Array:
+	var out: Array = []
+	for a in ACTIONS:
+		out.append([key_of(a[0]), a[1]])
+	out.append(["Mouse", "Look"])
+	out.append(["Click", "Capture the mouse to look around"])
+	out.append(["Esc", "Release the mouse; close a panel"])
+	return out
+
+
+func _fill() -> void:
+	for g in _cols:
+		for c in g.get_children():
+			c.queue_free()
+	var rs := rows()
+	var half := (rs.size() + 1) / 2
+	for i in rs.size():
+		var g: GridContainer = _cols[0 if i < half else 1]
+		var k := Label.new()
+		k.theme_type_variation = "MonoLabel"
+		k.add_theme_font_size_override("font_size", 12)
+		k.add_theme_color_override("font_color", DeepFieldTheme.ICE)
+		k.text = String(rs[i][0])
+		k.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		g.add_child(k)
+		var d := Label.new()
+		d.add_theme_font_size_override("font_size", 13)
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size = Vector2(640, 0)
+		d.text = String(rs[i][1])
+		g.add_child(d)
+
+
+## The keycap a player sees for Godot's key name ("Slash" -> "/").
+const KEY_LABELS := {"Slash": "/", "BracketLeft": "[", "BracketRight": "]", "Equal": "=", "Minus": "-",
+	"Escape": "Esc", "Period": ".", "Comma": ",", "Semicolon": ";", "Apostrophe": "'", "QuoteLeft": "`"}
+
+
+static func key_label(godot_name: String) -> String:
+	return String(KEY_LABELS.get(godot_name, godot_name))
 
 
 static func key_of(action: String) -> String:
@@ -45,7 +96,7 @@ static func key_of(action: String) -> String:
 	for e in InputMap.action_get_events(action):
 		if e is InputEventKey:
 			var code: int = e.physical_keycode if e.physical_keycode != 0 else e.keycode
-			names.append(OS.get_keycode_string(code))
+			names.append(key_label(OS.get_keycode_string(code)))
 		elif e is InputEventMouseButton:
 			names.append("Mouse %d" % e.button_index)
 	return " / ".join(names) if not names.is_empty() else "—"
@@ -53,14 +104,12 @@ static func key_of(action: String) -> String:
 
 static func lines() -> String:
 	var out: PackedStringArray = []
-	for a in ACTIONS:
-		out.append("%-10s %s" % [key_of(a[0]), a[1]])
-	out.append("%-10s %s" % ["Mouse", "Look"])
-	out.append("%-10s %s" % ["Click", "Capture the mouse to look around"])
-	out.append("%-10s %s" % ["Esc", "Release the mouse; close a panel"])
+	for r in rows():
+		out.append("%-10s %s" % [r[0], r[1]])
 	return "\n".join(out)
 
 
 func toggle() -> void:
-	_text.text = lines()
+	if not visible:
+		_fill()
 	visible = not visible

@@ -82,7 +82,7 @@ const GATES := {
 	"border": {"title": "Admitted across the border",
 		"explain": "The territory beyond the field charges a cover: Join it (a day's admission for your LAU) to cross.",
 		"action": "join_border", "action_label": "Join and cross"},
-	"fair": {"title": "Play all seven fair games here (7/7)",
+	"fair": {"title": "Play all seven fair games here",
 		"explain": "Each midway game's 1 Ⓐ ticket at this QING lights a lamp by the rocket; the chain's Transfer logs are the record.",
 		"action": "", "action_label": ""},
 	"ready": {"title": "Ready to Beat (the four holdings)",

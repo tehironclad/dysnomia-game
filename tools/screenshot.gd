@@ -159,6 +159,9 @@ func _run() -> void:
 		for i in 10:
 			await process_frame
 		current_scene.get_node("Player")._toggle_flashlight()
+	if _toggle != "":
+		for i in 30:
+			await process_frame  # the scene (and its panels) must exist first
 	if _toggle != "" and current_scene and current_scene.get(_toggle) != null:
 		current_scene.get(_toggle).toggle()
 	if _dive != "":

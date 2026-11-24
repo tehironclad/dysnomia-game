@@ -30,7 +30,9 @@ func _ready() -> void:
 	info_label.text = "Cabinets: %s a play, paid to this QING and checked on chain before the run. Pool and Twenty-One are played in this room's lines (T opens the chat)." % ArcadePay.fee_text()
 	var spots: Array = []
 	for i in SpeakerEchoes.MAX:
-		var at := Vector3(-6.0 + i * 2.4, 0.0, 5.6)
+		# Two rows of three either side of the entrance lane: you walk in between them, not into them.
+		var k := i % 3
+		var at := Vector3((2.8 + k * 2.4) * (-1.0 if i < 3 else 1.0), 0.0, 4.9)
 		spots.append(Transform3D(Basis.looking_at(Vector3(0, 0, -1), Vector3.UP, true), at))
 	setup_games(spots)
 	_apply_view()
