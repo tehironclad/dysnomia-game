@@ -90,6 +90,11 @@
     if (chosen) return chosen.provider;
     var want = remembered();
     for (var i = 0; i < providers.length; i++) if (providers[i].info.rdns === want) return providers[i].provider;
+    // Brave's built-in wallet can hold window.ethereum while the player's own wallet
+    // (Rabby, MetaMask…) is an extension announced over EIP-6963: prefer the extension.
+    if (window.ethereum && window.ethereum.isBraveWallet) {
+      for (var j = 0; j < providers.length; j++) if (!providers[j].provider.isBraveWallet && providers[j].info.rdns !== 'com.brave.wallet') return providers[j].provider;
+    }
     if (window.ethereum) return window.ethereum;
     return providers.length ? providers[0].provider : null;
   }
