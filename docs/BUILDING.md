@@ -115,3 +115,8 @@ Other performance measures in the build:
 
 Signing needs a real browser wallet. Follow [`WALLET_TESTS.md`](WALLET_TESTS.md) with a fresh wallet and
 an onboarded one.
+
+Avatars in outfits (2026-11-24, `perf.gd`, lavapipe): Sunny's Pub `--view=room` 512 draw calls, 833 objects,
+0.37 M primitives; the full fair at `--qing=0xe416…400b --view=fair` (24 visitors + staff) 874 draw calls,
+2,135 objects (over the 1,500 budget: most are the creature heads' primitive meshes, ~15 per avatar; the
+outfit itself is one mesh of 3–4 surfaces with merged LODs), 0.94 M primitives.
