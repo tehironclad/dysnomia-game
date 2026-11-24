@@ -359,5 +359,5 @@ static func _door_gate(id: String, f: Dictionary) -> Dictionary:
 	if id == "border" and nm != "":
 		s["title"] = "Admitted at %s" % nm
 	if id == "room" and nm != "":
-		s["title"] = "Join %s (cover charge)" % nm
+		s["title"] = ("Join %s (cover charge)" % nm) if not (st == "ok" and not bool(d.get("cover", false))) else "%s: no cover charge" % nm
 	return s
