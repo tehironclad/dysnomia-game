@@ -259,6 +259,11 @@ func _frame(view: String) -> void:
 		camera.position = Vector3(6.0, core_h + 4.0, 34.0)
 		camera.look_at(Vector3(0.0, core_h + 8.0, 0.0))
 		camera.fov = 60.0
+	elif view == "skyline":
+		# The skyline's tower names from mid range (LabelDeclutter keeps them apart)
+		camera.position = Vector3(8.0, core_h + 6.0, 24.0)
+		camera.look_at(Vector3(0.0, core_h + 15.0, -38.0))
+		camera.fov = 60.0
 	elif view == "fair" and fair:
 		# Looking at the Affection Fair from its arrival side
 		var f := fair.global_position
