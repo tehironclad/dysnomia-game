@@ -345,7 +345,7 @@ func _build_panel() -> void:
 	_panel = PanelContainer.new()
 	_panel.theme = DeepFieldTheme.get_theme()
 	var sb := DeepFieldTheme.panel_style()
-	sb.bg_color.a = 0.93
+	sb.bg_color = Color(0.02, 0.025, 0.05, 0.97)
 	_panel.add_theme_stylebox_override("panel", sb)
 	_panel.set_anchors_preset(Control.PRESET_CENTER)
 	_panel.offset_left = -560

@@ -5,7 +5,7 @@ extends MidwayStage
 ## counter: it arcs onto the board and slides to where MidwaySim says it stops.
 
 const BOARD_Y := 0.945
-const HAND := Vector3(0.18, 1.28, 1.42)
+const HAND := Vector3(0.3, 1.24, 1.42)
 
 var _rings: Node3D
 var _pucks: Array = []        ## one per toss; earlier ones stay where they stopped
@@ -33,7 +33,7 @@ func build() -> void:
 		FairKit.cyl(_rings, r, r, 0.006, Vector3(0, 0.004 + i * 0.003, 0), FairKit.glow(cols[i], 0.7 + 0.3 * i, 0.5), 40)
 		FairKit.mesh(_rings, FairKit.torus_mesh(r - 0.008, r, 40, 4), Vector3(0, 0.012 + i * 0.003, 0), FairKit.glow(Color(0.9, 0.95, 1.0), 1.0, 0.6), Vector3.ZERO, false)
 	_rings.position = Vector3(0.0, BOARD_Y, -0.45)
-	var gold := FairKit.glow(Color(1.0, 0.78, 0.35), 1.6, 1.0)
+	var gold := FairKit.glow(Color(1.0, 0.78, 0.35), 0.8, 0.6)
 	for i in 3:
 		var p := FairKit.cyl(self, 0.05, 0.05, 0.026, Vector3(1.25 - i * 0.12, 1.09, 1.2), gold, 18)
 		_pucks.append(p)

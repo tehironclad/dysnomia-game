@@ -6,7 +6,7 @@ extends MidwayStage
 
 const RAIL_Y := [1.35, 1.95]
 const RAIL_Z := [-0.55, -0.85]
-const HAND := Vector3(0.24, 1.25, 1.42)
+const HAND := Vector3(0.36, 1.2, 1.42)
 const EDGE := 1.85   ## crystals beyond this are behind the side walls
 
 var _crystals: Array = []    ## [row][i] Node3D
@@ -28,7 +28,7 @@ func build() -> void:
 			var n := Node3D.new()
 			add_child(n)
 			var m := FairKit.mesh(n, FairKit.crystal_mesh(), Vector3.ZERO, FairKit.crystal_mat(FairKit.CRYSTAL_COLORS[(i + row) % 4]), Vector3.ZERO, false)
-			m.scale = Vector3.ONE * 0.36
+			m.scale = Vector3.ONE * 0.44
 			list.append(n)
 			fell.append(-1)
 		_crystals.append(list)

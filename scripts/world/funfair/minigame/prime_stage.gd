@@ -6,6 +6,7 @@ extends MidwayStage
 
 const WALL_Z := -1.15
 const MUZZLE := Vector3(0.0, 1.2, 0.85)
+const EYE := Vector3(0, 1.62, 2.05)
 
 var _pivots: Array = []      ## per slot: hinge Node3D (rotation.x: 0 up, PI/2 down, lying forward)
 var _numbers: Array = []     ## per slot: Label3D
@@ -66,7 +67,7 @@ func _begin() -> void:
 
 
 func eye() -> Transform3D:
-	return look(Vector3(0, 1.62, 2.05), Vector3(0, 1.75, -1.2))
+	return look(EYE, Vector3(0, 1.75, -1.2))
 
 
 func fov() -> float:
@@ -98,8 +99,11 @@ func render() -> void:
 			_rims[s].material_override = (_rim_good if MidwaySim.is_prime(int(ent[3])) else _rim_bad) if shot >= 0 else _rim_idle
 		_pivots[s].rotation.x = PI * 0.5 * (1.0 - up)
 	_reticle.visible = not sim.done
-	_reticle.position = Vector3(clampf(aim.x, -MidwaySim.AIM, MidwaySim.AIM) * 1800.0 / MidwaySim.AIM / 1000.0,
-		(1825.0 + clampf(aim.y, -MidwaySim.AIM, MidwaySim.AIM) * 700.0 / MidwaySim.AIM) / 1000.0, WALL_Z + 0.2)
+	# The sight floats in front of the fallen targets, on the line from your eye to the wall point
+	var wall := Vector3(clampf(aim.x, -MidwaySim.AIM, MidwaySim.AIM) * 1800.0 / MidwaySim.AIM / 1000.0,
+		(1825.0 + clampf(aim.y, -MidwaySim.AIM, MidwaySim.AIM) * 700.0 / MidwaySim.AIM) / 1000.0, WALL_Z + 0.06)
+	_reticle.position = EYE.lerp(wall, 0.75)
+	_reticle.scale = Vector3.ONE * 0.75
 	_reticle.rotation = Vector3(PI * 0.5, 0, 0)
 	var since := t - sim.last_tick
 	_tracer.visible = sim.last_tick >= 0 and since < 5
