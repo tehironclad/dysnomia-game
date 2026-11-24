@@ -85,7 +85,7 @@ The budgets are for a mid-range GPU at High:
 | object growth per frame | ≤ 0.05 | 0.0 |
 | script cost | — | ≈ 0.4 ms/frame |
 
-With the borders (four fields, three or four neighbour grounds at 129²), RatKing, `perf.gd` default
+With the borders (four fields, three or four neighbour grounds at 181²), RatKing, `perf.gd` default
 camera, 500 frames: 164 draw calls, 520 objects, 0.30 M primitives, object growth 0.04 (a one-off:
 the fair opening mid-sample; 200 frames read 0.12 for the same reason).
 
