@@ -212,9 +212,57 @@ func answer(id: String, what: String) -> void:
 		_client().answer_invite(id, what)
 
 
-## Both players confirm a proposed stake (or play without it).
+## Both players confirm a proposed stake (or play without it). A confirmation sent
+## from here is remembered on this computer (AGREED_PATH): pay() pays only a stake
+## this computer agreed to, so a dishonest game server can't invent a debt.
 func confirm_stake(match_id: String, ok: bool) -> bool:
-	return send_move(match_id, "stake_ok" if ok else "stake_no")
+	var sent := send_move(match_id, "stake_ok" if ok else "stake_no")
+	var nm: NetMatch = matches.get(match_id)
+	if sent and ok and nm != null:
+		remember_agreed(match_id, me(), String(nm.m.get("stake_text", "")))
+	return sent
+
+
+const AGREED_PATH := "user://wagers_agreed.cfg"
+
+
+## Records that `wallet` agreed to `stake_text` Ⓐ on match `match_id` from this computer.
+static func remember_agreed(match_id: String, wallet: String, stake_text: String, path: String = AGREED_PATH) -> void:
+	if match_id == "" or wallet == "" or stake_text == "":
+		return
+	var c := ConfigFile.new()
+	c.load(path)
+	c.set_value("agreed", "%s|%s" % [match_id, wallet.to_lower()], stake_text)
+	c.save(path)
+
+
+## The stake `wallet` agreed to on `match_id` from this computer ("" if none).
+static func agreed_stake(match_id: String, wallet: String, path: String = AGREED_PATH) -> String:
+	var c := ConfigFile.new()
+	if c.load(path) != OK:
+		return ""
+	return String(c.get_value("agreed", "%s|%s" % [match_id, wallet.to_lower()], ""))
+
+
+## Pure: "" when `w` may pay the debt of match `m` as the game server describes it,
+## given the stake this computer recorded `w` agreeing to; else why not. The server is
+## somebody's laptop: the recipient must be the other player of the match, the stake
+## a valid one that this computer agreed to, and `w` the loser.
+static func pay_refusal(m: Dictionary, w: String, agreed: String) -> String:
+	var players: Array = m.get("players", [])
+	var winner := NetProto.clean_wallet(String(m.get("winner", "")))
+	var loser := NetProto.clean_wallet(String(m.get("loser", "")))
+	if players.size() != 2 or winner == "" or loser == "" or winner == loser or not players.has(winner) or not players.has(loser):
+		return "the server's record of this game is not two players with a winner and a loser"
+	if w != loser:
+		return "the connected wallet is not the one that lost"
+	var st := InviteBook.clean_stake(String(m.get("stake_text", "")))
+	if st == "" or st == "!" or BigInt.cmp(NetMatch.stake_wei(st), m.get("stake", BigInt.zero())) != 0:
+		return "the stake in the server's record is not a valid amount of Ⓐ"
+	if agreed != st:
+		return ("this computer has no record of you agreeing to a %s Ⓐ stake on this game (the server says you did). " % st) + \
+			"Wagers are honour-bound: if you did agree, you can pay it yourself with a plain transfer from your wallet"
+	return ""
 
 
 func send_move(match_id: String, op: String, args: Array = []) -> bool:
@@ -472,6 +520,9 @@ func pay(id: String) -> Dictionary:
 		return {"ok": false, "stage": "wallet", "message": "Connect your wallet first (the wallet button on the front door)."}
 	if w != String(nm.m["loser"]):
 		return {"ok": false, "stage": "wallet", "message": "The connected wallet is not the one that lost #%s." % id}
+	var why := pay_refusal(nm.m, w, agreed_stake(id, w))
+	if why != "":
+		return {"ok": false, "stage": "precondition", "message": "Not paid: %s." % why}
 	var r: Dictionary = await TableBook.pay_debt(nm.m["winner"], nm.m["stake"])
 	if r.get("ok", false):
 		_note("wager", "#%s: your %s transfer is in block %d. Re-reading the debt from the chain…" % [id, NetMatch.fmt(nm.m["stake"]), int(r["block"])], id, nm.m["kind"], true)

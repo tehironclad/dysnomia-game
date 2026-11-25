@@ -223,6 +223,39 @@ func test_push_and_debts() -> void:
 	eq(nm.winner_index(), expect)
 
 
+func test_a_dishonest_server_cannot_invent_a_debt() -> void:
+	var Inv = load("res://scripts/net/invites.gd")
+	# B (index 1) "concedes" with a 3 Ⓐ stake both "confirmed": B owes A
+	var nm := NetMatch.replay(_rec("pool", "3", [_e(1, 0, "stake_ok"), _e(2, 1, "stake_ok"), _e(3, 1, "concede")]), _fake_block)
+	eq(nm.m["loser"], B)
+	eq(Inv.pay_refusal(nm.m, B, "3"), "", "B agreed to 3 Ⓐ on this computer: B may pay A")
+	check(Inv.pay_refusal(nm.m, B, "").contains("no record"), "no confirmation from this computer: the server's word alone is not a debt")
+	check(Inv.pay_refusal(nm.m, B, "2") != "", "agreed to another amount")
+	check(Inv.pay_refusal(nm.m, A, "3").contains("not the one that lost"), "the winner never pays")
+	var forged := nm.m.duplicate()
+	forged["winner"] = C
+	check(Inv.pay_refusal(forged, B, "3") != "", "a recipient who is not the other player")
+	forged = nm.m.duplicate()
+	forged["stake"] = NetMatch.stake_wei("3000")
+	check(Inv.pay_refusal(forged, B, "3") != "", "a stake that differs from its text")
+	# A record's stake that is not a valid amount of Ⓐ is no stake at all
+	var huge := NetMatch.new(_rec("pool", "99999999999", []))
+	eq(huge.m["stake_state"], "none", "over InviteBook's 7 whole digits: ignored")
+	check(BigInt.is_zero(huge.m["stake"]))
+	var junk := NetMatch.new({"id": "x", "game": "pool", "players": ["0xnot", B + "z"], "names": ["[url=x]a[/url]\u202e", "b"], "stake": "1e9", "room": ROOM, "created": 1, "log": []})
+	eq(junk.m["players"], ["", ""], "players are shape-checked")
+	check(not String(junk.m["names"][0]).contains("\u202e"), "names lose direction overrides")
+	eq(junk.m["stake_state"], "none")
+	# What this computer remembers
+	var p := "user://test_wagers_agreed.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+	eq(Inv.agreed_stake("m1", B, p), "")
+	Inv.remember_agreed("m1", B.to_upper().replace("0X", "0x"), "3", p)
+	eq(Inv.agreed_stake("m1", B, p), "3")
+	eq(Inv.agreed_stake("m2", B, p), "", "per match")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+
+
 # --- Wager -------------------------------------------------------------------
 
 func test_wager_states() -> void:

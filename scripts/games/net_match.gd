@@ -30,9 +30,15 @@ var _last_move_t := 0
 
 func _init(record: Dictionary = {}) -> void:
 	rec = record
-	var players: Array = record.get("players", ["", ""])
-	var names: Array = record.get("names", ["", ""])
-	var stake := String(record.get("stake", ""))
+	var players: Array = record.get("players", ["", ""]) if record.get("players") is Array and record["players"].size() == 2 else ["", ""]
+	var names: Array = record.get("names", ["", ""]) if record.get("names") is Array and record["names"].size() == 2 else ["", ""]
+	# The record comes from the game server: wallets and names are shape-checked, and a
+	# stake that is not a valid amount of Ⓐ (InviteBook's rule) is no stake at all.
+	players = [NetProto.clean_wallet(String(players[0])), NetProto.clean_wallet(String(players[1]))]
+	names = [NetProto.clean_text(String(names[0]), NetProto.NAME_MAX_CHARS), NetProto.clean_text(String(names[1]), NetProto.NAME_MAX_CHARS)]
+	var stake := InviteBook.clean_stake(String(record.get("stake", "")))
+	if stake == "!":
+		stake = ""
 	m = {"id": String(record.get("id", "")), "kind": String(record.get("game", "")), "net": true,
 		"challenger": String(players[0]), "invite": String(players[1]), "stake": stake_wei(stake), "stake_text": stake,
 		"players": [String(players[0]), String(players[1])], "names": [String(names[0]), String(names[1])],
