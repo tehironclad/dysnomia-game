@@ -30,6 +30,10 @@ var _gpu: Label
 var _live: Label
 var _cal: Label
 var _live_t := 0.0
+var _scroll: ScrollContainer
+var _col: VBoxContainer
+const EDGE_PX := 16.0  ## kept clear around the panel when the window is short
+const TOP_PX := 44.0   ## and clear of the wallet chip (top centre)
 const TARGETS := [0, 30, 60, 120]  ## frame-rate target choices (0 = automatic)
 
 
@@ -41,9 +45,16 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_CENTER)
 	custom_minimum_size = Vector2(560, 0)
 	position = Vector2(-280, -300)
+	# Scrolls when the window is shorter than the panel (720p laptops: Apply/Close were
+	# below the bottom edge and out of reach; audit 2026-11-25).
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(_scroll)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
-	add_child(col)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.add_child(col)
+	_col = col
 	var title := Label.new()
 	title.theme_type_variation = "DisplayLabel"
 	title.add_theme_font_size_override("font_size", 20)
@@ -229,9 +240,19 @@ func _slider(grid: GridContainer, label: String, lo: float, hi: float, step: flo
 	v.theme_type_variation = "MonoLabel"
 	v.custom_minimum_size = Vector2(64, 0)
 	h.add_child(v)
-	s.value_changed.connect(func(x: float): v.text = ("%.0f%%" % (x * 100.0)) if hi <= 1.0 else (("%.4f" % x) if step < 0.01 else "%.0f" % x))
+	s.value_changed.connect(func(x: float): v.text = slider_text(x, hi, step))
 	_row(grid, label, h)
 	return s
+
+
+## Pure: a slider's value as shown beside it. Volumes (0–1 in 0.05 steps) are percentages;
+## fine steps (mouse sensitivity, 0.0005) show their digits, not "0%".
+static func slider_text(x: float, hi: float, step: float) -> String:
+	if step < 0.01:
+		return "%.4f" % x
+	if hi <= 1.0:
+		return "%.0f%%" % (x * 100.0)
+	return "%.0f" % x
 
 
 func _detected_line() -> String:
@@ -319,9 +340,18 @@ func show_menu() -> void:
 	visible = true
 	# Centre in the window (works whether the parent is a Control or a CanvasLayer).
 	await get_tree().process_frame
-	var vp := get_viewport_rect().size
-	global_position = ((vp - size) * 0.5).max(Vector2.ZERO)
+	_fit()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+
+## As tall as the content, at most the window's height (then it scrolls); centred.
+func _fit() -> void:
+	var vp := get_viewport_rect().size
+	_scroll.custom_minimum_size.y = minf(_col.get_combined_minimum_size().y, maxf(200.0, vp.y - TOP_PX - EDGE_PX - 16.0))
+	reset_size()
+	var at := ((vp - size) * 0.5).max(Vector2.ZERO)
+	at.y = clampf(at.y, minf(TOP_PX, maxf(0.0, vp.y - size.y)), maxf(0.0, vp.y - size.y))
+	global_position = at
 
 
 func hide_menu() -> void:

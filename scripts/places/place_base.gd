@@ -20,6 +20,10 @@ var _near_exit := false
 var door: PassDoor
 var _spawn := Vector3.ZERO
 var help: ControlsHelp  ## F1 (the hint promises it)
+## F1/F2 panels: their own layer above the chat dock and the wallet chip; F2 settings
+## were missing in places (F1 lists them; audit 2026-11-25).
+var _panels: CanvasLayer
+var _settings: PanelContainer
 
 
 ## Flat floor for the player controller's height queries.
@@ -97,7 +101,8 @@ func setup_hud(title: String) -> void:
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hint.add_theme_constant_override("separation", 6)
 	root.add_child(hint)
-	var keys := [[ControlsHelp.key_of("chat"), "speak"], [ControlsHelp.key_of("interact"), "at the exit: leave"], [ControlsHelp.key_of("controls_help"), "controls"]]
+	var keys := [[ControlsHelp.key_of("chat"), "speak"], [ControlsHelp.key_of("interact"), "at the exit: leave"], [ControlsHelp.key_of("controls_help"), "controls"],
+		[ControlsHelp.key_of("settings"), "settings"]]
 	for i in keys.size():
 		hint.add_child(DeepFieldTheme.key_chip(String(keys[i][0])))
 		var kl := Label.new()
@@ -106,9 +111,13 @@ func setup_hud(title: String) -> void:
 		kl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))  # readable over the floor rings
 		kl.add_theme_constant_override("outline_size", 6)
 		hint.add_child(kl)
+	_panels = CanvasLayer.new()
+	_panels.name = "Panels"
+	_panels.layer = 26
+	add_child(_panels)
 	help = ControlsHelp.new()
 	help.position = Vector2(20, 130)
-	root.add_child(help)
+	_panels.add_child(help)
 	add_child(NotificationPanel.new())  # invites, stakes, wagers: above a seated table too
 
 
@@ -223,7 +232,42 @@ func _unhandled_input(event: InputEvent) -> void:
 		_leave()
 	elif event.is_action_pressed("controls_help") and help:
 		get_viewport().set_input_as_handled()
+		_close_settings()
 		help.toggle()
+	elif event.is_action_pressed("settings"):
+		get_viewport().set_input_as_handled()
+		_toggle_settings()
+	elif event.is_action_pressed("ui_cancel") and ((help and help.visible) or (_settings and _settings.visible)):
+		get_viewport().set_input_as_handled()
+		if help and help.visible:
+			help.toggle()
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		_close_settings()
+
+
+## F2: the same settings as in the territory, here too.
+func _toggle_settings() -> void:
+	if _settings != null and _settings.visible:
+		_close_settings()
+		return
+	if help and help.visible:
+		help.toggle()
+	if _settings == null:
+		_settings = PanelContainer.new()
+		_settings.set_script(load("res://scripts/ui/settings_menu.gd"))
+		_settings.visible = false
+		_panels.add_child(_settings)
+		_settings.settings_closed.connect(_close_settings)
+	_settings.show_menu()
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+
+
+func _close_settings() -> void:
+	if _settings == null or not _settings.visible:
+		return
+	_settings.hide_menu()
+	player.process_mode = Node.PROCESS_MODE_INHERIT
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 
 static func load_piece(name: String) -> Node3D:
