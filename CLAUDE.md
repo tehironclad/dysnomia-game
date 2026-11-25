@@ -149,7 +149,9 @@
 - QING chat anywhere (LEARNINGS §17): autoload `ChatFeed` keeps one live `RoomFeed` per room (shared by the HUD,
   the hall, the tables and Phenomena; it survives scene changes) and owns the overlay `ChatHud`: the bar
   (`ChatBar`, T; Enter posts, Esc keeps the text, Up recalls, 1–4 quick lines, Tab say/post when an autoload
-  `Net` exists) and the feed (`ChatFeedPanel`, Y history). Posts queue in `ChatOutbox` (several → one Multicall3
+  `Net` exists) and the dock (`ChatFeedPanel`, bottom-left: faces, colours, ages, mentions; U folds it; Y history).
+  HUD corners: `HudLayout` (a notification bell goes in `HudV2.notify_slot`, top-right); type sizes:
+  `DeepFieldTheme.FS_*`, never under `FS_MIN`. Posts queue in `ChatOutbox` (several → one Multicall3
   tx). `ChatInputGuard` lifts gameplay actions while typing. World: `scripts/world/chat_life.gd` (bubbles via
   `ChatFeed.bubble_for(wallet)`/`register_speaker`, rising echoes, crown glow, top-speaker tower markers).
   Check: `tools/live_chat.gd` (read-only). Shots: `--chat=bar|history [--chat-text=…] --chat-replay=N`, `--view=chat`.

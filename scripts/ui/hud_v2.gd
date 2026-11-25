@@ -280,6 +280,26 @@ func _on_state() -> void:
 	_facts["door"].set_fact(_state.cover_charge, func(v): return "none — door open" if BigInt.is_zero(BigInt.coerce(v)) else tok.call(v) + " (asset)")
 	_facts["you"].set_fact(you_fact(_state, Session.wallet))
 	_facts["dev"].set_fact(dev_fact(_state))
+	if _state.block > 0 and _state.block != _read_block:
+		_read_block = _state.block
+		_pulse_where()
+
+
+var _read_block := -1
+
+
+## The territory panel's edge brightens and settles when a new read of the
+## territory lands (a real block), like a heartbeat of the land.
+func _pulse_where() -> void:
+	var ws := where_box.get_theme_stylebox("panel") as StyleBoxFlat
+	if ws == null or not where_box.is_inside_tree():
+		return
+	var tw := where_box.create_tween()
+	ws.border_color = Color(_tint, 1.0)
+	ws.shadow_color = Color(_tint, 0.3)
+	ws.shadow_size = 8
+	tw.tween_property(ws, "border_color", Color(_tint, 0.55), 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(ws, "shadow_color", Color(_tint, 0.0), 1.4)
 
 
 ## Your place on this territory's board (known players: a floor), with the

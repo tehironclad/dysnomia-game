@@ -13,7 +13,7 @@ extends PanelContainer
 signal opened
 signal closed
 
-const WIDTH := 640.0
+const WIDTH := 540.0  # HudLayout.DOCK_W: the bar opens under the dock, as wide
 
 var edit: LineEdit
 var mode_btn: Button
@@ -52,7 +52,7 @@ func _init() -> void:
 	edit.max_length = ChatDraft.MAX_LEN
 	edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	edit.add_theme_font_override("font", DeepFieldTheme.mono_font())
-	edit.add_theme_font_size_override("font_size", DeepFieldTheme.FS_SMALL)
+	edit.add_theme_font_size_override("font_size", DeepFieldTheme.FS_BODY)
 	edit.text_submitted.connect(func(_t): send())
 	edit.text_changed.connect(func(_t): _update_count())
 	edit.gui_input.connect(_on_edit_input)
@@ -88,7 +88,9 @@ func _init() -> void:
 	hint = Label.new()
 	hint.theme_type_variation = "MutedLabel"
 	hint.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
-	hint.add_theme_color_override("font_color", DeepFieldTheme.DIM)
+	hint.add_theme_color_override("font_color", DeepFieldTheme.MUTED)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.custom_minimum_size = Vector2(WIDTH - 28, 0)
 	col.add_child(hint)
 
 
