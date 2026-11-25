@@ -67,17 +67,20 @@ func request(method: String, params: Array = []) -> Dictionary:
 			_slot_freed.emit()
 			return res
 	# 1) the current node, once, with a short timeout
-	res = await _send_once(method, params)
+	var tried := endpoint
+	res = await _send_once(method, params, tried)
 	# 2) unreachable → every other public node once (fast failover, not 4 slow retries)
 	if not res["ok"] and res["kind"] == "transport":
-		_log_once(endpoint, String(res["error"]["message"]))
+		_log_once(tried, String(res["error"]["message"]))
 		for alt in FALLBACKS:
-			if alt == endpoint:
+			if alt == tried:
 				continue
 			var r2 := await _send_once(method, params, alt)
 			if r2["ok"] or r2["kind"] != "transport":
-				print("[Rpc] %s unreachable (%s) — switched to %s" % [endpoint, res["error"]["message"], alt])
-				endpoint = alt
+				# Concurrent requests fail over together: only the first one switches (and says so).
+				if endpoint == tried:
+					print("[Rpc] %s unreachable (%s) — switched to %s" % [tried, res["error"]["message"], alt])
+					endpoint = alt
 				res = r2
 				break
 			_log_once(alt, String(r2["error"]["message"]))
@@ -163,19 +166,42 @@ func _send_raw(method: String, params: Array, url: String = "") -> Dictionary:
 	if not url_ok(target):
 		return {"ok": false, "kind": "transport", "error": {"message": "refused a non-https RPC address (%s)" % target.left(60)}}
 	var http := HTTPRequest.new()
-	http.timeout = TIMEOUT_S
+	# The request runs on its own thread and the timeout is our own clock (below), not the
+	# node's Timer: a long main-thread stall (a build stage on a slow PC, 2–10 s) used to
+	# time out every request in flight, mark good nodes unreachable and fail over (audit 2026-11-25).
+	http.timeout = 0.0
+	http.use_threads = true
 	http.body_size_limit = BODY_LIMIT
 	apply_tls(http)
 	add_child(http)
 	var body := JSON.stringify({"jsonrpc": "2.0", "id": _next_id, "method": method, "params": params})
 	_next_id += 1
+	var out: Array = []
+	http.request_completed.connect(func(a, b, c, d): out.assign([a, b, c, d]), CONNECT_ONE_SHOT)
 	var err := http.request(target, PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, body)
 	if err != OK:
 		http.queue_free()
 		return {"ok": false, "kind": "transport", "error": {"message": "request error %d" % err}}
-	var r: Array = await http.request_completed
+	var waited := 0.0
+	var last := Time.get_ticks_usec()
+	while out.is_empty():
+		await get_tree().process_frame
+		var now := Time.get_ticks_usec()
+		waited += timeout_step(now - last)
+		last = now
+		if out.is_empty() and waited >= TIMEOUT_S:
+			http.cancel_request()
+			http.queue_free()
+			return classify(HTTPRequest.RESULT_TIMEOUT, 0, PackedByteArray())
 	http.queue_free()
-	return classify(r[0], r[1], r[3])
+	return classify(out[0], out[1], out[3])
+
+
+## Pure: how much of a frame's wall time counts toward a request's timeout. A frame longer
+## than STALL_CAP_S was the game busy (building, compiling), not the node being slow.
+const STALL_CAP_S := 0.25
+static func timeout_step(frame_us: int) -> float:
+	return minf(maxf(float(frame_us), 0.0) / 1000000.0, STALL_CAP_S)
 
 
 ## Pure: turns an HTTPRequest completion into a result Dictionary.

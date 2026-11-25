@@ -42,3 +42,13 @@ func test_block_param() -> void:
 	eq(Rpc.block_param(28124253), "0x1ad245d")
 	eq(Rpc.block_param("latest"), "latest")
 	eq(Rpc.block_param({"blockHash": "0xab"}), {"blockHash": "0xab"})
+
+
+## A request's timeout counts frames, capped: a long main-thread stall (a build stage) is
+## the game being busy, not the node being unreachable.
+func test_timeout_ignores_main_thread_stalls() -> void:
+	near(Rpc.timeout_step(16000), 0.016, 1e-9, "a normal frame counts in full")
+	near(Rpc.timeout_step(220000), 0.22, 1e-9, "a slow frame (4 fps) still counts")
+	near(Rpc.timeout_step(9700000), Rpc.STALL_CAP_S, 1e-9, "a 9.7 s build stage counts as one capped frame")
+	near(Rpc.timeout_step(-5), 0.0, 1e-9, "a clock step back counts nothing")
+	check(Rpc.TIMEOUT_S / Rpc.STALL_CAP_S >= 30.0, "a timeout needs many frames, never one stall")
