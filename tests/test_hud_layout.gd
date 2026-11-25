@@ -22,3 +22,9 @@ func test_you_strip_text() -> void:
 	var ps := PlayerState.new()
 	ps.ok = true
 	check(HudV2.you_text(w, ps)["sub"].begins_with("no LAU yet"))
+
+
+func test_history_opens_between_the_columns() -> void:
+	var left := HudLayout.MARGIN + HudLayout.DOCK_W + HudLayout.GAP * 2
+	check(left > HudLayout.MARGIN + HudLayout.COL_W, "right of the territory panel")
+	check(left + ChatFeedPanel.HISTORY_W <= 1920 - HudLayout.MARGIN - HudLayout.COL_W, "left of the right column: the dock and the tracker stay readable")

@@ -21,6 +21,7 @@ const GREET_S := 22.0  # how long the arrival greeting heads the dock
 const FRESH_S := 45.0  # a new line stays bright this long, then settles
 const OWN_TTL := 12.0  # a posted/failed line of yours
 const FACE_PX := 34.0
+const HISTORY_W := 840.0  # the history opens beside the dock, clear of both columns
 const GOLD := Color("#ffd27a")
 const UI_PREFS := "user://ui.cfg"  # this machine's UI choices (the dock folded or not)
 
@@ -132,7 +133,7 @@ func _build_history() -> void:
 	history.add_theme_stylebox_override("panel", sb)
 	history.visible = false
 	history.mouse_filter = Control.MOUSE_FILTER_STOP
-	history.custom_minimum_size = Vector2(900, 700)
+	history.custom_minimum_size = Vector2(HISTORY_W, 700)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
 	history.add_child(col)
@@ -143,13 +144,13 @@ func _build_history() -> void:
 	history_sub = Label.new()
 	history_sub.theme_type_variation = "MutedLabel"
 	history_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	history_sub.custom_minimum_size = Vector2(850, 0)
+	history_sub.custom_minimum_size = Vector2(HISTORY_W - 50, 0)
 	col.add_child(history_sub)
 	history_text = RichTextLabel.new()
 	history_text.bbcode_enabled = true
 	history_text.scroll_following = true
 	history_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	history_text.custom_minimum_size = Vector2(850, 460)
+	history_text.custom_minimum_size = Vector2(HISTORY_W - 50, 460)
 	history_text.add_theme_font_override("normal_font", DeepFieldTheme.mono_font())
 	history_text.add_theme_font_size_override("normal_font_size", DeepFieldTheme.FS_SMALL)
 	history_text.meta_underlined = false
@@ -160,7 +161,7 @@ func _build_history() -> void:
 	history_hover.theme_type_variation = "MonoLabel"
 	history_hover.add_theme_color_override("font_color", DeepFieldTheme.ICE)
 	history_hover.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	history_hover.custom_minimum_size = Vector2(850, 0)
+	history_hover.custom_minimum_size = Vector2(HISTORY_W - 50, 0)
 	history_hover.text = "Hover a line for its block, transaction and source."
 	col.add_child(history_hover)
 	var f := HBoxContainer.new()

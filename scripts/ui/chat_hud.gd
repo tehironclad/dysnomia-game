@@ -54,9 +54,10 @@ func _ready() -> void:
 		feed.offset_top = -HudLayout.DOCK_BOTTOM)
 	var h := feed.history
 	_root.add_child(h)
-	h.set_anchors_preset(Control.PRESET_CENTER)
-	h.offset_left = -h.custom_minimum_size.x * 0.5
-	h.offset_right = h.custom_minimum_size.x * 0.5
+	# Beside the dock (whose lines it continues), between the HUD's two columns.
+	h.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+	h.offset_left = HudLayout.MARGIN + HudLayout.DOCK_W + HudLayout.GAP * 2
+	h.offset_right = h.offset_left + h.custom_minimum_size.x
 	h.offset_top = -h.custom_minimum_size.y * 0.5
 	h.offset_bottom = h.custom_minimum_size.y * 0.5
 	_refresh()
