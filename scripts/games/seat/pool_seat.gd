@@ -678,6 +678,9 @@ func _net_texts(m: Dictionary) -> void:
 			"play":
 				seat.set_badge("GAME #%s OVER THE GAME SERVER · %s · your shot goes to the server (no transaction) and both tables replay it" % [m["id"], vs], true)
 			"wait":
+				var t := TableBook.turn_index(m)
+				if t >= 0 and String(m["names"][t]) != "":
+					seat.headline.text = "%s TO SHOOT" % String(m["names"][t]).to_upper()
 				seat.set_badge("GAME #%s OVER THE GAME SERVER · %s · their shot replays here from the server's log, from behind the cue ball" % [m["id"], vs], true)
 			_:
 				seat.set_badge("GAME #%s OVER THE GAME SERVER · %s" % [m["id"], vs], true)
