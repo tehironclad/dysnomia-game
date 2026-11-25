@@ -119,10 +119,16 @@ var pace_budget_us := 0
 var _building := false
 
 
+## The development tier asked for last: a change that arrives mid-build or mid-ride is
+## applied once that ends (it used to be dropped, leaving the fair at the old size).
+var _want_dev := -1
+
+
 func set_dev_tier(dev_tier: int) -> void:
+	_want_dev = dev_tier
 	var t := fair_tier(dev_tier)
-	if t == _tier or _riding != null or _building:
-		return
+	if t == _tier or _riding != null or _building or _game != null or _paying:
+		return  # a midway game's stage belongs to the fair: rebuilt once the game closes
 	_tier = t
 	if _fair:
 		_fair.queue_free()
@@ -135,6 +141,8 @@ func set_dev_tier(dev_tier: int) -> void:
 	_building = true
 	await _fair.initialize(_qing.hex_to_int() if _qing.length() < 16 else _qing.right(12).hex_to_int(), t)
 	_building = false
+	if not is_instance_valid(_fair):
+		return
 	if t == 0 and _fair.has_method("set_unlock_hint"):
 		_fair.set_unlock_hint("Opens at Settlement development · grow this QING's Hypobar")
 	if t > 0 and _hud:
@@ -162,6 +170,13 @@ func set_dev_tier(dev_tier: int) -> void:
 		refresh_progress()
 		for g in _fair.game_spots:
 			g["stage"].refresh_shelf(_qing)  # the prize shelves: what's left today, and yours
+	_catch_up.call_deferred()
+
+
+## A tier asked for while this one was building or a ride was running.
+func _catch_up() -> void:
+	if _want_dev >= 0 and fair_tier(_want_dev) != _tier and _riding == null and not _building and _game == null and not _paying:
+		set_dev_tier(_want_dev)
 
 
 static func _compass(v: Vector2) -> String:
@@ -280,6 +295,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	else:
 		res = await ArcadePay.transfer_to_qing(_qing, label, fee)
 	_paying = false
+	_catch_up.call_deferred()  # a tier change waited for the wallet (the ride must not be freed mid-payment)
 	_hud.hide_prompt()
 	if not res.get("ok", false):
 		_ticket_failed(res, "rocket" if rocket else "fair_ticket", fee)
@@ -354,6 +370,7 @@ func _buy_game(game: String, item: int, plays: int) -> void:
 	_hud.ticker("Ticket (%s): approve %s to this QING in your wallet…" % [what, price], DeepFieldTheme.ICE, 20.0)
 	var res: Dictionary = await ArcadePay.buy(_qing, "Affection Fair · %s (%s)" % [what, price], item, plays)
 	_paying = false
+	_catch_up.call_deferred()  # a tier change waited for the wallet (the ride must not be freed mid-payment)
 	_hud.hide_prompt()
 	if not res.get("ok", false):
 		_ticket_failed(res, "fair_ticket", Prices.ticket_wei(item, plays))
@@ -460,6 +477,7 @@ func _play(id: String, seed_v: int, paid: bool, note: String, ticket: Dictionary
 		_game.queue_free()
 		_game = null
 		_focus_key = ""
+		_catch_up.call_deferred()
 		_player.set_physics_process(true)
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 		_update_plaques()
@@ -750,6 +768,7 @@ func _on_finished(ride: RideBase) -> void:
 		_riding = null
 		if _howto:
 			_howto.end()
+		_catch_up.call_deferred()
 
 
 func _build_terrace(depth: float, tint: Color) -> void:
