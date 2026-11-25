@@ -7,10 +7,18 @@ extends PanelContainer
 ## in the receipt and your bars here re-read at the blocks either side. A round
 ## for the house is 1 Ⓐ to this QING (ArcadePay.transfer_to_qing, verified).
 ## Nothing is shown as done before its receipt is read; a failed read is "—".
+##
+## The pub moves the menu out of the way while an order is out (order_started): it hides it,
+## shows the wallet's progress small (status_changed), plays the pour once the receipt is read
+## (poured / round_bought) and brings the menu back with the result (reveal). The write pipeline
+## is untouched; only where its words are shown changed.
 
 signal closed
 signal poured(drink: Dictionary, result: Dictionary)
 signal round_bought(result: Dictionary)
+signal order_started(drink: Dictionary)          ## Pour / Buy pressed: the wallet takes over
+signal order_failed(drink: Dictionary, result: Dictionary)  ## not poured (any stage): nothing happened
+signal status_changed(text: String, color: Color)  ## every status line, shown or not
 
 const OK := Color("#64e3a8")
 const WARN := Color("#ffd27a")
@@ -180,6 +188,21 @@ func close() -> void:
 	closed.emit()
 
 
+## Shows the menu again as it was (the status and the measured result kept), after the pour.
+func reveal() -> void:
+	visible = true
+	if _sel.is_empty():
+		return
+	for b in _buttons:
+		if b.button_pressed:
+			b.grab_focus()
+
+
+## An order is out (between Pour and its receipt).
+func is_busy() -> bool:
+	return _busy
+
+
 func _select(d: Dictionary) -> void:
 	_sel = d
 	_name.text = String(d["name"]).to_upper()
@@ -252,6 +275,7 @@ func _on_pour() -> void:
 	_pour.disabled = true
 	_result.text = ""
 	var d := _sel
+	order_started.emit(d)
 	if d["id"] == BarTab.ROUND["id"]:
 		_label = "Round for the house at Sunny's (%s)" % ArcadePay.fee_text()
 		var r: Dictionary = await ArcadePay.transfer_to_qing(qing, _label)
@@ -265,6 +289,7 @@ func _on_pour() -> void:
 			Session.refresh()
 		else:
 			_set_status("Not bought (%s): %s" % [r.get("stage", "?"), r.get("message", "")], WARN)
+			order_failed.emit(d, r)
 		_pour.disabled = _blocker() != ""
 		return
 	_label = "%s at Sunny's · %s" % [d["name"], BarTab.call_text(d, qing, _seed_value(), _phi.button_pressed)]
@@ -276,6 +301,7 @@ func _on_pour() -> void:
 	_pour.disabled = _blocker() != ""
 	if not res["ok"]:
 		_set_status("Not poured (%s): %s" % [res.get("stage", "?"), res.get("message", "")], WARN)
+		order_failed.emit(d, res)
 		return
 	_set_status("Poured. Here's what the chain shows:", OK)
 	_result.text = BarTab.report(d, res) + ("" if yue != "" else "\n(No YUE on this wallet, so there are no bars to read: —.)")
@@ -286,10 +312,11 @@ func _on_pour() -> void:
 func _set_status(t: String, c: Color) -> void:
 	_status.text = t
 	_status.add_theme_color_override("font_color", c)
+	status_changed.emit(t, c)
 
 
 func _on_stage(label: String, stage: String, info: Dictionary) -> void:
-	if not visible or label != _label:
+	if label != _label or not _busy:  # the menu may be hidden while the order is out: still follow it
 		return
 	match stage:
 		"simulate": _set_status("Simulating from your wallet…", DeepFieldTheme.ICE)

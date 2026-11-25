@@ -216,8 +216,33 @@ func play_pour(look: Array, rounds: int = 1) -> void:
 		tw.tween_interval(40.0)
 		tw.tween_property(g, "scale", Vector3.ONE * 0.01, 0.4)
 		tw.tween_callback(_drop_glass.bind(g))
+		g.set_meta("serve_tween", tw)
 	while _glasses.size() > MAX_GLASSES:
 		_drop_glass(_glasses[0])
+
+
+## The glasses the last play_pour served (the first of them first). PourScene hands one over.
+func served(rounds: int = 1) -> Array[Node3D]:
+	var out: Array[Node3D] = []
+	for i in range(maxi(0, _glasses.size() - rounds), _glasses.size()):
+		out.append(_glasses[i])
+	return out
+
+
+## Takes a served glass out of its serve (PourScene hands it to the player): its tween stops.
+func take(g: Node3D) -> void:
+	var tw: Tween = g.get_meta("serve_tween", null)
+	if tw and tw.is_valid():
+		tw.kill()
+
+
+## A glass put back on the counter: cleared away after `delay` s.
+func retire(g: Node3D, delay: float = 40.0) -> void:
+	var tw := create_tween()
+	tw.tween_interval(delay)
+	tw.tween_property(g, "scale", Vector3.ONE * 0.01, 0.4)
+	tw.tween_callback(_drop_glass.bind(g))
+	g.set_meta("serve_tween", tw)
 
 
 func _drop_glass(g: Node3D) -> void:

@@ -11,6 +11,12 @@ extends GamesPlace
 ## The bar menu (BarMenu, at the counter): every drink is the visitor's own real
 ## call through the write rule, then measured on chain; a round for the house
 ## is 1 Ⓐ to this QING, and the room cheers only once the receipt shows it.
+##
+## Ordering (2026-11-25): Pour hides the menu at once; while the wallet works a small line says
+## where it is (the menu's own status words). Once the receipt is read, PourScene shows Sunny
+## pouring and sliding the glass down, then you drinking it (any key skips); then the menu comes
+## back with what the chain measured. A failed order brings the menu straight back with why.
+## Sunny's words are VoiceLines (real recordings when they exist; subtitles always).
 
 const HX := PubRoom.W
 const BACK := PubRoom.BACK
@@ -27,6 +33,15 @@ var _bubble_t := 0.0
 var _talk_i := 0
 var _till: Label3D
 var _deco := PubKit.Batch.new()  # sunflowers, suns and stems: a few draw calls
+var bar_state := "idle"  ## the bar: idle | menu | waiting (the wallet has the order) | pour (PourScene)
+var pour_scene: PourScene
+var subtitles: SubtitleBar
+var _wait_chip: PanelContainer
+var _wait_label: Label
+var _wait_said := false
+var _greeted := false
+var _idle_t := 40.0
+var _idle_i := 0
 
 
 func _ready() -> void:
@@ -259,16 +274,27 @@ func _build_menu() -> void:
 	center.add_child(bar_menu)
 	bar_menu.setup(qing, String(territory.get("name", "")))
 	bar_menu.closed.connect(func():
+		if bar_state != "menu":
+			return
+		bar_state = "idle"
 		life.attend(Vector3.INF)
+		say_line("goodbye")
 		_resume())
+	bar_menu.order_started.connect(_on_order_started)
+	bar_menu.order_failed.connect(_on_order_failed)
+	bar_menu.status_changed.connect(_on_order_status)
 	bar_menu.poured.connect(func(d, r):
-		life.play_pour(d["look"])
-		_say("Sunny: one %s, on the chain in block %d. Enjoy." % [d["name"], r["block"]]))
+		_on_served(d["look"], 1, "· %s · block %s" % [d["name"], TokenFormat.group(str(r["block"]))]))
 	bar_menu.round_bought.connect(func(r):
-		life.play_pour(BarTab.ROUND["look"], 3)
 		life.cheer()
-		_say("Sunny: a round for the house! %s to this QING, verified in block %d. CHEERS!" % [ArcadePay.fee_text(), r["block"]], 12.0)
-		_read_till(r["block"]))
+		_read_till(r["block"])
+		_on_served(BarTab.ROUND["look"], 3, "· %s to this QING · block %s" % [ArcadePay.fee_text(), TokenFormat.group(str(r["block"]))]))
+	pour_scene = PourScene.new()
+	pour_scene.name = "PourScene"
+	add_child(pour_scene)
+	subtitles = SubtitleBar.new()
+	_ui_layer.add_child(subtitles)
+	_build_wait_chip()
 	var ask := Button.new()
 	ask.text = "Ask Sunny about the house"
 	ask.pressed.connect(_talk)
@@ -276,18 +302,133 @@ func _build_menu() -> void:
 
 
 func _open_menu(preselect: String = "") -> void:
+	if bar_state != "idle":
+		return
+	bar_state = "menu"
 	player.process_mode = Node.PROCESS_MODE_DISABLED
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	life.attend(player.global_position)
 	life.talk(3.0)
-	_say("Sunny: what'll it be? Every drink here is your own call, on the chain.")
+	say_line("menu_open")
 	bar_menu.open(preselect)
 
 
+## Sunny says one of his lines (VoiceLines: his recording if it exists; the subtitle always),
+## with a measured `detail` after the words in the subtitle only.
+func say_line(id: String, detail: String = "") -> void:
+	var r := VoiceLines.say(sunny, "sunny", id, detail)
+	_say("Sunny: " + String(r["text"]), float(r["seconds"]) + 2.0)
+
+
+## Sunny says `text` (the bubble over his head and the subtitle at the bottom).
 func _say(text: String, seconds: float = 10.0) -> void:
 	_bubble.text = text
 	_bubble_t = seconds
 	life.talk(minf(seconds, 5.0))
+	if subtitles:
+		var words := text.trim_prefix("Sunny: ")
+		subtitles.show_line("Sunny", words.left(1).to_upper() + words.substr(1), seconds)
+	_idle_t = maxf(_idle_t, seconds + 20.0)
+
+
+# --- An order, from Pour to the drink -----------------------------------------------
+
+## Pour / Buy pressed: the menu goes; a small line follows the wallet (simulate, sign, receipt).
+func _on_order_started(d: Dictionary) -> void:
+	if bar_state != "menu":
+		return
+	bar_state = "waiting"
+	bar_menu.visible = false
+	_wait_said = false
+	_show_wait("%s · simulating from your wallet…" % String(d.get("name", "Your order")))
+	say_line("order_taken")
+
+
+func _on_order_status(text: String, _c: Color) -> void:
+	if _wait_chip == null or not _wait_chip.visible:
+		return
+	_wait_label.text = text
+	if not _wait_said and text.begins_with("Waiting for your signature"):
+		_wait_said = true
+		say_line("payment_waiting")
+
+
+func _on_order_failed(_d: Dictionary, _r: Dictionary) -> void:
+	_wait_chip.visible = false
+	say_line("payment_failed")
+	if bar_state == "waiting":
+		bar_state = "menu"
+		bar_menu.reveal()  # with why it wasn't poured
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+
+## The receipt was read: the pour. Still at the bar: the scene; walked off: Sunny pours anyway.
+func _on_served(look: Array, rounds: int, detail: String) -> void:
+	_wait_chip.visible = false
+	if bar_state != "waiting":
+		life.play_pour(look, rounds)
+		say_line("here_you_go", detail)
+		return
+	_play_pour(look, rounds, detail)
+
+
+func _play_pour(look: Array, rounds: int, detail: String, preview_t: float = -1.0) -> void:
+	bar_state = "pour"
+	bar_menu.visible = false
+	hud_layer.visible = false
+	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+	pour_scene.play(self, life, player, look, rounds, detail, say_line)
+	if preview_t >= 0.0:
+		pour_scene.preview_at(preview_t)
+		return
+	await pour_scene.finished
+	hud_layer.visible = true
+	bar_state = "menu"
+	bar_menu.reveal()  # what the chain measured
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	life.attend(player.global_position)
+	say_line("order_another")
+
+
+func _build_wait_chip() -> void:
+	_wait_chip = PanelContainer.new()
+	_wait_chip.theme = DeepFieldTheme.get_theme()
+	var sb := DeepFieldTheme.panel_style(Color(1.0, 0.78, 0.4, 0.5))
+	sb.bg_color = Color(DeepFieldTheme.BLACK, 0.86)
+	_wait_chip.add_theme_stylebox_override("panel", sb)
+	_wait_chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_wait_chip.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_wait_chip.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_wait_chip.offset_top = 64
+	var col := VBoxContainer.new()
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_wait_chip.add_child(col)
+	var t := Label.new()
+	t.theme_type_variation = "DisplayLabel"
+	t.add_theme_font_size_override("font_size", 14)
+	t.add_theme_color_override("font_color", Color(1.0, 0.8, 0.45))
+	t.text = "YOUR ORDER · IN YOUR WALLET WINDOW"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(t)
+	_wait_label = Label.new()
+	_wait_label.theme_type_variation = "MonoLabel"
+	_wait_label.add_theme_font_size_override("font_size", 15)
+	_wait_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(_wait_label)
+	var esc := Label.new()
+	esc.theme_type_variation = "MutedLabel"
+	esc.add_theme_font_size_override("font_size", 13)
+	esc.text = "Esc: walk around meanwhile (Sunny pours when the chain has it)"
+	esc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(esc)
+	_wait_chip.visible = false
+	_ui_layer.add_child(_wait_chip)
+
+
+func _show_wait(text: String) -> void:
+	_wait_label.text = text
+	_wait_chip.visible = true
+	_wait_chip.reset_size()
 
 
 ## Sunny says what the chain says: the house's Ⓐ, the room's games, who owes.
@@ -317,7 +458,7 @@ func _talk() -> void:
 
 
 func _any_open() -> bool:
-	return super._any_open() or (bar_menu != null and bar_menu.is_open())
+	return super._any_open() or bar_state != "idle"
 
 
 func _at_bar() -> bool:
@@ -325,6 +466,20 @@ func _at_bar() -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	match bar_state:
+		"pour":  # any key skips to the end
+			if GameHowto.is_press(event):
+				get_viewport().set_input_as_handled()
+				pour_scene.skip()
+			return
+		"waiting":  # Esc: walk around while the wallet works; the pour still comes
+			if event.is_action_pressed("ui_cancel"):
+				get_viewport().set_input_as_handled()
+				bar_state = "idle"
+				_wait_label.text += "  ·  you stepped away"
+				life.attend(Vector3.INF)
+				_resume()
+			return
 	if bar_menu and bar_menu.is_open():
 		if event.is_action_pressed("ui_cancel"):
 			get_viewport().set_input_as_handled()
@@ -335,7 +490,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _at_bar():
 			_open_menu()
 		else:
-			_say("Sunny: come up to the bar, friend. The menu's on the board.", 5.0)
+			say_line("come_closer")
 		return
 	super._unhandled_input(event)
 
@@ -346,8 +501,24 @@ func _process(delta: float) -> void:
 		_bubble_t -= delta
 		if _bubble_t <= 0.0:
 			_bubble.text = "%s at the bar: the menu" % ControlsHelp.key_of("bar_menu")
-	if life and player and not (bar_menu and bar_menu.is_open()):
+	if life and player and bar_state == "idle":
 		life.attend(player.global_position if _at_bar() else Vector3.INF)
+		_idle_barks(delta)
+
+
+## Sunny greets you once you're inside, and now and then says something to the room.
+func _idle_barks(delta: float) -> void:
+	if player.global_position.z > FRONT:
+		return
+	if not _greeted:
+		_greeted = true
+		say_line("greeting")
+		return
+	_idle_t -= delta
+	if _idle_t <= 0.0:
+		say_line(String(VoiceLines.IDLE_SUNNY[_idle_i % VoiceLines.IDLE_SUNNY.size()]))
+		_idle_i += 1
+		_idle_t = 45.0 + 20.0 * float(_idle_i % 3)
 
 
 # --- Fixed views for tools/screenshot.gd (--view=street|bar|lounge|room|games|menu) ---
@@ -363,6 +534,24 @@ const VIEWS := {
 }
 
 
+## Previews of an order (tools/screenshot.gd --view=waiting|pour|slide|handover|drink|cheers):
+## nothing is ordered, signed or sent; the subtitle says PREVIEW instead of a block.
+const PREVIEW_POUR := {"pour": 0.9, "slide": 2.1, "handover": 3.3, "drink": 5.6, "cheers": 8.0}
+
+
+func _preview_order(view: String) -> void:
+	subtitles.hold = true
+	_open_menu("alpha_sour")
+	await get_tree().process_frame
+	var d := BarTab.drink("alpha_sour")
+	_on_order_started(d)
+	if view == "waiting":
+		_on_order_status("Waiting for your signature in the browser wallet…", DeepFieldTheme.ICE)
+		return
+	_wait_chip.visible = false
+	_play_pour(d["look"], 1, "· PREVIEW: nothing was ordered", float(PREVIEW_POUR[view]))
+
+
 func _apply_view() -> void:
 	var view := ""
 	for a in OS.get_cmdline_user_args():
@@ -375,6 +564,12 @@ func _apply_view() -> void:
 		player.rotation.y = 0.0
 		if view == "menu":
 			_open_menu.call_deferred("alpha_sour")
+		return
+	if view == "waiting" or PREVIEW_POUR.has(view):
+		_greeted = true
+		player.position = PubRoom.order_spot() + Vector3(0.3, 0.1, 0.4)
+		player.rotation.y = 0.0
+		_preview_order.call_deferred(view)
 		return
 	if not VIEWS.has(view):
 		return
