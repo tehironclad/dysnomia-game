@@ -236,7 +236,7 @@ func _run() -> void:
 func _chat_preview() -> void:
 	var cf = root.get_node("ChatFeed")
 	var t0 := Time.get_ticks_msec()
-	while (cf.current == null or not cf.current.is_loaded()) and Time.get_ticks_msec() - t0 < 240000:  # lavapipe runs a few fps: the reads take longer
+	while (cf.current == null or not cf.current.is_loaded()) and Time.get_ticks_msec() - t0 < 600000:  # lavapipe runs a few fps: the reads take longer
 		await process_frame
 	for i in 4:
 		await process_frame

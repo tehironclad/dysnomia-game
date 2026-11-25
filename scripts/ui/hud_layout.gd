@@ -13,7 +13,7 @@ extends RefCounted
 
 const MARGIN := DeepFieldTheme.MARGIN  # 24: from every screen edge
 const GAP := 12  # between blocks in a column
-const COL_W := 420  # the left and right columns
+const COL_W := 460  # the left and right columns
 const DOCK_W := 540  # ChatFeedPanel.WIDTH
 const DOCK_BOTTOM := 64  # the dock's bottom edge above the screen's (the key row is under it)
 const KEYS_H := 32

@@ -453,7 +453,7 @@ func _refresh_header() -> void:
 	var nm := String(_feed.territory.get("name", _feed.qing)).to_upper()
 	header.text = "ROOM · %s" % nm
 	var st: Dictionary = ChatFeed.stats()
-	stat.text = ("%s today" % ChatLines.count_text(st)) if _feed.is_loaded() else "reading…"
+	stat.text = ("%s today" % ChatLines.count_text(st)) if _feed.is_loaded() else ""  # the state line says it is reading
 	stat.tooltip_text = "Lines in the last %s blocks (≈ 24 h), from this room's LogEvent logs" % TokenFormat.group(str(ChatLines.DAY_BLOCKS))
 	var n := unread
 	unread_chip.text = ("@ %d" % mentions) if mentions > 0 and collapsed else "● %d new" % n

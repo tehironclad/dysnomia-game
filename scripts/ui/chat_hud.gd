@@ -42,9 +42,14 @@ func _ready() -> void:
 		feed.visible = true
 		if feed.collapsed:
 			feed.set_collapsed(false)
+		feed.foot.visible = false  # the bar lists its own keys
 		_place_feed.call_deferred()
 		feed.mark_read())
+	bar.resized.connect(func():
+		if bar.is_open():
+			_place_feed())
 	bar.closed.connect(func():
+		feed.foot.visible = not feed.collapsed
 		feed.offset_bottom = -HudLayout.DOCK_BOTTOM
 		feed.offset_top = -HudLayout.DOCK_BOTTOM)
 	var h := feed.history

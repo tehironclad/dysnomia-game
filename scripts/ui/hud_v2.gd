@@ -82,7 +82,8 @@ func _build_where() -> void:
 		f.theme_type_variation = "MonoLabel"
 		f.add_theme_font_size_override("font_size", DeepFieldTheme.FS_SMALL)
 		f.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		f.custom_minimum_size = Vector2(250, 0)
+		f.custom_minimum_size = Vector2(HudLayout.COL_W - 150, 0)  # the rest of the panel: values wrap less
+		f.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		f.set_fact(Fact.loading("…"))
 		f.visible = shown
 		grid.add_child(f)
