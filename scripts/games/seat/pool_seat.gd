@@ -15,6 +15,9 @@ extends Node
 ##   watch    someone else's live game: the same replays, no cue for you;
 ##   practice no live game: a local table on this computer, labelled so; nothing
 ##            is posted.
+## A game over the game server (an invite: Invites, NetMatch) plays the same way,
+## except that a shot goes to the server instead of the chain: no transaction,
+## and both players' tables replay the server's ordered log of shots.
 
 const AIM_SENS := 0.0028  # radians per mouse pixel
 const FINE := 0.2  # with the fine-aim key held
@@ -118,7 +121,14 @@ func stand() -> void:
 # --- Which game -----------------------------------------------------------------
 
 func _match() -> Dictionary:
+	if match_id.begins_with("n"):
+		return Invites.match_dict(match_id)  # a game over the game server
 	return book.by_id.get(match_id, {}) if match_id != "" else {}
+
+
+## Live: playing, or (a game over the game server) both players confirming its stake.
+static func _live(m: Dictionary) -> bool:
+	return not m.is_empty() and m["game"] != null and (m["status"] == "playing" or (m.get("net", false) and m["status"] == "confirm"))
 
 
 func _pick_mode() -> void:
@@ -126,10 +136,12 @@ func _pick_mode() -> void:
 	var me := Session.wallet
 	match_id = ""
 	mode = "practice"
-	if m.is_empty() or m["status"] != "playing" or m["game"] == null:
+	if not _live(m):
 		return
 	match_id = String(m["id"])
 	var mine := TableBook.player_index(m, me)
+	if mine >= 0 and m.get("net", false):
+		Invites.sat_down(match_id)
 	if mine < 0:
 		mode = "watch"
 	elif TableBook.turn_index(m) == mine:
@@ -170,7 +182,7 @@ func handle_input(event: InputEvent) -> bool:
 		return true
 	if event.is_action_pressed("table_shoot"):
 		if _can_shoot():
-			if mode == "play":
+			if mode == "play" and not _match().get("net", false):
 				var b: String = place._table_blocker()
 				if b != "":
 					seat.status.text = b
@@ -222,6 +234,15 @@ func _release() -> void:
 		return
 	var m := _match()
 	if m.is_empty():
+		return
+	if m.get("net", false):
+		state = "posting"
+		_strike_from = c
+		if Invites.send_move(m["id"], "shot", [p["dx"], p["dy"], p["power"]]):
+			seat.status.text = "Shot sent to the game server (dx %d, dy %d, power %d). It rolls when the server's log has it, on both tables." % [p["dx"], p["dy"], p["power"]]
+		else:
+			state = "aim"
+			seat.status.text = "Not sent: the game server isn't answering. Nothing was played."
 		return
 	state = "posting"
 	_strike_from = c
@@ -298,7 +319,7 @@ func _on_roll_finished() -> void:
 ## Re-reads whose turn it is in the same game (or drops to practice when it ended).
 func _pick_mode_keep() -> void:
 	var m := _match()
-	if m.is_empty() or m["status"] != "playing":
+	if not _live(m):
 		if not m.is_empty() and m["status"] == "over":
 			seat.call_out("%s WON" % book.display(m["winner"]).to_upper() if not m["push"] else "PUSH", TableSeat.GOLD, 4.0)
 		_pick_mode()
@@ -327,7 +348,10 @@ func _on_book() -> void:
 		var ang := PoolAim.angle_of(Vector2i(s["dx"], s["dy"]))
 		angle = ang
 		_strike({"before": s["before"], "dx": s["dx"], "dy": s["dy"], "power": s["power"], "angle": ang})
-		seat.status.text = "%s · shot from block %d · tx %s" % [book.display(m["players"][s["player"]]), s["block"], TableBook.short(String(s["tx"]))]
+		if m.get("net", false):
+			seat.status.text = "%s · shot %s of the game server's log (dx %d, dy %d, power %d)" % [book.display(m["players"][s["player"]]), String(s["tx"]).get_slice(":", 2), s["dx"], s["dy"], s["power"]]
+		else:
+			seat.status.text = "%s · shot from block %d · tx %s" % [book.display(m["players"][s["player"]]), s["block"], TableBook.short(String(s["tx"]))]
 		return
 	if state == "aim":
 		_pick_mode_keep()
@@ -608,6 +632,8 @@ func _stats_text() -> String:
 		return ""
 	var g: EightBall = m["game"]
 	var out := "#%s · shot %d\nballs on the table: %d" % [m["id"], g.shots + 1, left]
+	if m.get("net", false) and Wager.code(m) != "none":
+		out += "\n" + Wager.short(m, Session.wallet)
 	if g.groups[0] != "":
 		out += "\n%s: %s · %s: %s" % [TableBook.short(m["players"][0]), g.groups[0], TableBook.short(m["players"][1]), g.groups[1]]
 	else:
@@ -634,8 +660,31 @@ func _refresh_texts() -> void:
 			seat.set_badge("LIVE GAME #%s · %s vs %s · every shot replays from its room line" % [m["id"], book.display(m["players"][0]), book.display(m["players"][1])], true)
 	if mode != "practice" and not m.is_empty():
 		seat.source.text = "Table: replayed from this QING's room lines (%s), the game started at block %d, last move at block %d. Who shot = the line's tx.from." % [TableBook.short(place.qing), m["created_block"], m["last_block"]]
+	if not m.is_empty() and m.get("net", false):
+		_net_texts(m)
 	var aim := "Mouse aim · %s/%s fine aim (%s slower) · hold %s for power, release to strike · " % [ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right"), fine, ControlsHelp.key_of("table_shoot")] if _can_aim_view() else ""
-	seat.hint.text = "%s%s %s · %s games & challenges · Esc stand up" % [aim, ControlsHelp.key_of("table_view"), "first person" if overhead else "overhead", ControlsHelp.key_of("table_lobby")]
+	seat.hint.text = "%s%s %s · %s games & challenges · %s invite a player online · Esc stand up" % [aim, ControlsHelp.key_of("table_view"), "first person" if overhead else "overhead", ControlsHelp.key_of("table_lobby"), ControlsHelp.key_of("notifications")]
+
+
+## The overlay for a game over the game server (an invite): what it is, the stake.
+func _net_texts(m: Dictionary) -> void:
+	var vs := "%s vs %s" % [book.display(m["players"][0]), book.display(m["players"][1])]
+	var keys := ControlsHelp.key_of("notifications")
+	if m["status"] == "confirm":
+		seat.headline.text = "CONFIRM THE STAKE"
+		seat.set_badge("GAME #%s OVER THE GAME SERVER · %s · %s · %s: confirm it, or play without a stake" % [m["id"], vs, Wager.text(m, Session.wallet, book.display), keys], true)
+	else:
+		match mode:
+			"play":
+				seat.set_badge("GAME #%s OVER THE GAME SERVER · %s · your shot goes to the server (no transaction) and both tables replay it" % [m["id"], vs], true)
+			"wait":
+				var t := TableBook.turn_index(m)
+				if t >= 0 and String(m["names"][t]) != "":
+					seat.headline.text = "%s TO SHOOT" % String(m["names"][t]).to_upper()
+				seat.set_badge("GAME #%s OVER THE GAME SERVER · %s · their shot replays here from the server's log, from behind the cue ball" % [m["id"], vs], true)
+			_:
+				seat.set_badge("GAME #%s OVER THE GAME SERVER · %s" % [m["id"], vs], true)
+	seat.source.text = "Table: replayed from the game server's move log (%d moves, ordered and stamped by the server; PoolSim's integers on both machines, which must agree on the result). Wager: %s." % [int(m.get("moves", 0)), Wager.text(m, Session.wallet, book.display)]
 
 
 ## Previews (tools/screenshot.gd): "aim" holds a charge with the ghost; "roll" breaks and holds mid-roll.

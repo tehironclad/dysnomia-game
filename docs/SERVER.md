@@ -154,6 +154,15 @@ Either:
   score). Fair rows are checked against their ticket's receipt, and replayed once the fair games
   expose a replay hook. When the server is unreachable, boards show "—".
 
+- **Game invites and wagers** (§8b): press **N** (or click the bell beside the wallet chip) for the
+  notification panel. It lists who is signed in now, so you can invite them to pool or Twenty-One at the arcade of
+  the territory you are in, with an optional stake in Ⓐ. The invitee sees the invite there (and a toast) and can
+  accept or decline it; it expires after 90 s. Accepting walks both players through the arcade door and sits them
+  down at the table. Both confirm the stake at the table (or play without it). Moves go through this server, not
+  the chain, and both players' games replay them. A stake is honour-bound: the loser pays the winner with an
+  AFFECTION transfer from their own wallet, and the game shows it ✓ paid only when the chain has that Transfer.
+  With no server, the panel says that invites need it.
+
 ## 5b. Sharing with the site: the pulse node
 
 The website has a companion server, the **pulse node** (entropy-ai-pulse: `pulse-node/`, `docs/PULSE_NODE.md`).
@@ -177,6 +186,8 @@ signed-in counts per territory, and the boards. That is one extra connection. Pl
 | message size | presence 19 B, voice ≤ 700 B, chat ≤ 1 KiB, score ≤ 16 KiB; anything else is refused |
 | per connection | 120 messages/s, 48 KB/s (bursts to 96 KB), presence 15/s, voice 60 frames/s, chat 1/s (burst 4), scores 1 every 2 s |
 | abuse | 20 malformed messages, or 400 throttled ones in 20 s, closes the connection |
+| invites | signed-in wallets only; 1 every 5 s (bursts of 3, answers included); 3 waiting per wallet; 90 s to answer; 2 live games per wallet |
+| game moves | signed-in players of that game only; 3/s (burst 8); known moves only (an unknown one is a strike); integer arguments within ±100,000; 600 moves a game; a game with no move for 30 min is abandoned |
 | sign-in | 5 tries per connection; 4 signature checks a second for the whole server (each takes ~0.1 s, on a worker thread) |
 | timeouts | handshake 15 s, idle 75 s (clients ping every 15 s) |
 
@@ -226,6 +237,57 @@ One WebSocket **binary** message is `[type u8][body]`, little-endian. The code i
     rooms: [{room, players}], boards: [{board, rows}]}`. Guests may ask. It returns counts only. The welcome lists
     `"features": ["info"]`.
   - `S_NOTICE {code, text}`
+  - Invites and head-to-head games (the welcome lists `"invites"` in `features`; §8b): `C_ONLINE {req}` →
+    `S_ONLINE {req, ok, players: [{wallet, name, room, busy}]}`; `C_INVITE {to, game, stake, room, door}`;
+    `C_ANSWER {id, answer: accept|decline|cancel}`; each change → `S_INVITE {invite}` to both wallets; an accept
+    → `S_MATCH {match}` (the full record, log included); `C_MOVE {match, op, a}` → `S_MOVE {match, move: {seq, by,
+    op, a, t}}` to both; `C_RESULT {match, winner, digest}`; anything refused → `S_REFUSED {what, error}`.
 - Sign-in text: `NetProto.login_message(server, nonce)`. The nonce is new for each attempt.
 - Run the checks: `godot --headless --path . -s res://tools/net_selftest.gd` (its own server), or add
   `-- --url=ws://127.0.0.1:8787` to test a running server. `tools/net_bot.gd` is a scripted remote player.
+
+## 8b. Invites and head-to-head games (for developers)
+
+**What runs where.** The server keeps the invites (`InviteBook`, pure: `pending → accepted | declined | cancelled |
+expired`) and, for each accepted invite, a match record: `{id ("n" + 7 hex), game, players [inviter, invitee],
+names, stake, room (the QING), door ("arcade"), created, log, status, result}`. The inviter is player 0 (breaks,
+acts first), as in TableBook. The server **only orders and stamps moves** (`seq`, `by` = the player index of the
+signed-in wallet that sent it, `op`, integer `a`, `t` = its clock in ms). It checks who may move and which moves a
+game takes, but never judges a move and never sees a wallet's money. On sign-in (also by token after a reconnect) it
+sends the wallet its invites and games again, so the panel and the table resume.
+
+**Replay on both machines** (`NetMatch`, pure). The same rules the room-line games use:
+- pool: `shot [dx, dy, power]` into `EightBall`/`PoolSim` (integer physics), so both tables match to the micrometre;
+- Twenty-One: `Duel21`, each card from a block hash. The block is **the first block whose timestamp is at least
+  `NetMatch.CARD_MARGIN_S` (2 s) after the server stamped the move** that asks for it: the deal is the move that
+  started the game, and a hit is the hit itself. Nobody can know that hash when the move is made, not even the server.
+  Both machines read that block from the chain (`BlockClock.first_at`, read-only). This is fair as long as the
+  server's clock is right. A clock running more than 2 s slow would let a hitter see the block first;
+- common moves: `sit` (the other player gets "X sat down at your table"), `stake_ok` / `stake_no` (the stake is
+  "confirm" until both confirm; `stake_no` from either plays it without the stake), `concede`, `claim` (the waiting
+  player, after `NetMatch.IDLE_CLAIM_MS` = 10 min without a move).
+When the replay ends a game, each machine sends `C_RESULT` with the winner and a fingerprint of its table
+(`NetMatch.digest`). If both match, the server marks the game `over` and agreed. If they differ, it marks it
+`disputed`, and nobody owes anything.
+
+**Wagers** (`Wager`, pure; the `Invites` autoload does the reads). There is no escrow. The loser pays with
+`TableBook.pay_debt` (`AFFECTION.transfer(winner, stake)` through the write pipeline: simulate, sign, then the
+receipt's Transfer log is checked). A wager shows **✓ paid** only once `eth_getLogs` finds an AFFECTION
+`Transfer(loser → winner)` at or after the game's end block (the first block at or after the final move's stamp),
+allocated oldest debt first (`TableBook.allocate`). With no such log it shows **⚠ unpaid**, and when the read fails it
+shows "—". The check repeats every 30 s for 10 minutes, then every 2 minutes, and again after a payment.
+
+**Client side.** The `Invites` autoload holds this session's notifications (in memory, across scene changes),
+mirrors invites, replays games and checks wagers. `NotificationPanel` (scripts/ui/notify/) is the bell and the
+panel. The HUD and every place add it with one line. `GamesPlace._latest` gives your live game over the server
+first, so `PoolSeat`/`CardSeat` draw it like a room-line game; their moves go to `Invites.send_move` instead of
+`TableBook.post`.
+
+**Adding a game** (arcade or fair head-to-heads): add its id (e.g. `"fair:striker"`) with its moves to
+`InviteBook.GAMES`, its rules to `NetMatch.apply` (e.g. a `score` move checked by `MidwaySim.replay`), and a place
+to sit. The server needs nothing else.
+
+**Check it.** `tools/net_selftest.gd` (the invite, move, result and limit cases); `tools/net_bot.gd -- --invite=0x…
+--game=pool|cards --stake=N --play` or `--accept --play` (two bots play a whole game; Twenty-One reads real blocks);
+`tests/test_invites.gd`. Screenshots with a bot: `screenshot.gd -- --net-url=ws://127.0.0.1:N --net-key=<test key>
+--session=<its wallet> --invite=panel|seated|play|result`. The test key only signs the free sign-in.

@@ -6,7 +6,10 @@ extends Node
 ##
 ## What it does: rooms per QING (presence relayed at 10 Hz, quantised), free
 ## text chat, push-to-talk voice relayed within a radius, wallet sign-in by a
-## free personal_sign (ecrecover here, on a worker thread), leaderboards.
+## free personal_sign (ecrecover here, on a worker thread), leaderboards, game
+## invites between signed-in players and the move relay of head-to-head games
+## (InviteBook, NetMatch: the server orders and stamps moves; both players'
+## machines replay them; it never judges a game or touches a wager).
 ## What it never does: sign, hold keys, or say anything about the chain.
 ##
 ## Limits: message size per type (NetProto.MAX_SIZE), a token bucket per
@@ -25,6 +28,12 @@ const FLOOD_WINDOW_S := 20.0
 const AUTH_ATTEMPTS := 5
 const LOG_MAX_BYTES := 5 * 1024 * 1024
 const SLOW_CLIENT_BYTES := 256 * 1024  # skip presence/voice to a client this far behind
+const MATCH_LOG_MAX := 600       # moves in one match
+const MATCH_IDLE_S := 1800       # a live match with no move for this long is abandoned
+const MATCH_KEEP_S := 3600       # finished matches are kept this long (reconnects replay them)
+const MAX_LIVE_MATCHES := 2      # live matches per wallet
+const ONLINE_MAX := 200          # rows in an S_ONLINE list
+const ARG_MAX := 100000          # |move argument|
 
 var port := 8787
 var bind_address := "127.0.0.1"
@@ -39,7 +48,9 @@ var quiet := false
 
 var lb: Leaderboards
 var stats := {"connections": 0, "auths": 0, "auth_failures": 0, "chats": 0, "voice_frames": 0, "states": 0,
-	"bytes_in": 0, "bytes_out": 0, "kicked": 0, "throttled": 0, "refused": 0}
+	"bytes_in": 0, "bytes_out": 0, "kicked": 0, "throttled": 0, "refused": 0, "invites": 0, "matches": 0, "moves": 0}
+var invites := InviteBook.new()
+var matches := {}             # match id → record (see _open_match)
 
 var _tcp := TCPServer.new()
 var _peers := {}               # id → Peer
@@ -52,6 +63,7 @@ var _stats_at := 0.0
 var _save_at := 0.0
 var _log: FileAccess
 var _started_s := 0.0
+var _house_at := 0.0
 var _mutex := Mutex.new()
 
 
@@ -87,6 +99,8 @@ class Peer:
 	var b_chat := TokenBucket.new(1.0, 4.0)
 	var b_ctrl := TokenBucket.new(5.0, 20.0)
 	var b_lb := TokenBucket.new(0.5, 4.0)
+	var b_invite := TokenBucket.new(0.2, 3.0)   # invites and answers: one every 5 s, bursts of 3
+	var b_move := TokenBucket.new(3.0, 8.0)     # game moves and results
 	var b_bytes := TokenBucket.new(48000.0, 96000.0)
 	var b_msgs := TokenBucket.new(120.0, 240.0)  # every message: 10 states + 50 voice frames a second leave room
 
@@ -176,6 +190,9 @@ func _process(delta: float) -> void:
 		_save_at = now
 		lb.save()
 		_expire_tokens()
+	if now - _house_at > 1.0:
+		_house_at = now
+		_housekeeping()
 	if now - _stats_at > 300.0:
 		_stats_at = now
 		log_line("stats: %d connected, %d rooms, %s" % [_peers.size(), _rooms.size(), JSON.stringify(stats)])
@@ -372,6 +389,32 @@ func _handle(p: Peer, msg: PackedByteArray, now: float) -> void:
 				return
 			var b := NetProto.json_body(msg)
 			_send(p, NetProto.json_msg(NetProto.S_INFO, info(int(b.get("req", 0)), now)))
+		NetProto.C_ONLINE:
+			if not p.b_ctrl.take(now):
+				_throttled(p, now)
+				return
+			_online(p, NetProto.json_body(msg))
+		NetProto.C_INVITE:
+			if not p.b_invite.take(now):
+				_refuse(p, "invite", "Slow down: one invite every few seconds.")
+				return
+			_invite(p, NetProto.json_body(msg))
+		NetProto.C_ANSWER:
+			if not p.b_invite.take(now):
+				_refuse(p, "answer", "Slow down.")
+				return
+			_answer(p, NetProto.json_body(msg))
+		NetProto.C_MOVE:
+			if not p.b_move.take(now):
+				_throttled(p, now)
+				_refuse(p, "move", "Slow down: too many moves.")
+				return
+			_move(p, NetProto.json_body(msg))
+		NetProto.C_RESULT:
+			if not p.b_move.take(now):
+				_throttled(p, now)
+				return
+			_result(p, NetProto.json_body(msg))
 		_:
 			_strike(p, "unknown type %d" % t)
 
@@ -596,6 +639,13 @@ func _authed(p: Peer, wallet: String, tok: String) -> void:
 	_send(p, NetProto.json_msg(NetProto.S_AUTH, {"ok": true, "wallet": wallet, "token": tok}))
 	if p.room != "":
 		_room_send(p.room, _peer_msg(p), -1)
+	# Back after a reconnect: this wallet's invites and games, so the panel and the table resume.
+	for inv in invites.for_wallet(wallet):
+		_send(p, NetProto.json_msg(NetProto.S_INVITE, {"invite": inv}))
+	for id in matches:
+		var mr: Dictionary = matches[id]
+		if (mr["players"] as Array).has(wallet):
+			_send(p, NetProto.json_msg(NetProto.S_MATCH, {"match": mr}))
 
 
 func _expire_tokens() -> void:
@@ -644,3 +694,226 @@ func _lb_submit(p: Peer, b: Dictionary, now: float) -> void:
 	if res.get("ok", false):
 		log_line("score %s %s %d (%s)" % [board, p.wallet, int(res["row"]["score"]), res["row"]["check"]])
 	_send(p, NetProto.json_msg(NetProto.S_LB, res))
+
+
+# ── invites and head-to-head games ─────────────────────────────────────────
+# Only signed-in wallets may list, invite, answer or move; everything is sent to
+# every connection of the two wallets involved, and to nobody else.
+
+static func _unix_ms() -> int:
+	return int(Time.get_unix_time_from_system() * 1000.0)
+
+
+func _refuse(p: Peer, what: String, error: String) -> void:
+	_send(p, NetProto.json_msg(NetProto.S_REFUSED, {"what": what, "error": error}))
+
+
+func _peers_of(wallet: String) -> Array:
+	var out: Array = []
+	if wallet == "":
+		return out
+	for p in _peers.values():
+		if p.wallet == wallet:
+			out.append(p)
+	return out
+
+
+func _to_wallets(wallets: Array, msg: PackedByteArray) -> void:
+	var done := {}
+	for w in wallets:
+		if done.has(w):
+			continue
+		done[w] = true
+		for p in _peers_of(w):
+			_send(p, msg)
+
+
+func _live_matches_of(wallet: String) -> int:
+	var n := 0
+	for mr in matches.values():
+		if mr["status"] == "live" and (mr["players"] as Array).has(wallet):
+			n += 1
+	return n
+
+
+func _name_of(wallet: String) -> String:
+	for p in _peers_of(wallet):
+		if p.name != "":
+			return p.name
+	return ""
+
+
+## Who is signed in now: one row per wallet (name, the QING room it is in, busy in a game).
+func online_rows(except_wallet: String) -> Array:
+	var seen := {}
+	var rows: Array = []
+	for p in _peers.values():
+		if p.wallet == "" or p.wallet == except_wallet or seen.has(p.wallet):
+			continue
+		seen[p.wallet] = true
+		rows.append({"wallet": p.wallet, "name": p.name, "room": p.room.split("/")[0] if p.room != "" else "",
+			"busy": _live_matches_of(p.wallet) > 0})
+		if rows.size() >= ONLINE_MAX:
+			break
+	rows.sort_custom(func(a, b): return String(a["name"]).to_lower() < String(b["name"]).to_lower())
+	return rows
+
+
+func _online(p: Peer, b: Dictionary) -> void:
+	var req := int(b.get("req", 0))
+	if p.wallet == "":
+		_send(p, NetProto.json_msg(NetProto.S_ONLINE, {"req": req, "ok": false, "players": [], "error": "sign in to see who is online"}))
+		return
+	_send(p, NetProto.json_msg(NetProto.S_ONLINE, {"req": req, "ok": true, "players": online_rows(p.wallet)}))
+
+
+func _invite(p: Peer, b: Dictionary) -> void:
+	if p.wallet == "":
+		_refuse(p, "invite", "Sign in with your wallet to invite players (a free signature).")
+		return
+	var to := NetProto.clean_wallet(String(b.get("to", "")))
+	if to == "" or _peers_of(to).is_empty():
+		_refuse(p, "invite", "That player is not online now.")
+		return
+	var id := Crypto.new().generate_random_bytes(4).hex_encode()
+	var now := int(Time.get_unix_time_from_system())
+	var r := invites.create(id, p.wallet, p.name, to, _name_of(to), String(b.get("game", "")), String(b.get("stake", "")),
+		String(b.get("room", "")), String(b.get("door", "")), now)
+	if not r["ok"]:
+		_refuse(p, "invite", String(r["error"]))
+		return
+	stats["invites"] += 1
+	var inv: Dictionary = r["invite"]
+	log_line("invite %s: %s → %s %s%s at %s" % [id, p.wallet, to, inv["game"], (" stake " + String(inv["stake"])) if inv["stake"] != "" else "", inv["room"]])
+	_to_wallets([inv["from"], inv["to"]], NetProto.json_msg(NetProto.S_INVITE, {"invite": inv}))
+
+
+func _answer(p: Peer, b: Dictionary) -> void:
+	if p.wallet == "":
+		_refuse(p, "answer", "Sign in first.")
+		return
+	var id := String(b.get("id", "")).left(16)
+	var what := String(b.get("answer", ""))
+	var now := int(Time.get_unix_time_from_system())
+	if what == "accept":
+		var inv0: Dictionary = invites.invites.get(id, {})
+		if not inv0.is_empty() and (_live_matches_of(inv0["from"]) >= MAX_LIVE_MATCHES or _live_matches_of(inv0["to"]) >= MAX_LIVE_MATCHES):
+			_refuse(p, "answer", "One of you already has %d games going: finish or concede one first." % MAX_LIVE_MATCHES)
+			return
+	var r := invites.answer(id, p.wallet, what, now)
+	if not r["ok"]:
+		_refuse(p, "answer", String(r["error"]))
+		if r.has("invite"):  # e.g. it had expired: tell both
+			_to_wallets([r["invite"]["from"], r["invite"]["to"]], NetProto.json_msg(NetProto.S_INVITE, {"invite": r["invite"]}))
+		return
+	var inv: Dictionary = r["invite"]
+	if inv["state"] == "accepted":
+		var mr := _open_match(inv)
+		inv["match"] = mr["id"]
+		_to_wallets([inv["from"], inv["to"]], NetProto.json_msg(NetProto.S_INVITE, {"invite": inv}))
+		_to_wallets(mr["players"], NetProto.json_msg(NetProto.S_MATCH, {"match": mr}))
+	else:
+		_to_wallets([inv["from"], inv["to"]], NetProto.json_msg(NetProto.S_INVITE, {"invite": inv}))
+	log_line("invite %s %s by %s" % [id, inv["state"], p.wallet])
+
+
+## A match record: the inviter is player 0 (breaks / acts first), as in TableBook.
+func _open_match(inv: Dictionary) -> Dictionary:
+	var id := "n" + Crypto.new().generate_random_bytes(4).hex_encode().left(7)
+	while matches.has(id):
+		id = "n" + Crypto.new().generate_random_bytes(4).hex_encode().left(7)
+	var now := _unix_ms()
+	var n0 := _name_of(inv["from"])
+	var n1 := _name_of(inv["to"])
+	var mr := {"id": id, "game": inv["game"], "players": [inv["from"], inv["to"]],
+		"names": [n0 if n0 != "" else inv["from_name"], n1 if n1 != "" else inv["to_name"]],
+		"stake": inv["stake"], "room": inv["room"], "door": inv["door"], "invite": inv["id"], "created": now, "last": now,
+		"log": [], "status": "live", "results": [{}, {}], "result": {}}
+	matches[id] = mr
+	stats["matches"] += 1
+	return mr
+
+
+func _move(p: Peer, b: Dictionary) -> void:
+	if p.wallet == "":
+		_refuse(p, "move", "Sign in first.")
+		return
+	var mr: Dictionary = matches.get(String(b.get("match", "")).left(16), {})
+	if mr.is_empty():
+		_refuse(p, "move", "No such game.")
+		return
+	var who: int = (mr["players"] as Array).find(p.wallet)
+	if who < 0:
+		_refuse(p, "move", "You are not playing that game.")
+		return
+	if mr["status"] != "live":
+		_refuse(p, "move", "That game is %s." % mr["status"])
+		return
+	var op := String(b.get("op", ""))
+	if not InviteBook.ops_for(String(mr["game"])).has(op):
+		_strike(p, "unknown move %s" % op.left(16))
+		return
+	var args: Array = []
+	var raw = b.get("a", [])
+	if not (raw is Array) or (raw as Array).size() > 4:
+		_strike(p, "bad move arguments")
+		return
+	for v in raw:
+		if not (v is float or v is int) or absf(float(v)) > ARG_MAX:
+			_strike(p, "bad move argument")
+			return
+		args.append(int(v))
+	var moves: Array = mr["log"]
+	if moves.size() >= MATCH_LOG_MAX:
+		_refuse(p, "move", "That game has too many moves.")
+		return
+	var t := _unix_ms()
+	var e := {"seq": moves.size() + 1, "by": who, "op": op, "a": args, "t": t}
+	moves.append(e)
+	mr["last"] = t
+	stats["moves"] += 1
+	_to_wallets(mr["players"], NetProto.json_msg(NetProto.S_MOVE, {"match": mr["id"], "move": e}))
+
+
+## Each machine reports what its replay says; when both agree the game is over
+## (or "disputed" if they don't: the tables then say so and no one is told they owe).
+func _result(p: Peer, b: Dictionary) -> void:
+	var mr: Dictionary = matches.get(String(b.get("match", "")).left(16), {})
+	if mr.is_empty() or p.wallet == "":
+		return
+	var who: int = (mr["players"] as Array).find(p.wallet)
+	if who < 0 or mr["status"] != "live":
+		return
+	var w := int(b.get("winner", -1))
+	var digest := String(b.get("digest", "")).left(64)
+	if w < 0 or w > 2 or digest == "":
+		_strike(p, "bad result")
+		return
+	mr["results"][who] = {"winner": w, "digest": digest, "moves": (mr["log"] as Array).size()}
+	var a: Dictionary = mr["results"][0]
+	var c: Dictionary = mr["results"][1]
+	if a.is_empty() or c.is_empty():
+		return
+	var agreed: bool = a["winner"] == c["winner"] and a["digest"] == c["digest"]
+	mr["status"] = "over" if agreed else "disputed"
+	mr["result"] = {"winner": a["winner"] if agreed else -1, "agreed": agreed}
+	mr["last"] = _unix_ms()
+	log_line("match %s %s: %s" % [mr["id"], mr["status"], JSON.stringify(mr["results"])])
+	_to_wallets(mr["players"], NetProto.json_msg(NetProto.S_MATCH, {"match": mr}))
+
+
+## Once a second: expire invites, abandon idle games, forget old ones.
+func _housekeeping() -> void:
+	var now := int(Time.get_unix_time_from_system())
+	for inv in invites.expire(now):
+		_to_wallets([inv["from"], inv["to"]], NetProto.json_msg(NetProto.S_INVITE, {"invite": inv}))
+	invites.prune(now)
+	var now_ms := _unix_ms()
+	for id in matches.keys():
+		var mr: Dictionary = matches[id]
+		if mr["status"] == "live" and now_ms - int(mr["last"]) > MATCH_IDLE_S * 1000:
+			mr["status"] = "abandoned"
+			mr["last"] = now_ms
+			_to_wallets(mr["players"], NetProto.json_msg(NetProto.S_MATCH, {"match": mr}))
+		elif mr["status"] != "live" and now_ms - int(mr["last"]) > MATCH_KEEP_S * 1000:
+			matches.erase(id)

@@ -75,6 +75,9 @@ func setup_games(echo_spots: Array) -> void:
 	_build_dive()
 	_build_seats()
 	Wallet.tx_stage.connect(_on_stage)
+	# Games played over the game server (Invites, NetMatch) are drawn by the same tables.
+	Invites.match_changed.connect(_on_net_match)
+	seat_for_invite.call_deferred()
 
 
 # --- Building pieces ----------------------------------------------------------
@@ -183,11 +186,15 @@ func _on_book() -> void:
 			seats.append({"name": who, "total": Duel21.total(d.hands[i]) if d and d.dealt else -1, "turn": d != null and not d.over() and d.turn == i, "note": " ✓" if d and d.stood[i] else ""})
 		card_table.set_seats(seats)
 		card_table.set_chips(CardSeat.chips_for(m["stake"]) if not m.is_empty() else 0, ArcadePay.fmt(m["stake"]) if not m.is_empty() and not BigInt.is_zero(m["stake"]) else "")
-		card_table.set_dealer(("DEALT BY THE CHAIN\nblock %s" % ArcadeScores.grouped(int(m.get("deal_block", m["created_block"])))) if live else "DEALT BY THE CHAIN")
+		var db := int(m.get("deal_block", m["created_block"])) if live else -1
+		card_table.set_dealer(("DEALT BY THE CHAIN\nblock %s" % ArcadeScores.grouped(db)) if db >= 0 else "DEALT BY THE CHAIN")
 		card_table.set_caption("" if m.is_empty() else _caption(m))
 
 
 func _latest(kind: String) -> Dictionary:
+	var net: Dictionary = Invites.table_match(qing, kind, Session.wallet if Session.wallet != "" else Invites.me())
+	if not net.is_empty():
+		return net  # your live game over the game server comes first
 	var list := book.of_kind(kind)
 	for m in list:
 		if m["status"] == "playing":
@@ -203,6 +210,49 @@ func _caption(m: Dictionary) -> String:
 		"over":
 			return "#%s · %s · %s" % [m["id"], vs, "push" if m["push"] else "%s won" % book.display(m["winner"])]
 	return "#%s · %s" % [m["id"], vs]
+
+
+## A game over the game server changed: the tables redraw (names as the server knows them).
+func _on_net_match(id: String) -> void:
+	var m := Invites.match_dict(id)
+	if m.is_empty() or String(m.get("room", "")) != qing:
+		return
+	for i in 2:
+		if String(m["names"][i]) != "" and String(m["players"][i]) != "":
+			book.names[String(m["players"][i])] = String(m["names"][i])
+	book.changed.emit()
+
+
+## Sits down at the table of the game an invite brought you here for (after the
+## walk in through the door), or at once if you are already here.
+func seat_for_invite() -> void:
+	var kind := Invites.take_seat(qing)
+	if kind == "" or seat == null:
+		return
+	var t0 := Time.get_ticks_msec()
+	while is_inside_tree() and (DoorSequence.active_in(self) or (dive and dive.is_active()) or seat.phase == TableSeat.Phase.ENTERING or seat.phase == TableSeat.Phase.LEAVING):
+		if Time.get_ticks_msec() - t0 > 8000:
+			break
+		await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	if (_pool_panel and _pool_panel.is_open()):
+		_pool_panel.close_panel()
+	if (_cards_panel and _cards_panel.is_open()):
+		_cards_panel.close_panel()
+	if seat.is_inside():
+		var same := (kind == "pool" and pool_seat and pool_seat.is_active()) or (kind == "cards" and card_seat and card_seat.is_active())
+		if same:
+			_on_net_match("")
+			if kind == "pool":
+				pool_seat._pick_mode_keep()
+				pool_seat._refresh_texts()
+			else:
+				card_seat._pick_mode()
+				card_seat._show(true)
+			return
+		await _stand()
+	_sit(kind)
 
 
 # --- Who may sign -----------------------------------------------------------------

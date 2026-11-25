@@ -9,6 +9,9 @@ extends Node
 ## Live games are the room's lines as before (TableBook): a hit or a stand is
 ## a room line (simulate, sign, receipt, read back), and a card appears only
 ## when the chain has the line, drawn from that line's block hash (Duel21).
+## A game over the game server (an invite: Invites, NetMatch) plays the same way:
+## a hit or a stand goes to the server, and each card is the hash of the first
+## block mined at least NetMatch.CARD_MARGIN_S after the server stamped the move.
 ## Practice (no live game of yours): you against the house on this computer,
 ## dealt from the latest block's hash read from the chain (no hash: no cards,
 ## "—"); the house draws to 17. Nothing is posted.
@@ -98,6 +101,8 @@ func stand() -> void:
 
 
 func _match() -> Dictionary:
+	if match_id.begins_with("n"):
+		return Invites.match_dict(match_id)  # a game over the game server
 	return book.by_id.get(match_id, {}) if match_id != "" else {}
 
 
@@ -107,7 +112,7 @@ func _pick_mode() -> void:
 	match_id = ""
 	mode = "practice"
 	my_seat = 0
-	if m.is_empty() or m["status"] != "playing" or m["game"] == null:
+	if not PoolSeat._live(m):
 		return
 	match_id = String(m["id"])
 	var mine := TableBook.player_index(m, me)
@@ -115,6 +120,8 @@ func _pick_mode() -> void:
 		mode = "watch"
 		return
 	my_seat = mine
+	if m.get("net", false):
+		Invites.sat_down(match_id)
 	mode = "play" if TableBook.turn_index(m) == mine else "wait"
 
 
@@ -190,6 +197,14 @@ func _act(op: String) -> void:
 			await _house_plays()
 		return
 	if mode != "play" or not _my_turn():
+		return
+	var nm := _match()
+	if nm.get("net", false):
+		if Invites.send_move(nm["id"], op):
+			seat.status.text = "Sent \"%s\" to the game server.%s" % [op, " Your card is the hash of the first block mined at least %d s after the server stamps it: a few seconds." % NetMatch.CARD_MARGIN_S if op == "hit" else ""]
+		else:
+			seat.status.text = "Not sent: the game server isn't answering. Nothing was played."
+		_show(true)
 		return
 	var b: String = place._table_blocker()
 	if b != "":
@@ -289,7 +304,7 @@ func _on_book() -> void:
 	var m := _match()
 	if m.is_empty():
 		_pick_mode()
-	elif m["status"] == "playing":
+	elif PoolSeat._live(m):
 		var mine := TableBook.player_index(m, Session.wallet)
 		mode = "watch" if mine < 0 else ("play" if TableBook.turn_index(m) == mine else "wait")
 	_show(true)
@@ -331,7 +346,8 @@ func _show(animate: bool) -> void:
 		table.set_dealer(("PRACTICE DEAL\nblock %s" % ArcadeScores.grouped(practice_block)) if practice else "PRACTICE\nno block read: —")
 	elif not m.is_empty():
 		table.set_chips(chips_for(m["stake"]), ArcadePay.fmt(m["stake"]) if not BigInt.is_zero(m["stake"]) else "")
-		table.set_dealer("DEALT BY THE CHAIN\nblock %s" % ArcadeScores.grouped(int(m.get("deal_block", m["created_block"]))))
+		var db := int(m.get("deal_block", m["created_block"]))
+		table.set_dealer(("DEALT BY THE CHAIN\nblock %s" % ArcadeScores.grouped(db)) if db >= 0 else "DEALT BY THE CHAIN\nthe next block…")
 	var can := _my_turn() and not _busy
 	table.show_buttons(my_seat if (mode == "play" or mode == "practice") and not overhead else -1, can or (mode == "practice" and (practice == null or practice.over())))
 	_refresh_texts()
@@ -377,7 +393,19 @@ func _refresh_texts() -> void:
 		lines.append("%s: %d%s" % ["you" if mode != "watch" else "seat 1", you, " (bust)" if you > 21 else ""])
 		lines.append("%s: %d%s" % ["the house" if mode == "practice" else ("them" if mode != "watch" else "seat 2"), them, " (bust)" if them > 21 else ""])
 		lines.append("cards left in the deck: %d" % d.deck.size())
-	if not m.is_empty() and not BigInt.is_zero(m["stake"]):
+	if not m.is_empty() and m.get("net", false):
+		if Wager.code(m) != "none":
+			lines.append(Wager.short(m, Session.wallet))
+		if String(m.get("waiting", "")) != "":
+			seat.status.text = "Waiting for %s." % m["waiting"]
+		elif seat.status.text.begins_with("Waiting for"):
+			seat.status.text = ""
+		seat.set_badge("GAME #%s OVER THE GAME SERVER · %s vs %s · a hit or a stand goes to the server (no transaction); each card is the hash of the first block after the server stamped the move%s" % [
+			m["id"], book.display(m["players"][0]), book.display(m["players"][1]),
+			(" · CONFIRM THE STAKE: %s" % ControlsHelp.key_of("notifications")) if m["status"] == "confirm" else ""], true)
+		seat.source.text = "Cards: SHA-256(\"<block hash>:<draw n>\") mod the cards left (Duel21); the deal is the first block at least %d s after the game started (block %s), each hit the first block %d s after the server stamped it. %d moves in the server's log; both machines must agree on the result." % [
+			NetMatch.CARD_MARGIN_S, str(m["deal_block"]) if int(m["deal_block"]) >= 0 else "not mined yet", NetMatch.CARD_MARGIN_S, int(m.get("moves", 0))]
+	elif not m.is_empty() and not BigInt.is_zero(m["stake"]):
 		lines.append("stake: %s (honour-bound)" % ArcadePay.fmt(m["stake"]))
 	seat.stats.text = "\n".join(lines)
 	var again := mode == "practice" and (practice == null or practice.over())
@@ -386,7 +414,7 @@ func _refresh_texts() -> void:
 		keys = "%s deal again (new block hash)" % ControlsHelp.key_of("table_hit")
 	elif not (mode == "play" or mode == "practice"):
 		keys = "watching"
-	seat.hint.text = "%s · %s %s · %s games & challenges · Esc stand up" % [keys, ControlsHelp.key_of("table_view"), "back to your seat" if overhead else "table view", ControlsHelp.key_of("table_lobby")]
+	seat.hint.text = "%s · %s %s · %s games & challenges · %s invite a player online · Esc stand up" % [keys, ControlsHelp.key_of("table_view"), "back to your seat" if overhead else "table view", ControlsHelp.key_of("table_lobby"), ControlsHelp.key_of("notifications")]
 
 
 func _view_xf() -> Transform3D:

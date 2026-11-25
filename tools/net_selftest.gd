@@ -183,6 +183,8 @@ func _run() -> void:
 	ok(frames.is_empty(), "voice stays within the radius (B 560 m away hears nothing)")
 	b.send_state(Vector3(5, 2, 5), 0.0, NetProto.F_ON_FLOOR, 0, true)
 
+	await _invites(a, b, g)
+
 	# ── leaderboards ──
 	var board := ROOM + "/arcade:void_lanes"
 	var empty: Dictionary = await b.lb_top(ROOM + "/arcade:never_played", 10)
@@ -251,6 +253,7 @@ func _run() -> void:
 	a.signer = func(message: String) -> String:
 		signed[0] += 1
 		return EthSign.sign_personal(message, KEY_A)
+	_await_resync = true
 	a.close()
 	ok(await wait_until(func(): return not b.peers.has(a.my_id) or b.peers.size() < 3, 5.0), "B saw A leave")
 	a.token = tok
@@ -258,6 +261,7 @@ func _run() -> void:
 	a.room = ROOM
 	ok(await wait_until(func(): return a.wallet != "", 8.0) and signed[0] == 0, "A reconnected and signed in by token (no wallet prompt)")
 	ok(await wait_until(func(): return b.peers.values().any(func(p): return p.get("wallet", "") == a.wallet), 5.0), "B sees A back in the room")
+	ok(await wait_until(func(): return _resynced, 5.0), "after the reconnect the server sent A its games again (S_MATCH %s)" % _match_id)
 
 	if server:
 		print("      server stats: ", JSON.stringify(server.stats))
@@ -268,6 +272,139 @@ func _run() -> void:
 	if server:
 		server.stop()
 	quit(1 if failures > 0 else 0)
+
+
+var _match_id := ""
+var _await_resync := false
+var _resynced := false
+
+
+## Invites and a head-to-head game over the server: who is online, invite /
+## decline / cancel / accept / expire, the stake confirmations, moves relayed in
+## order with the server's stamp, both machines replaying the same pool table
+## (NetMatch), agreed results, and the limits (guests, strangers, rate, bad moves).
+func _invites(a: Node, b: Node, g: Node) -> void:
+	var seen := {"a": [], "b": []}  # invites as each side received them
+	var recs := {"a": {}, "b": {}}  # match records, with S_MOVE appended in order
+	var refused := {"a": [], "b": [], "g": []}
+	var online := {"a": null, "g": null}
+	for pair in [["a", a], ["b", b]]:
+		var k: String = pair[0]
+		var c: Node = pair[1]
+		c.invite_update.connect(func(inv): seen[k].append(inv.duplicate()))
+		c.match_update.connect(func(r):
+			recs[k][r["id"]] = r
+			if k == "a" and _await_resync and r["id"] == _match_id:
+				_resynced = true)
+		c.match_move.connect(func(mid, mv):
+			var r: Dictionary = recs[k].get(mid, {})
+			if not r.is_empty() and int(mv["seq"]) == (r["log"] as Array).size() + 1:
+				r["log"].append(mv))
+		c.refused.connect(func(what, err): refused[k].append("%s: %s" % [what, err]))
+	g.refused.connect(func(what, err): refused["g"].append("%s: %s" % [what, err]))
+	a.online_list.connect(func(okk, rows, _e): online["a"] = [okk, rows])
+	g.online_list.connect(func(okk, rows, err): online["g"] = [okk, rows, err])
+	var last := func(k: String) -> Dictionary: return seen[k][-1] if not seen[k].is_empty() else {}
+
+	# who is online: signed-in players only, never yourself, guests can't ask
+	g.request_online()
+	a.request_online()
+	ok(await wait_until(func(): return online["a"] != null and online["g"] != null, 5.0), "online lists answered")
+	if online["a"] != null:
+		var rows: Array = online["a"][1]
+		ok(online["a"][0] and rows.size() == 1 and rows[0]["wallet"] == b.wallet and rows[0]["name"] == "Bob" and rows[0]["room"] == ROOM,
+			"A sees B online (name, room), not itself, not the guest: %s" % JSON.stringify(rows))
+	if online["g"] != null:
+		ok(not online["g"][0] and (online["g"][1] as Array).is_empty(), "a guest can't list who is online (%s)" % online["g"][2])
+
+	# refusals: a guest can't invite; nobody can invite a guest or a stranger
+	g.invite(a.wallet, "pool", "", ROOM)
+	b.invite("0x" + "42".repeat(20), "pool", "", ROOM)
+	ok(await wait_until(func(): return refused["g"].size() >= 1 and refused["b"].size() >= 1, 5.0), "a guest can't invite; an offline wallet can't be invited (%s | %s)" % [refused["g"], refused["b"]])
+	refused["b"].clear()
+
+	# invite → decline
+	a.invite(b.wallet, "pool", "2", ROOM)
+	ok(await wait_until(func(): return not last.call("a").is_empty() and not last.call("b").is_empty(), 5.0), "both players got the invite")
+	var inv: Dictionary = last.call("b")
+	ok(inv.get("state") == "pending" and inv.get("from") == a.wallet and inv.get("to") == b.wallet and inv.get("stake") == "2" and inv.get("from_name") == "Alice" and inv.get("game") == "pool",
+		"B's invite: pending, from Alice's verified wallet, pool, stake 2 Ⓐ")
+	ok(int(inv.get("expires", 0)) - int(inv.get("created", 0)) == InviteBook.TTL_S, "it expires after %d s" % InviteBook.TTL_S)
+	b.answer_invite(String(inv.get("id", "")), "cancel")
+	ok(await wait_until(func(): return refused["b"].size() >= 1, 5.0), "only the inviter can cancel (%s)" % refused["b"])
+	b.answer_invite(String(inv.get("id", "")), "decline")
+	ok(await wait_until(func(): return last.call("a").get("state") == "declined" and last.call("b").get("state") == "declined", 5.0), "B declined: both see it")
+
+	# invite → cancel
+	a.invite(b.wallet, "cards", "", ROOM)
+	await wait_until(func(): return last.call("b").get("state") == "pending" and last.call("b").get("game") == "cards", 5.0)
+	a.answer_invite(String(last.call("b").get("id", "")), "cancel")
+	ok(await wait_until(func(): return last.call("b").get("state") == "cancelled", 5.0), "A cancelled: B sees it")
+
+	# invite → accept → a match
+	await wait_s(5.5)  # A's invite bucket: one every 5 s after a burst of 3
+	a.invite(b.wallet, "pool", "2", ROOM)
+	await wait_until(func(): return last.call("b").get("state") == "pending" and last.call("b").get("game") == "pool", 5.0)
+	b.answer_invite(String(last.call("b").get("id", "")), "accept")
+	ok(await wait_until(func(): return recs["a"].size() == 1 and recs["b"].size() == 1, 5.0), "accepted: both players got the match")
+	ok(last.call("a").get("state") == "accepted" and String(last.call("a").get("match", "")).begins_with("n"), "the invite names its match")
+	if recs["a"].is_empty():
+		return
+	_match_id = String(recs["a"].keys()[0])
+	var ra: Dictionary = recs["a"][_match_id]
+	ok(ra["players"] == [a.wallet, b.wallet] and ra["stake"] == "2" and ra["room"] == ROOM and ra["names"] == ["Alice", "Bob"],
+		"match: the inviter breaks (player 0), stake 2 Ⓐ, at A's QING")
+
+	# the rate limit on invites
+	refused["a"].clear()
+	a.invite(b.wallet, "cards", "", ROOM)
+	ok(await wait_until(func(): return refused["a"].any(func(s): return String(s).contains("Slow down")), 5.0), "invites are rate-limited (%s)" % refused["a"])
+
+	# moves: only the two players; unknown moves are refused; order and stamps from the server
+	g.send_move(_match_id, "concede")
+	ok(await wait_until(func(): return not refused["g"].is_empty() and String(refused["g"][-1]).begins_with("move"), 5.0), "a guest can't move (%s)" % refused["g"][-1])
+	a.send_move(_match_id, "stake_ok")
+	b.send_move(_match_id, "stake_ok")
+	await wait_until(func(): return (recs["a"][_match_id]["log"] as Array).size() == 2, 5.0)
+	a.send_move(_match_id, "shot", [10000, 150, 1000])
+	ok(await wait_until(func(): return (recs["a"][_match_id]["log"] as Array).size() == 3 and (recs["b"][_match_id]["log"] as Array).size() == 3, 5.0), "three moves relayed to both")
+	var lg: Array = recs["b"][_match_id]["log"]
+	ok(lg.size() == 3 and lg[0]["by"] == 0 and lg[1]["by"] == 1 and lg[2]["op"] == "shot" and (lg[2]["a"] as Array).map(func(v): return int(v)) == [10000, 150, 1000] and int(lg[2]["t"]) >= int(lg[0]["t"]) and int(lg[0]["t"]) > 1_600_000_000_000,
+		"moves carry seq, the mover's index (from the signed-in wallet), the integers and the server's ms clock")
+	var na := NetMatch.replay(recs["a"][_match_id], func(_s): return {})
+	var nb := NetMatch.replay(recs["b"][_match_id], func(_s): return {})
+	ok(na.m["status"] == "playing" and na.m["stake_state"] == "agreed" and (na.m["game"] as EightBall).shots == 1, "the replay: stake agreed by both, the break played")
+	ok(na.digest() == nb.digest(), "both machines replay the same table (%s)" % na.digest().left(12))
+	var strikes0: int = server.stats["kicked"] if server else 0
+	a.send_move(_match_id, "teleport", [1])
+	await wait_s(0.3)
+	ok(a.is_online() and (not server or server.stats["kicked"] == strikes0), "an unknown move is a strike, not relayed (A still connected)")
+	ok((recs["b"][_match_id]["log"] as Array).size() == 3, "…and B never saw it")
+
+	# the end: B concedes, both report their replay; the server marks it agreed
+	b.send_move(_match_id, "concede")
+	await wait_until(func(): return (recs["a"][_match_id]["log"] as Array).size() == 4 and (recs["b"][_match_id]["log"] as Array).size() == 4, 5.0)
+	na = NetMatch.replay(recs["a"][_match_id], func(_s): return {})
+	nb = NetMatch.replay(recs["b"][_match_id], func(_s): return {})
+	ok(na.over() and na.m["winner"] == a.wallet and Wager.code(na.m) == "owed", "B conceded: A won; B owes the 2 Ⓐ (honour-bound, checked on chain later)")
+	a.send_result(_match_id, na.winner_index(), na.digest())
+	b.send_result(_match_id, nb.winner_index(), nb.digest())
+	ok(await wait_until(func(): return recs["a"][_match_id]["status"] == "over" and recs["b"][_match_id]["status"] == "over", 5.0), "both results agree: the server marks the game over")
+	ok(int(recs["b"][_match_id]["result"].get("winner", -1)) == 0 and recs["b"][_match_id]["result"].get("agreed") == true, "result: player 0, agreed")
+	b.send_move(_match_id, "concede")
+	ok(await wait_until(func(): return refused["b"].any(func(s): return String(s).contains("over")), 5.0), "no moves after the end")
+
+	# expiry (in-process server only: its clock is moved, not waited for)
+	if server:
+		await wait_s(5.0)  # B's invite bucket
+		var before: int = seen["a"].size()
+		b.invite(a.wallet, "cards", "", ROOM)
+		await wait_until(func(): return seen["a"].size() > before, 5.0)
+		var id := String(last.call("a").get("id", ""))
+		if server.invites.invites.has(id):
+			server.invites.invites[id]["expires"] = int(Time.get_unix_time_from_system()) - 1
+		ok(await wait_until(func(): return last.call("a").get("state") == "expired" and last.call("b").get("state") == "expired", 4.0), "an unanswered invite expires: both are told")
+		ok(server.stats["invites"] >= 4 and server.stats["matches"] == 1, "server counted %d invites, %d match" % [server.stats["invites"], server.stats["matches"]])
 
 
 class GameServerLimits:
