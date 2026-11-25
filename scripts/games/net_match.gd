@@ -94,6 +94,16 @@ func log_entries() -> Array:
 	return rec.get("log", [])
 
 
+## The server's ms stamp of the last move that counted (or of the start): the idle clock for a claim.
+func last_move_t() -> int:
+	return _last_move_t
+
+
+## True when `who` may claim the game now (`now_ms` on the server's clock, roughly ours).
+func claimable_by(who: int, now_ms: int) -> bool:
+	return m["status"] == "playing" and turn_of(m) >= 0 and turn_of(m) != who and now_ms - _last_move_t >= IDLE_CLAIM_MS
+
+
 func over() -> bool:
 	return m["status"] == "over"
 
@@ -217,7 +227,7 @@ func apply(e: Dictionary, block: Dictionary = {}) -> Dictionary:
 		_last_move_t = t
 		m["last_shot"] = {"player": who, "dx": dx, "dy": dy, "power": pw, "block": -1, "before": before,
 			"tx": "net:%s:%d" % [m["id"], int(e.get("seq", applied))]}
-		m["events"].append("%s · %s" % [name_of(who), describe_shot(r)])
+		m["events"].append(describe_shot(r))  # as TableBook words it: the tables call it out
 		if g.over():
 			_finish(g.winner, t, String(r.get("result", "")))
 		return {"ok": true}

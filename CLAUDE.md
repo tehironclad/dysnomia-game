@@ -175,6 +175,11 @@
   The site's pulse node (entropy-ai-pulse `pulse-node/`) bridges to this server as a guest: `C_INFO`/`S_INFO`
   (counts only, no wallets) and `C_LB_TOP`, served as the site's `/api/game-live` (SERVER.md §5b).
 
+- Invites and wagers over the game server (`docs/SERVER.md` §8b): `InviteBook` (server, pure), `NetMatch` (both
+  machines replay the server's move log; cards = the first block ≥ 2 s after the move's stamp, `BlockClock`), `Wager`
+  (honour-bound; ✓ paid only from an AFFECTION Transfer log), autoload `Invites` (session notifications, replay, pay via
+  `TableBook.pay_debt`), `NotificationPanel` (N; a bell beside the wallet chip). Bots: `net_bot.gd -- --invite=0x… --play` /
+  `--accept --play`. Shots: `--net-url=… --net-key=<test key> --session=<its wallet> --invite=panel|seated|play|result`.
 - Front door (`scripts/ui/front_door.gd`): the title screen over `FieldGlobe` (the moon + every QING; warm halo =
   developed, ice ring = yours, white ring = here; shared with the Field). Four doors (Connect · Explore · Continue to my
   QING · The Field), who-you-are, news + status strip. `open_panel(void|identity|guide|opps)`; shot `--open=`.

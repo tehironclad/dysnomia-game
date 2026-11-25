@@ -44,11 +44,11 @@ func _ready() -> void:
 	root.theme = DeepFieldTheme.get_theme()
 	add_child(root)
 	_bell = Bell.new()
-	_bell.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_bell.offset_left = -440  # left of the HUD's clock (top right), clear of its three lines
-	_bell.offset_right = -398
-	_bell.offset_top = 18
-	_bell.offset_bottom = 60
+	_bell.set_anchors_preset(Control.PRESET_CENTER_TOP)  # beside the wallet chip: clear of the HUD's corners and a table's numbers
+	_bell.offset_left = 150
+	_bell.offset_right = 192
+	_bell.offset_top = 4
+	_bell.offset_bottom = 46
 	_bell.tooltip_text = "Notifications (%s): invites, stakes, wagers, who is online" % ControlsHelp.key_of("notifications")
 	_bell.pressed.connect(toggle)
 	root.add_child(_bell)
@@ -433,6 +433,9 @@ func _actions(box: VBoxContainer, x: Dictionary, now: int) -> void:
 				close()
 				Invites.go_to_table(mid))
 			_button(row, "Concede", func(): Invites.send_move(mid, "concede"))
+			var nmo: NetMatch = Invites.matches.get(mid)
+			if nmo and nmo.claimable_by(mine, int(Time.get_unix_time_from_system() * 1000.0)):
+				_button(row, "Claim (idle %d min)" % (NetMatch.IDLE_CLAIM_MS / 60000), func(): Invites.send_move(mid, "claim"))
 		if mine >= 0 and String(m["loser"]) == me and wager in ["owed", "unpaid"]:
 			_button(row, "Pay %s to %s" % [NetMatch.fmt(m["stake"]), Invites.display(m["winner"])], func(): _pay(mid))
 		if wager in ["owed", "unpaid"]:

@@ -18,9 +18,10 @@ extends SceneTree
 ##       with that search and those filters, the top result selected and hovered)
 ##       [--access=<AccessGates goal> --access-fee=<wei>] (any scene: the AccessSteps overlay for that
 ##       goal, read live: e.g. fair_ticket, room_post; with --qing the room/fair is that QING's)
-##       [--invite=panel|seated|result] (game invites over a game server: with --net-url, --net-key=<test key>
+##       [--invite=panel|seated|play|result] (game invites over a game server: with --net-url, --net-key=<test key>
 ##       and --session=<its wallet>; a net_bot invites this wallet. panel: the notification panel with the
-##       invite; seated: accept → the walk to the table → seated, the bot's first move replayed; result: accept,
+##       invite; seated: accept → the walk to the table → seated, the bot's first move replayed; play: then this
+##       side's shot from the seat, through the server, rolling; result: accept,
 ##       confirm the stake, play to the end (this side stands), the panel over the table with the wager's
 ##       chain check. Nothing is signed on chain or paid)
 ## With --qing, the territory is loaded from the chain first (read-only).
@@ -302,12 +303,25 @@ func _invite_preview() -> void:
 		await process_frame
 	print("[shot] seated: ", seat != null and seat.is_inside(), " match ", mid)
 	var m: Dictionary = inv.match_dict(mid)
-	if _invite == "seated":
+	if _invite == "seated" or _invite == "play":
 		if m.get("status") == "confirm":
 			inv.confirm_stake(mid, true)
 		# the bot (player 0) breaks: wait for its shot to be replayed here, and catch it rolling
 		while Time.get_ticks_msec() - t0 < 150000 and not m.has("last_shot") and int(m.get("moves", 0)) < 3:
 			await process_frame
+		if _invite == "play":
+			# then this side's turn: a shot from the seat (PoolSeat → the server → both tables)
+			var me: int = (m["players"] as Array).find(inv.me())
+			var ps = current_scene.get("pool_seat")
+			while Time.get_ticks_msec() - t0 < 200000 and not (m.get("status") == "playing" and int(m["game"].turn) == me and ps.state == "aim" and ps.mode == "play"):
+				await process_frame
+			var before := int(m.get("moves", 0))
+			ps.charge = 0.55
+			ps._release()
+			print("[shot] my shot sent: ", ps.seat.status.text)
+			while Time.get_ticks_msec() - t0 < 220000 and int(m.get("moves", 0)) == before:
+				await process_frame
+			print("[shot] replayed: ", m["events"][-1] if not m["events"].is_empty() else "—")
 		await create_timer(0.9).timeout
 		return
 	if m.get("status") == "confirm":
