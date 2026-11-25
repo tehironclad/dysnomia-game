@@ -295,20 +295,21 @@ func prepare_demo() -> void:
 
 
 func prepare_run(credit: Dictionary) -> int:
-	var tx := String(credit.get("tx", ""))
 	var block := int(credit.get("block", -1))
 	var h := ""
 	if block >= 0:
 		h = await TableBook.block_hash(block)
 	if h != "":
-		_apply_track(DriftTrack.make(_entropy(), h, block, "your credit's block"))
+		# A strip's plays share a block: each play's road mixes in its number (TicketCode.seed_tx)
+		var idx := int(credit.get("index", -1))
+		_apply_track(DriftTrack.make(_entropy(), TicketCode.seed_tx(h, idx), block, "your credit's block" if idx < 0 else "your strip's block, play %d" % idx))
 	else:
-		_apply_track(DriftTrack.make(_entropy(), tx, -1, "your credit's tx"))
+		_apply_track(DriftTrack.make(_entropy(), ArcadePay.seed_tx(credit), -1, "your credit's tx"))
 	if track.ok:
 		source_label = "PAID RUN · %s · the field is seeded from the same bytes" % track.source
 		return track.seed()
 	source_label = "PAID RUN · %s · field seeded from the credit tx" % track.source
-	return seed_from_tx(tx)
+	return seed_from_tx(ArcadePay.seed_tx(credit))
 
 
 func _sync(delta: float) -> void:

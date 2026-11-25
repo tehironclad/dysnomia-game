@@ -11,9 +11,10 @@ extends SceneTree
 ##       [--seat=pool|cards --seat-phase=aim|roll|overhead|seated|enter] (an arcade place or the pub:
 ##       sit at that table in first person, practice mode; nothing is posted or signed)
 ##       [--near=<arcade catalog id>] (stand in front of that cabinet: its floating title shows)
-##       [--fair=<midway game id>|rocket --fair-phase=aim|play|result|board] (a territory: play that fair game
+##       [--fair=<midway game id>|rocket --fair-phase=aim|play|result|board|buy|strip] (a territory: play that fair game
 ##       in first person, a scripted practice round held mid-play or on its result screen; rocket: the
-##       rocket's 7-light board, with --fair-codes=1,2,3 lit as a preview. Nothing is paid or posted)
+##       rocket's 7-light board, with --fair-codes=1,2,3 lit as a preview; buy: the stall's ticket choice;
+##       strip: its price plaque and prompt with a strip's plays left, labelled PREVIEW. Nothing is paid or posted)
 ##       [--field-search=<text> --field-filter=mine,joined,fair,yue,near,tier:N] (the Field: the finder
 ##       with that search and those filters, the top result selected and hovered)
 ##       [--access=<AccessGates goal> --access-fee=<wei>] (any scene: the AccessSteps overlay for that

@@ -601,7 +601,7 @@ func _update_signs() -> void:
 		"%d m · %d floors · from Σ Hypobar %s (YUE.Bar · block %s)" % [int(spec["roof"]), int(spec["floors"]), hypobar_text, str(block) if block >= 0 else "—"]]
 	if leader_name != "":
 		lines.append("top Hypobar here: %s" % leader_name)
-	lines.append("SKY DECK · glass lift, free · base jump 1 Ⓐ to this QING")
+	lines.append("SKY DECK · glass lift, free · base jump %s to this QING" % Prices.play_text())
 	_lobby_sign.text = "\n".join(lines)
 
 
@@ -796,7 +796,7 @@ func _jump() -> void:
 		_focus = "?"
 		_hud.ticker("Ticket not bought: %s · press %s again for a practice jump (not recorded)" % [res.get("message", "cancelled"), ControlsHelp.key_of("interact")], Color("#ff8fa0"), 12.0)
 		return
-	ArcadePay.use_credit(Wallet.address, _qing)  # this jump spends the credit it bought
+	ArcadePay.use_credit(Wallet.address, _qing, [], String(res.get("hash", "")))  # this jump spends the credit it bought
 	_launch("ticket", {"hash": res.get("hash", ""), "block": int(res.get("block", 0))})
 
 

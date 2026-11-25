@@ -100,7 +100,8 @@ func start(p_site: Node, p_stage: MidwayStage, p_game: String, seed_v: int, p_pa
 func _source_line() -> String:
 	var s := "Rules: MidwaySim v%d · %d ticks a second · integer physics · " % [MidwaySim.VERSION, MidwaySim.HZ]
 	if paid:
-		s += "seeded by ticket %s (block %s): anyone can replay this round from it" % [ArcadeScores.short(String(ticket.get("hash", ""))), ArcadeScores.grouped(int(ticket.get("block", 0)))]
+		var play := (" play #%d of %d" % [int(ticket["index"]), int(ticket.get("plays", 1))]) if int(ticket.get("index", -1)) >= 0 else ""
+		s += "seeded by ticket %s%s (block %s): anyone can replay this round from it" % [ArcadeScores.short(String(ticket.get("hash", ""))), play, ArcadeScores.grouped(int(ticket.get("block", 0)))]
 	else:
 		s += "practice seed from this computer: on no board"
 	return s
@@ -534,7 +535,7 @@ func post() -> void:
 		AccessSteps.popup(self, "fair_post", {"qing": q0, "room_name": String(Registry.get_territory(q0).get("name", ""))})
 		return
 	var qing := String(site.get("_qing"))
-	var text := FairBoard.line_text(game, sim.score, String(ticket["hash"]), sim.events)
+	var text := FairBoard.line_text(game, sim.score, String(ticket["hash"]), sim.events, int(ticket.get("index", -1)))
 	if text.length() > FairBoard.MAX_LEN:
 		_p_status.text = "This round's line is %d characters; a room line takes %d. Not posted." % [text.length(), FairBoard.MAX_LEN]
 		return

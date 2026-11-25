@@ -2,14 +2,15 @@ class_name FairSite
 extends Node3D
 ## The Affection Fair in a v2 territory. Sits on its own deck (the Julia terrain is
 ## never flattened), sized by the territory's Development tier, and sells ride tickets
-## through ArcadePay: 1 Ⓐ AFFECTION.transfer to this territory's QING, simulated,
+## through ArcadePay: Prices.RIDE Ⓐ (the rocket: Prices.ROCKET, coded) to this territory's QING, simulated,
 ## signed, receipt-verified, then the ride starts. No wallet → a free preview ride
 ## that is labelled as such and records nothing. Use works at a ride's booth or
 ## anywhere near the ride; the midway stalls and the high striker are first-person 3D
 ## mini games (MidwayPlay: MidwaySim rules, the stall's MidwayStage), sold the same way:
-## 1 Ⓐ + the game's code in wei (FairProgress), seeded by the ticket's tx hash. Each stall
+## one play (1 Ⓐ + the game's code in wei) or a ticket strip (ArcadePay.buy, TicketCode: 10 plays
+## for 10 Ⓐ, this game's or any game's, gas once; TicketChoice), each play seeded by its ticket. Each stall
 ## shows the room's verified board (FairBoard); the Upsilon Rocket unlocks for a wallet once
-## the chain shows a ticket for every game here (FairProgress; RocketLights by its booth).
+## the chain shows a ticket (or a verified posted round) for every game here (FairProgress; RocketLights).
 ##
 ## Development tier (0..5) → fair tier: Wild/Outpost = surveyed lot, Settlement =
 ## night market + carousel, Town = + wheel and drop tower, City/Capital = grand fair.
@@ -35,6 +36,7 @@ var _focus_game := ""
 var _game: MidwayPlay = null
 var _lights: RocketLights = null
 var _progress := {"codes": [], "state": "nowallet", "block": -1, "wallet": ""}
+var _plaques := {}  ## game id → the price plaque on its counter (Label3D)
 var _boards_busy := false
 var _progress_busy := false
 var _preview := false
@@ -146,6 +148,7 @@ func set_dev_tier(dev_tier: int) -> void:
 				_hud.ticker(text, DeepFieldTheme.ICE, 3.0))
 		r.ride_finished.connect(_on_finished)
 	if t > 0 and not _fair.game_spots.is_empty():
+		_build_plaques()
 		refresh_boards()
 		refresh_progress()
 		for g in _fair.game_spots:
@@ -202,13 +205,15 @@ func _process(_delta: float) -> void:
 	_focus = f.get("ride", null)
 	_focus_game = String(f.get("game", ""))
 	var paid := Wallet.address != ""
-	var price := ("%s to this QING" % ArcadePay.fee_text()) if paid else "free practice (no wallet)"
 	if _focus != null and _rocket_locked(_focus):
 		_hud.show_prompt("%s  UPSILON ROCKET · practice flight (free) · %s" % [ControlsHelp.key_of("interact"), _progress_line()])
 	elif _focus != null:
-		_hud.show_prompt("%s  RIDE %s · %s" % [ControlsHelp.key_of("interact"), String(_focus.item.get("name", "Ride")).to_upper(), price])
+		var ride_price := Prices.text(Prices.ROCKET if _focus.ride_id == "rocket" else Prices.RIDE)
+		_hud.show_prompt("%s  RIDE %s · %s" % [ControlsHelp.key_of("interact"), String(_focus.item.get("name", "Ride")).to_upper(),
+			("%s to this QING" % ride_price) if paid else "free practice (no wallet)"])
 	elif _focus_game != "":
-		_hud.show_prompt("%s  PLAY %s · %s" % [ControlsHelp.key_of("interact"), MidwayGame.title(_focus_game), price])
+		_hud.show_prompt("%s  PLAY %s · %s" % [ControlsHelp.key_of("interact"), MidwayGame.title(_focus_game),
+			stall_price_text(_focus_game) if paid else "free practice (no wallet)"])
 	elif key == "lot":
 		_hud.show_prompt("%s  AFFECTION FAIR · site reserved: what opens it?" % ControlsHelp.key_of("interact"))
 	else:
@@ -231,9 +236,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if ride and _rocket_locked(ride):
 		# The rocket opens once the chain shows a ticket for every game here (checked again now)
 		# Locked: the steps to unlock it (AccessSteps), and a free practice flight, labelled
-		_hud.ticker("%s · each game's 1 Ⓐ ticket at this QING lights a lamp by the rocket" % _progress_line(), Color("#ffd27a"), 8.0)
+		_hud.ticker("%s · each game's ticket at this QING (or a posted round of an any-game strip) lights a lamp by the rocket" % _progress_line(), Color("#ffd27a"), 8.0)
 		refresh_progress()
-		var steps := AccessSteps.popup(self, "rocket", {"qing": _qing, "fee_wei": ArcadePay.FEE_WEI, "fair": _progress.duplicate()})
+		var steps := AccessSteps.popup(self, "rocket", {"qing": _qing, "fee_wei": Prices.ticket_wei(TicketCode.ROCKET, 1), "fair": _progress.duplicate()})
 		steps.add_footer_button("Fly a free practice flight", func(): _start(ride, "PRACTICE FLIGHT · nothing paid · " + _progress_line()))
 		return
 	if Wallet.address == "":
@@ -242,36 +247,173 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			_play(game, randi() & 0x7fffffff, false, "PRACTICE · nothing paid · on no board (connect a wallet to play for the boards)", {})
 		return
+	if ride == null:
+		# A play left on a strip (this game's, then an any-game one) plays at once: no new payment.
+		var credit := _take_play(game)
+		if not credit.is_empty():
+			_play_credit(game, credit)
+		else:
+			offer_tickets(game)
+		return
+	# A ride's ticket: a plain transfer (rides) or the rocket's coded flight (Prices.ROCKET + 9 wei).
+	var rocket := ride.ride_id == "rocket"
+	var fee := Prices.ticket_wei(TicketCode.ROCKET, 1) if rocket else Prices.wei(Prices.RIDE)
+	var price := Prices.text(Prices.ROCKET if rocket else Prices.RIDE)
 	_paying = true
-	_hud.show_prompt("TICKET · approve %s to this QING in your wallet window…" % ArcadePay.fee_text())
-	_hud.ticker("Ticket for %s: approve %s to this QING in your wallet…" % [what, ArcadePay.fee_text()], DeepFieldTheme.ICE, 20.0)
-	# A ticket is a plain transfer to the QING (no arcade credit is left behind). A game's ticket carries its code in the last wei (1 Ⓐ + k wei): the chain then knows
-	# which stall it paid for (the rocket's progress); the screen still says 1 Ⓐ.
-	var fee := FairProgress.fee_wei(game) if ride == null else ArcadePay.FEE_WEI
-	var res: Dictionary = await ArcadePay.transfer_to_qing(_qing, "Affection Fair · %s (%s)" % [what, ArcadePay.fee_text()], fee)
+	_hud.show_prompt("TICKET · approve %s to this QING in your wallet window…" % price)
+	_hud.ticker("Ticket for %s: approve %s to this QING in your wallet…" % [what, price], DeepFieldTheme.ICE, 20.0)
+	var label := "Affection Fair · %s (%s)" % [what, price]
+	var res: Dictionary
+	if rocket:
+		res = await ArcadePay.buy(_qing, label, TicketCode.ROCKET, 1)
+	else:
+		res = await ArcadePay.transfer_to_qing(_qing, label, fee)
 	_paying = false
 	_hud.hide_prompt()
 	if not res.get("ok", false):
-		var msg := "Ticket not bought (%s): %s" % [res.get("stage", "?"), res.get("message", "cancelled")]
-		if AccessSteps.goal_for_failure(res, "fair_ticket") != "":
-			AccessSteps.popup(self, "fair_ticket", {"qing": _qing, "fee_wei": fee})
-		print("[Fair] ", msg)
-		_hud.ticker(msg, Color("#ff8fa0"), 14.0)
-		_hud.show_prompt(msg)
-		get_tree().create_timer(6.0).timeout.connect(func(): if _focus_key == "": _hud.hide_prompt())
+		_ticket_failed(res, "rocket" if rocket else "fair_ticket", fee)
 		return
+	if rocket:
+		ArcadePay.use_credit(String(res["from"]), _qing, [], String(res["hash"]))  # this flight spends the flight it bought
 	print("[Fair] ticket %s verified · block %d" % [res["hash"], int(res["block"])])
-	if ride:
-		_start(ride, "TICKET VERIFIED · block %d" % int(res.get("block", 0)))
-	else:
-		var code := FairProgress.code_of(res.get("value", BigInt.zero()))
+	_start(ride, "TICKET VERIFIED · block %d" % int(res.get("block", 0)))
+
+
+func _ticket_failed(res: Dictionary, goal: String, fee: String) -> void:
+	var msg := "Ticket not bought (%s): %s" % [res.get("stage", "?"), res.get("message", "cancelled")]
+	if AccessSteps.goal_for_failure(res, goal) != "":
+		AccessSteps.popup(self, goal, {"qing": _qing, "fee_wei": fee, "fair": _progress.duplicate(),
+			"title": "Buy a ticket (%s)" % ArcadePay.fmt(BigInt.from_decimal(fee))})
+	print("[Fair] ", msg)
+	_hud.ticker(msg, Color("#ff8fa0"), 14.0)
+	_hud.show_prompt(msg)
+	get_tree().create_timer(6.0).timeout.connect(func(): if _focus_key == "": _hud.hide_prompt())
+
+
+# --- Tickets and strips (Prices, TicketCode, ArcadePay.buy) ---------------------------------
+
+## Plays left on this wallet's strips that this stall takes (its own game's, then any-game).
+func plays_left(game: String) -> int:
+	if Wallet.address == "":
+		return 0
+	return ArcadePay.credits(Wallet.address, _qing, [MidwaySim.code(game), TicketCode.FAIR_ANY])
+
+
+## What a stall's prompt says after the game's title.
+func stall_price_text(game: String) -> String:
+	var n := plays_left(game)
+	if n > 0:
+		return "strip: %d play%s left · no new payment" % [n, "" if n == 1 else "s"]
+	return "%s · to this QING" % Prices.menu_line()
+
+
+func _take_play(game: String) -> Dictionary:
+	var w := Wallet.address
+	var c := ArcadePay.use_credit(w, _qing, [MidwaySim.code(game)])
+	if c.is_empty():
+		c = ArcadePay.use_credit(w, _qing, [TicketCode.FAIR_ANY])
+	return c
+
+
+## The stall's choice: one play, a strip for this game, or a strip for any game (TicketChoice).
+func offer_tickets(game: String, emptied: bool = false) -> TicketChoice:
+	var code := MidwaySim.code(game)
+	var t := MidwayGame.title(game)
+	var head := ("YOUR STRIP IS USED UP · another one?" if emptied else "%s · buy a ticket" % t)
+	var sub := "Paid to this QING: AFFECTION.transfer, simulated from your wallet, signed once, checked in the receipt. " + \
+		"A strip is one approval (gas once); each round names its play (ticket#n), so the room can replay it and count it once."
+	if emptied:
+		sub = "%s: your strip's last play is done. " % t + sub
+	return TicketChoice.popup(self, head, sub, [
+		{"text": Prices.play_button(), "note": "One round of %s." % t.capitalize(), "do": _buy_game.bind(game, code, 1)},
+		{"text": "%s · this game" % Prices.strip_button(), "note": "%d rounds of %s, one approval." % [Prices.STRIP_PLAYS, t.capitalize()],
+			"do": _buy_game.bind(game, code, Prices.STRIP_PLAYS)},
+		{"text": "%s · any fair game" % Prices.strip_button(), "note": "Play them at any stall here. A posted round of each game lights its lamp by the rocket.",
+			"do": _buy_game.bind(game, TicketCode.FAIR_ANY, Prices.STRIP_PLAYS)},
+	])
+
+
+func _buy_game(game: String, item: int, plays: int) -> void:
+	if _paying or _game != null:
+		return
+	_paying = true
+	var price := Prices.text(Prices.price(item, plays))
+	var what := ArcadePay.describe(item, plays)
+	_hud.show_prompt("TICKET · approve %s to this QING in your wallet window…" % price)
+	_hud.ticker("Ticket (%s): approve %s to this QING in your wallet…" % [what, price], DeepFieldTheme.ICE, 20.0)
+	var res: Dictionary = await ArcadePay.buy(_qing, "Affection Fair · %s (%s)" % [what, price], item, plays)
+	_paying = false
+	_hud.hide_prompt()
+	if not res.get("ok", false):
+		_ticket_failed(res, "fair_ticket", Prices.ticket_wei(item, plays))
+		return
+	print("[Fair] %s verified · %s · block %d" % [what, res["hash"], int(res["block"])])
+	var code := MidwaySim.code(game)
+	if item == code:
 		FairProgress.add_verified(String(res["from"]), _qing, code, int(res["block"]))
 		if String(_progress.get("wallet", "")) == String(res["from"]).to_lower():
-			_progress["codes"] = FairProgress.merge(_progress["codes"], [code] if code > 0 else [])
+			_progress["codes"] = FairProgress.merge(_progress["codes"], [code])
 			_show_progress()
-		refresh_progress()
-		_play(game, MidwayGame.seed_from_tx(String(res["hash"])), true,
-			"TICKET %s · block %s · this round is seeded by its hash" % [ArcadeScores.short(String(res["hash"])), ArcadeScores.grouped(int(res["block"]))], res)
+	refresh_progress()
+	_update_plaques()
+	var credit := ArcadePay.use_credit(String(res["from"]), _qing, [], String(res["hash"]))
+	if credit.is_empty():
+		return
+	_play_credit(game, credit)
+
+
+## A paid round from a ticket or a strip's play: seeded by TicketCode.seed_tx(tx, play).
+func _play_credit(game: String, credit: Dictionary) -> void:
+	var tx := String(credit["tx"])
+	var idx := int(credit.get("index", -1))
+	var plays := int(credit.get("plays", 1))
+	var left := int(credit.get("left", 0))
+	var note := "TICKET %s · block %s · this round is seeded by its hash" % [ArcadeScores.short(tx), ArcadeScores.grouped(int(credit["block"]))]
+	if plays > 1:
+		note = "STRIP %s · play %d of %d · %d left · block %s · seeded by hash(ticket, play)" % [
+			ArcadeScores.short(tx), idx + 1, plays, left, ArcadeScores.grouped(int(credit["block"]))]
+	_update_plaques()
+	_play(game, MidwayGame.seed_from_tx(ArcadePay.seed_tx(credit)), true, note,
+		{"hash": tx, "block": int(credit["block"]), "index": idx, "plays": plays, "left": left, "item": int(credit.get("item", 0))})
+
+
+## A price plaque on each stall's counter: the prices, and the plays left on your strips.
+func _build_plaques() -> void:
+	_plaques.clear()
+	for g in _fair.game_spots:
+		var face: Vector3 = g.get("face", Vector3.BACK)
+		# On the counter's front, off to one side (a stall's centre post stands in front of the middle)
+		var side: Vector3 = Vector3.UP.cross(face).normalized()
+		var at: Vector3 = g["pos"] - face.normalized() * 1.2 + Vector3.UP * 0.62 + side * 0.78
+		var l := FairKit.label(_fair, "", at, 28, Color(1.0, 0.86, 0.55) * 1.5, atan2(face.x, face.z), Color(0.02, 0.01, 0.03), 0.0032)
+		l.name = "Price_" + String(g["id"])
+		_plaques[String(g["id"])] = l
+	_update_plaques()
+
+
+func _update_plaques(preview_left: int = -1) -> void:
+	for id in _plaques:
+		var l: Label3D = _plaques[id]
+		if not is_instance_valid(l):
+			continue
+		var t := "%s A PLAY\nSTRIP OF %d: %s" % [Prices.play_text(), Prices.STRIP_PLAYS, Prices.strip_text()]
+		var n := plays_left(id) if preview_left < 0 else preview_left
+		if n > 0:
+			t += "\nYOUR STRIP: %d PLAY%s LEFT%s" % [n, "" if n == 1 else "S", "\n(PREVIEW)" if preview_left >= 0 else ""]
+		elif Wallet.address == "" and preview_left < 0:
+			t += "\nPRACTICE FREE (NO WALLET)"
+		if l.text != t:
+			l.text = t
+
+
+## Strips this wallet bought at this QING (found in its Transfer logs, any computer) join the
+## local ledger, with every play the room shows posted marked spent: plays left are derivable.
+func _sync_strips(w: String, strips: Array) -> void:
+	var rows: Array = FairBoard.state_of(_qing).get("rows", [])
+	for s in strips:
+		ArcadePay.sync_strip(w, _qing, String(s["tx"]), int(s["block"]), int(s["item"]), int(s["plays"]),
+			FairProgress.posted_indices(rows, w, String(s["tx"])))
+	_update_plaques()
 
 
 ## The fair is built by development: the steps to the night market (Settlement), from
@@ -308,7 +450,12 @@ func _play(id: String, seed_v: int, paid: bool, note: String, ticket: Dictionary
 		_game = null
 		_focus_key = ""
 		_player.set_physics_process(true)
-		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED))
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		_update_plaques()
+		# A strip's last play: offer the next one right away
+		if paid and int(ticket.get("plays", 1)) > 1 and plays_left(id) == 0:
+			_hud.ticker("%s · that was your strip's last play" % MidwayGame.title(id), Color("#ffd27a"), 8.0)
+			offer_tickets(id, true))
 	_game.start(self, spot["stage"], id, seed_v, paid, note, ticket, [_hud] if _hud is CanvasLayer else [])
 
 
@@ -321,6 +468,15 @@ func refresh_boards() -> void:
 	await FairBoard.read(_qing)
 	_boards_busy = false
 	_write_boards()
+	# Posted rounds count for the rocket (an any-game strip's plays) and spend their strip's play
+	var w := String(_progress.get("wallet", ""))
+	if w != "" and w != "preview" and w == Wallet.address.to_lower():
+		var rows: Array = FairBoard.state_of(_qing).get("rows", [])
+		var codes := FairProgress.merge(_progress["codes"], FairProgress.posted_codes(rows, w))
+		_sync_strips(w, FairProgress.cached(w, _qing)["strips"])
+		if codes != _progress["codes"]:
+			_progress["codes"] = codes
+			_show_progress()
 
 
 func _write_boards() -> void:
@@ -355,7 +511,10 @@ func refresh_progress() -> void:
 	_progress_busy = false
 	if Wallet.address.to_lower() != w:
 		return
-	_progress = {"codes": r["codes"], "state": "ok" if r["ok"] else "failed", "block": int(r["block"]), "wallet": w}
+	# The rocket's rule: tickets in the logs (a) ∪ this wallet's verified posted rounds (b)
+	var played := FairProgress.played(r["codes"], FairBoard.state_of(_qing).get("rows", []), w)
+	_progress = {"codes": played, "state": "ok" if r["ok"] else "failed", "block": int(r["block"]), "wallet": w}
+	_sync_strips(w, r.get("strips", []))
 	print("[Fair] rocket progress %s@%s: %s (%s, block %d)" % [w, _qing, str(r["codes"]), _progress["state"], int(r["block"])])
 	_show_progress()
 
@@ -364,6 +523,7 @@ func _show_progress() -> void:
 	if _lights:
 		_lights.show_progress(_progress["codes"], _progress["state"], int(_progress["block"]))
 	_focus_key = ""  # the prompt re-reads it
+	_update_plaques()
 
 
 ## Locked: the rocket, a wallet connected, and not every game played here (or not read yet).
@@ -384,7 +544,8 @@ func _progress_line() -> String:
 
 ## Previews (screenshot.gd --fair=<game>|rocket): first person at a stall, a scripted round of
 ## practice (nothing is paid or posted), held at `phase`: aim | play | hit (a big hit, mid-effects) | cheer (the celebration) | howto | result; `board`: the stall's
-## room board close up.
+## room board close up; `buy`: the stall's ticket choice (one play or a strip); `strip`: the
+## counter's price plaque and the prompt with a strip's plays left (labelled PREVIEW).
 func preview_game(id: String, phase: String, codes: Array = []) -> void:
 	_preview = true
 	if id == "rocket":
@@ -413,6 +574,24 @@ func preview_game(id: String, phase: String, codes: Array = []) -> void:
 				cam.look_at(c)
 				cam.fov = 50.0
 				cam.current = true
+		return
+	if phase in ["buy", "strip"]:  # at the stall: the buy choice, or a strip's plays left (a labelled preview)
+		for g in _fair.game_spots:
+			if g["id"] != id:
+				continue
+			var face: Vector3 = (g.get("face", Vector3.BACK) as Vector3).normalized()
+			var spot: Vector3 = _fair.to_global(g["pos"])
+			var cam := Camera3D.new()
+			add_child(cam)
+			cam.global_position = spot + face * 1.6 + Vector3.UP * 1.75
+			cam.look_at(spot - face * 1.2 + Vector3.UP * 0.9)
+			cam.fov = 62.0
+			cam.current = true
+		if phase == "strip":
+			_update_plaques(7)
+			_hud.show_prompt("%s  PLAY %s · strip: 7 plays left · no new payment (PREVIEW)" % [ControlsHelp.key_of("interact"), MidwayGame.title(id)])
+		else:
+			offer_tickets(id)
 		return
 	_play(id, 0x2b1c0de5, false, "PREVIEW · practice round · nothing paid or posted", {})
 	if _game == null:

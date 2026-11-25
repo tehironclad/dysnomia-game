@@ -530,7 +530,7 @@ func _rent(kind: String) -> void:
 			AccessSteps.popup(self, "arcade", {"title": "Rent the %s (%s)" % [nm, ArcadePay.fee_text()], "qing": _qing, "fee_wei": ArcadePay.FEE_WEI})
 		return
 	# The payment was this rental, not an arcade play: spend the credit it recorded.
-	ArcadePay.use_credit(Wallet.address, _qing)
+	ArcadePay.use_credit(Wallet.address, _qing, [], String(res["hash"]))  # this very payment, not an older strip play
 	VehicleUnlocks.add_rental(Wallet.address, _qing, kind, String(res["hash"]), int(res["block"]))
 	Cues.play(self, "confirm")
 	_hud.ticker("RENTAL VERIFIED · %s for this session · block %d" % [nm, int(res["block"])], DeepFieldTheme.ICE, 10.0)

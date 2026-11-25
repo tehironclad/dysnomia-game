@@ -12,7 +12,8 @@ extends RefCounted
 ##   the receipt's block and shows the measured change (+0 is the honest answer),
 ##   and it sums the AFFECTION Transfer(0x0 → …) mints found in the receipt.
 ## - The House Su is CHEON.Su(this QING), the move that does grow your bars here.
-## - A round for the house is ArcadePay.transfer_to_qing: 1 Ⓐ to this QING.
+## - A round for the house is ArcadePay.transfer_to_qing: Prices.ROUND Ⓐ to this QING. Each drink
+##   costs its Prices.DRINKS price (1–2 Ⓐ), paid to this QING before its call (BarMenu).
 ## A failed read shows "—". Nothing here invents a number.
 
 const KIND_OP := "op"
@@ -35,7 +36,7 @@ const DRINKS := [
 		"blurb": "CHEON.Su(this QING): the one that grows your bars here, +1 YUE.", "look": [Color(1.0, 0.85, 0.3), "pint"]},
 ]
 const ROUND := {"id": "house_round", "name": "Round for the House",
-	"blurb": "1 Ⓐ from your wallet to this QING (AFFECTION.transfer), verified in the receipt. The room cheers.",
+	"blurb": "A round from your wallet to this QING (AFFECTION.transfer), verified in the receipt. The room cheers.",
 	"look": [Color(1.0, 0.68, 0.12), "pint"]}
 
 const OP_NOTE := "AFFECTION ops mint into AFFECTION's own reserve; they don't move your bars, Charge or range."

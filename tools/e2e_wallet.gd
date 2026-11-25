@@ -85,6 +85,9 @@ func _run() -> void:
 	_wallet = _arg("wallet").to_lower()
 	var qing := _arg("qing").to_lower()
 	var hash := _arg("hash").to_lower()
+	var rpc_url := _arg("rpc")
+	if rpc_url != "":
+		root.get_node("Chain").get("rpc").endpoint = rpc_url  # the JS side's pass-through to the public node
 	_W = root.get_node("Wallet")
 	_AP = load("res://scripts/games/arcade_pay.gd")
 	var bridge = _W.bridge
@@ -183,7 +186,81 @@ func _run() -> void:
 	r = await _AP.transfer_to_qing(qing, "E2E ticket after the window was closed", fee)
 	_record("window closed, reopened by the payment", gone and r.get("ok", false), _plain(r))
 
+	# 11. A ticket strip: one approval buys Prices.STRIP_PLAYS plays of any fair game
+	#     (Prices.STRIP Ⓐ + plays·100 + 8 wei). Then two of its plays: each seeded by
+	#     SHA-256("<tx>#<i>"), played by MidwayAuto, its room line checked by FairBoard against
+	#     the receipt (play #10 and a second posting of #0 are refused), the plays left counted
+	#     locally and derived from the posted lines, and the rocket's rule applied.
+	#     No strip transfer exists on chain to point at, so the JS side serves --hash's real
+	#     receipt with its Transfer amount set to what the wallet signed (it says so).
+	await _strip(qing, hash)
+
 	_finish("")
+
+
+func _strip(qing: String, hash: String) -> void:
+	var TC = load("res://scripts/games/ticket_code.gd")
+	var PR = load("res://scripts/games/prices.gd")
+	var FB = load("res://scripts/world/funfair/fair_board.gd")
+	var FP = load("res://scripts/world/funfair/fair_progress.gd")
+	var MG = load("res://scripts/world/funfair/midway_game.gd")
+	var key := "%s@%s" % [_wallet, qing]
+	var ledger := ConfigFile.new()
+	var had_ledger := ledger.load(_AP.LEDGER) == OK
+	if had_ledger and ledger.has_section_key("credits", key):
+		var trimmed := ConfigFile.new()
+		trimmed.load(_AP.LEDGER)
+		trimmed.erase_section_key("credits", key)
+		trimmed.save(_AP.LEDGER)
+	var r: Dictionary = await _AP.buy(qing, "E2E fair strip (any game)", TC.FAIR_ANY, PR.STRIP_PLAYS)
+	var detail := _plain(r)
+	detail["fee_wei"] = PR.ticket_wei(TC.FAIR_ANY, PR.STRIP_PLAYS)
+	var ok: bool = r.get("ok", false) and String(r.get("hash", "")) == hash and int(r.get("ticket", {}).get("plays", 0)) == PR.STRIP_PLAYS
+	detail["plays_after_buy"] = _AP.credits(_wallet, qing, [TC.FAIR_ANY])
+	ok = ok and int(detail["plays_after_buy"]) == PR.STRIP_PLAYS
+	var rc: Dictionary = {}
+	if ok:
+		var rr: Dictionary = await root.get_node("Chain").get("rpc").get_receipt(hash)
+		rc = rr.get("result", {}) if rr.get("ok", false) and rr.get("result") is Dictionary else {}
+	var rows: Array = []
+	var plays: Array = []
+	for i in (2 if ok else 0):
+		var game: String = ["regolith", "crystal"][i]
+		var c: Dictionary = _AP.use_credit(_wallet, qing, [TC.FAIR_ANY])
+		var sim := MidwaySim.new(game, MG.seed_from_tx(_AP.seed_tx(c)))
+		while not sim.done and sim.tick < MidwaySim.MAX_TICKS:
+			if sim.accepts():
+				var a = MidwayAuto.choose(sim)
+				if a is Array:
+					sim.press(int(a[0]), int(a[1]))
+			sim.step()
+		var line: String = FB.line_text(game, sim.score, String(c["tx"]), sim.events, int(c["index"]))
+		var row: Dictionary = FB.verify({"text": line, "from": _wallet, "block": 100 + i, "tx": "0xe2e%d" % i, "log_index": 0}, rc, qing)
+		rows.append(row)
+		plays.append({"game": game, "index": int(c["index"]), "seed_tx": String(c["seed_tx"]), "score": sim.score,
+			"replay": MidwaySim.replay(game, FB.seed_of(FB.parse(line)), sim.events), "line_chars": line.length(), "line": line, "verified": row.get("verified", false), "why": row.get("why", "")})
+	# Refused: a play the strip doesn't have, and play #0 posted again at another stall
+	var bad := {"text": FB.line_text("waat", 0, hash, [], PR.STRIP_PLAYS), "from": _wallet, "block": 102, "tx": "0xe2e2", "log_index": 0}
+	rows.append(FB.verify(bad, rc, qing))
+	if not plays.is_empty():
+		rows.append(FB.verify({"text": String(plays[0]["line"]), "from": _wallet, "block": 103, "tx": "0xe2e3", "log_index": 0}, rc, qing))  # play #0 posted again
+	var deduped: Array = FB.dedupe(rows)
+	var verified := deduped.filter(func(x): return x.get("verified", false)).size()
+	var left: int = _AP.credits(_wallet, qing, [TC.FAIR_ANY])
+	var posted: Array = FP.posted_indices(deduped, _wallet, hash)
+	var strips: Array = FP.strips_from_logs(rc.get("logs", []))
+	var played: Array = FP.played(FP.codes_from_logs(rc.get("logs", [])), deduped, _wallet)
+	detail.merge({"plays": plays, "verified_lines": verified, "refused": deduped.slice(2).map(func(x): return x.get("why", "")),
+		"plays_left_local": left, "plays_left_derived": (int(strips[0]["plays"]) - posted.size()) if not strips.is_empty() else -1,
+		"strips_in_logs": strips, "rocket_codes": played})
+	ok = ok and plays.size() == 2 and verified == 2 and left == PR.STRIP_PLAYS - 2 and int(detail["plays_left_derived"]) == PR.STRIP_PLAYS - 2 \
+		and plays.all(func(p): return p["verified"] and int(p["replay"]) == int(p["score"])) and played == [3, 4] \
+		and String(plays[0]["seed_tx"]) == TC.seed_tx(hash, 0) and String(plays[1]["seed_tx"]) == TC.seed_tx(hash, 1)
+	if had_ledger:
+		ledger.save(_AP.LEDGER)
+	else:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(_AP.LEDGER))
+	_record("fair strip: one approval, two plays replayed and verified", ok, detail)
 
 
 func _finish(error: String) -> void:

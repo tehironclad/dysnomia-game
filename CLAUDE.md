@@ -88,6 +88,11 @@
   board). Render a dive: `screenshot.gd -- --scene=res://scenes/places/arcade_place.tscn
   --dive=void_lanes|entropy_drift|bar_raiser|cart_… [--dive-phase=push|warp|inside|menu] [--classic]`.
   `sunny_pub.gd` (TehSunFlowrScioety QING), both on `GamesPlace`.
+  Prices live in ONE table, `scripts/games/prices.gd` (`Prices`: play 1 Ⓐ, strip of 10 for 10 Ⓐ, rocket 5 Ⓐ,
+  drinks 1–2 Ⓐ, wager helper); never write a price literal. Ticket strips (LEARNINGS §14): `TicketCode` writes what a
+  transfer bought into its amount (A Ⓐ + plays·100 + item wei; c < 100 = one play, the old tickets),
+  `ArcadePay.buy(qing, label, item, plays)` pays and records it, play i is seeded by SHA-256("<tx>#<i>") and room lines
+  name `tx#i`; `TicketChoice` is the stall's buy popup. Shots: `--fair=<game> --fair-phase=buy|strip`.
   Pool and Twenty-One are played seated in first person (`scripts/games/seat/`: `TableSeat`, `PoolSeat`,
   `CardSeat`, pure maths in `PoolAim`). Previews: `screenshot.gd -- --seat=pool|cards
   --seat-phase=aim|roll|overhead|seated|enter` (practice: nothing posted), `--near=<cabinet id>` (the

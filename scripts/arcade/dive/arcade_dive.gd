@@ -12,6 +12,7 @@ extends CanvasLayer
 ## (ArcadePay's pipeline is untouched); the menu's buttons just emit signals.
 
 signal pay_pressed
+signal strip_pressed  ## buy a ticket strip (Prices.STRIP_PLAYS plays, one approval)
 signal start_pressed
 signal leave_pressed
 signal view_pressed
@@ -45,6 +46,7 @@ var menu_title: Label
 var menu_blurb: Label
 var menu_info: Label
 var pay_button: Button
+var strip_button: Button
 var start_button: Button
 var view_button: Button
 var leave_button: Button
@@ -543,6 +545,7 @@ func _build_menu(root: Control) -> void:
 	row.add_theme_constant_override("separation", 10)
 	col.add_child(row)
 	pay_button = _button(row, "Pay", pay_pressed)
+	strip_button = _button(row, "Strip", strip_pressed)
 	start_button = _button(row, "Play", start_pressed)
 	var row2 := HBoxContainer.new()
 	row2.add_theme_constant_override("separation", 10)

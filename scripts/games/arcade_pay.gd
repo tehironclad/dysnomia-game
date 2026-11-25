@@ -10,14 +10,20 @@ extends RefCounted
 ## that receipt, and the QING's AFFECTION balance is re-read at that block.
 ## Only then is one credit recorded (locally, keyed by the tx hash); starting
 ## a game spends it. A credit belongs to the QING it was paid to.
+##
+## Ticket strips (buy): one transfer buys several plays (Prices.STRIP for Prices.STRIP_PLAYS, gas
+## once); its amount carries the item and the strip size (TicketCode). The ledger keeps one entry
+## per transfer with the play indices spent; play i is seeded by TicketCode.seed_tx(tx, i).
 
-const FEE_WEI := "1000000000000000000"  # 1 Ⓐ per play
-const SYMBOL := "Ⓐ"  # AFFECTION.symbol() on chain
+static var FEE_WEI: String = Prices.wei(Prices.PLAY)  ## one play (Prices: the price table)
+const SYMBOL := Prices.SYMBOL  # AFFECTION.symbol() on chain
 const LEDGER := "user://arcade_credits.cfg"
+## What an arcade cabinet takes: a plain 1 Ⓐ credit (the old ones too) or an arcade strip's play.
+const ARCADE_ITEMS := [TicketCode.GENERAL, TicketCode.ARCADE]
 
 
 static func fee_text() -> String:
-	return "%s %s" % [TokenFormat.wei_to_tokens(BigInt.from_decimal(FEE_WEI)), SYMBOL]
+	return Prices.play_text()
 
 
 static func fmt(wei: PackedInt64Array) -> String:
@@ -47,7 +53,7 @@ static func verify_receipt(receipt: Dictionary, from: String, to: String, fee_we
 			continue
 		var value := BigInt.from_hex(String(lg.get("data", "0x0")))
 		if BigInt.cmp(value, BigInt.from_decimal(fee_wei)) < 0:
-			return {"ok": false, "message": "The transfer moved only %s; a play costs %s." % [fmt(value), fee_text()]}
+			return {"ok": false, "message": "The transfer moved only %s; this costs %s." % [fmt(value), fmt(BigInt.from_decimal(fee_wei))]}
 		return {"ok": true, "value": value}
 	return {"ok": false, "message": "The receipt has no AFFECTION Transfer from the wallet to the QING."}
 
@@ -55,10 +61,32 @@ static func verify_receipt(receipt: Dictionary, from: String, to: String, fee_we
 ## Pays one credit at `qing`. Returns {ok, hash, block, qing_balance} or the
 ## failure from Wallet.send / verification ({ok:false, stage, message}).
 static func pay(qing: String, place_name: String) -> Dictionary:
-	var r := await transfer_to_qing(qing, "Arcade credit at %s (%s)" % [place_name, fee_text()])
-	if r["ok"]:
-		add_credit(r["from"], qing.to_lower(), r["hash"], r["block"])
+	return await buy(qing, "Arcade credit at %s (%s)" % [place_name, fee_text()], TicketCode.GENERAL, 1)
+
+
+## Buys `plays` plays of `item` (TicketCode) at `qing` for Prices.price(item, plays): one transfer
+## of Prices.ticket_wei through transfer_to_qing (simulate → sign → receipt → Transfer log → QING
+## re-read). The receipt's own Transfer amount must decode to exactly that item and size and cover
+## its price; then the ledger gets one entry with `plays` plays. {ok, hash, block, from,
+## qing_balance, value, ticket: {tx, block, item, plays}} or {ok:false, stage, message}.
+static func buy(qing: String, label: String, item: int, plays: int = 1) -> Dictionary:
+	var fee := Prices.ticket_wei(item, plays)
+	var r := await transfer_to_qing(qing, label, fee)
+	if not r["ok"]:
+		return r
+	var d := TicketCode.decode(r["value"])
+	if not d["ok"] or int(d["item"]) != item or int(d["plays"]) != plays or not Prices.covers(d):
+		return Wallet.report_failure(label, "verify", "Mined in block %d, but the transfer's amount (%s wei) is not %s." % [
+			r["block"], BigInt.to_decimal(r["value"]), describe(item, plays)])
+	add_credit(r["from"], qing.to_lower(), r["hash"], r["block"], item, plays)
+	r["ticket"] = {"tx": r["hash"], "block": r["block"], "item": item, "plays": plays}
+	print("[Pay] %s · %s recorded (%s)" % [label, describe(item, plays), r["hash"]])
 	return r
+
+
+## "a strip of 10 plays of any fair game" / "one play of the Upsilon Rocket"
+static func describe(item: int, plays: int) -> String:
+	return ("a strip of %d plays of %s" % [plays, TicketCode.item_text(item)]) if plays > 1 else "one play of %s" % TicketCode.item_text(item)
 
 
 ## FEE Ⓐ from the connected wallet to `qing`, through the write rule: Wallet.send
@@ -110,14 +138,14 @@ static func ensure_funds(fee_wei: String = FEE_WEI, label: String = "Payment") -
 	var ps = Session.player
 	var lau: String = ps.lau if ps != null and ps.has_lau() else ""
 	if lau == "":
-		return Wallet.report_failure(label, "funds", "This wallet holds %s and has no LAU to draw from; a play costs %s." % [fmt(wb["balance"]), fee_text()])
+		return Wallet.report_failure(label, "funds", "This wallet holds %s and has no LAU to draw from; this costs %s." % [fmt(wb["balance"]), fmt(fee)])
 	var lb := await read_balance(lau)
 	var need := BigInt.sub(fee, wb["balance"])
 	if not lb["ok"]:
-		return Wallet.report_failure(label, "funds", "This wallet holds %s; your LAU's balance could not be read. A play costs %s." % [fmt(wb["balance"]), fee_text()])
+		return Wallet.report_failure(label, "funds", "This wallet holds %s; your LAU's balance could not be read. This costs %s." % [fmt(wb["balance"]), fmt(fee)])
 	if BigInt.cmp(lb["balance"], need) < 0:
-		return Wallet.report_failure(label, "funds", "This wallet holds %s and your LAU %s holds %s; a play costs %s." % [
-			fmt(wb["balance"]), _lau_label(ps), fmt(lb["balance"]), fee_text()])
+		return Wallet.report_failure(label, "funds", "This wallet holds %s and your LAU %s holds %s; this costs %s." % [
+			fmt(wb["balance"]), _lau_label(ps), fmt(lb["balance"]), fmt(fee)])
 	print("[Pay] %s · the wallet holds %s; moving some from the LAU first" % [label, fmt(wb["balance"])])
 	var amount := BigInt.from_decimal(TOPUP_WEI)
 	if BigInt.cmp(lb["balance"], amount) < 0:
@@ -125,7 +153,7 @@ static func ensure_funds(fee_wei: String = FEE_WEI, label: String = "Payment") -
 	if BigInt.cmp(amount, need) < 0:
 		amount = need
 	var data := Abi.encode_call("Withdraw(address,uint256)", [Contracts.AFFECTION, BigInt.to_decimal(amount)])
-	var res: Dictionary = await Wallet.send("Move %s from your LAU %s to this wallet (for 1 Ⓐ plays)" % [fmt(amount), _lau_label(ps)], lau, data)
+	var res: Dictionary = await Wallet.send("Move %s from your LAU %s to this wallet (for %s plays)" % [fmt(amount), _lau_label(ps), fee_text()], lau, data)
 	if not res["ok"]:
 		res["stage"] = "funds · " + String(res.get("stage", ""))
 		return res
@@ -141,6 +169,8 @@ static func _lau_label(ps) -> String:
 
 
 # --- The local credit ledger (one entry per verified payment) ---------------
+# An entry: {tx, block, item, plays, spent: [play indices]}. Entries written before strips are
+# {tx, block, used: bool}: one GENERAL play (index -1), spent when used.
 
 static func _load() -> ConfigFile:
 	var c := ConfigFile.new()
@@ -152,36 +182,119 @@ static func _key(wallet: String, qing: String) -> String:
 	return "%s@%s" % [wallet.to_lower(), qing.to_lower()]
 
 
-static func add_credit(wallet: String, qing: String, tx: String, block: int) -> void:
+static func _item(e: Dictionary) -> int:
+	return int(e.get("item", TicketCode.GENERAL))
+
+
+static func _plays(e: Dictionary) -> int:
+	return maxi(1, int(e.get("plays", 1)))
+
+
+## The play indices spent ([-1] for a spent single ticket).
+static func _spent(e: Dictionary) -> Array:
+	if e.has("spent"):
+		return Array(e["spent"])
+	return [-1] if e.get("used", false) else []
+
+
+static func _left(e: Dictionary) -> int:
+	return _plays(e) - _spent(e).size()
+
+
+## The next unspent play index of an entry: -1 for a single ticket, else 0..plays-1; -2 if none.
+static func _next_index(e: Dictionary) -> int:
+	var spent := _spent(e)
+	if _plays(e) <= 1:
+		return -2 if spent.has(-1) else -1
+	for i in _plays(e):
+		if not spent.has(i):
+			return i
+	return -2
+
+
+static func add_credit(wallet: String, qing: String, tx: String, block: int, item: int = TicketCode.GENERAL, plays: int = 1) -> void:
 	var c := _load()
 	var list: Array = c.get_value("credits", _key(wallet, qing), [])
 	for e in list:
-		if e["tx"] == tx:
+		if String(e["tx"]) == tx:
 			return
-	list.append({"tx": tx, "block": block, "used": false})
+	list.append({"tx": tx, "block": block, "item": item, "plays": plays, "spent": []})
 	c.set_value("credits", _key(wallet, qing), list)
 	c.save(LEDGER)
 
 
-## Unspent credits at this QING for this wallet.
-static func credits(wallet: String, qing: String) -> int:
+## Unspent plays at this QING for this wallet, of these items (default: what a cabinet takes).
+static func credits(wallet: String, qing: String, items: Array = ARCADE_ITEMS) -> int:
 	if wallet == "":
 		return 0
 	var n := 0
 	for e in _load().get_value("credits", _key(wallet, qing), []):
-		if not e["used"]:
-			n += 1
+		if items.has(_item(e)):
+			n += maxi(0, _left(e))
 	return n
 
 
-## Spends the oldest unspent credit; returns it ({tx, block}) or {} if none.
-static func use_credit(wallet: String, qing: String) -> Dictionary:
+## The entries of these items with plays left, oldest first: [{tx, block, item, plays, left, next}].
+static func strips(wallet: String, qing: String, items: Array = ARCADE_ITEMS) -> Array:
+	var out: Array = []
+	if wallet == "":
+		return out
+	for e in _load().get_value("credits", _key(wallet, qing), []):
+		if items.has(_item(e)) and _left(e) > 0:
+			out.append({"tx": String(e["tx"]), "block": int(e.get("block", 0)), "item": _item(e), "plays": _plays(e),
+				"left": _left(e), "next": _next_index(e)})
+	return out
+
+
+## Spends one play: the oldest unspent of these items, or (tx given) that transfer's next play.
+## {tx, block, item, plays, index (-1 = a single ticket), seed_tx, left (after)} or {} if none.
+static func use_credit(wallet: String, qing: String, items: Array = ARCADE_ITEMS, tx: String = "") -> Dictionary:
 	var c := _load()
 	var list: Array = c.get_value("credits", _key(wallet, qing), [])
 	for e in list:
-		if not e["used"]:
-			e["used"] = true
-			c.set_value("credits", _key(wallet, qing), list)
-			c.save(LEDGER)
-			return e
+		if tx != "" and String(e["tx"]) != tx:
+			continue
+		if tx == "" and not items.has(_item(e)):
+			continue
+		var idx := _next_index(e)
+		if idx == -2:
+			continue
+		var spent := _spent(e)
+		spent.append(idx)
+		e["spent"] = spent
+		e.erase("used")
+		if not e.has("plays"):
+			e["plays"] = 1
+			e["item"] = TicketCode.GENERAL
+		c.set_value("credits", _key(wallet, qing), list)
+		c.save(LEDGER)
+		return {"tx": String(e["tx"]), "block": int(e.get("block", 0)), "item": _item(e), "plays": _plays(e),
+			"index": idx, "seed_tx": TicketCode.seed_tx(String(e["tx"]), idx), "left": _left(e)}
 	return {}
+
+
+## A strip found on the chain (FairProgress: Transfer logs wallet → QING), bought on any computer:
+## added here if missing. Then every play the room shows posted (a 🎪 line naming tx#index) is
+## marked spent, so the plays left are derivable from the chain, not only from this computer.
+static func sync_strip(wallet: String, qing: String, tx: String, block: int, item: int, plays: int, posted: Array) -> void:
+	add_credit(wallet, qing, tx, block, item, plays)
+	var c := _load()
+	var list: Array = c.get_value("credits", _key(wallet, qing), [])
+	var changed := false
+	for e in list:
+		if String(e["tx"]) != tx:
+			continue
+		var spent := _spent(e)
+		for i in posted:
+			if int(i) >= 0 and int(i) < _plays(e) and not spent.has(int(i)):
+				spent.append(int(i))
+				changed = true
+		e["spent"] = spent
+	if changed:
+		c.set_value("credits", _key(wallet, qing), list)
+		c.save(LEDGER)
+
+
+## The seed hex of a credit from use_credit (older callers' credits: the tx itself).
+static func seed_tx(credit: Dictionary) -> String:
+	return String(credit.get("seed_tx", credit.get("tx", "")))
