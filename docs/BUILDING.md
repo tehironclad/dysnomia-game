@@ -240,3 +240,21 @@ frames, Illinois): player camera 533 draw calls, 936 objects, 0.35 M primitives 
 over budget: ~1,400 of the draws were sun-shadow passes of the 13 cabinets); `--view=rave --rave-bar=5` (the whole
 hall in the drop, 16 cabinets, DJ + 10 dancers, lasers) 484 / 920 / 0.29 M. Script cost of `RaveHall` ≈ 0.08 ms a
 frame headless; the music is a worker-thread render (~0.5 s, once) and a buffer push per frame.
+
+### Bumps: knockable props and characters (2026-11-25)
+
+RatKing (`--qing=0xe416…400b`; Sunny's Pub at `0x2b78…96de`), lavapipe, 60 frames, `--quality=3`, `823f26b` → `bump`;
+draw calls / objects / primitives:
+
+| View | High, before | High, after |
+|---|---|---|
+| player camera | 287 / 1,081 / 0.58 M | 287 / 1,082 / 0.58 M |
+| `--view=fair` | 494 / 730 / 0.98 M | 486 / 765 / 0.98 M |
+| Sunny's Pub `--view=room` | 648 / 1,056 / 0.50 M | 688 / 1,098 / 0.51 M |
+
+Object growth per frame 0.1 before and after (one "after" sample read 2.7; its repeat read 0.1). Headless script cost
+7.44 ms/frame wall with `KnockWorld`, 7.39 without (`--disable=KnockWorld`). What it costs: at the fair the knockable
+crates, bins and barrels stay out of the far stand-ins (`FarProxy.LIVE_GROUP`), +35 objects seen whole; in the pub
+the stools left the material batches for one MultiMesh of their own (4 surfaces) and the loose drinks, candles and
+the cue stand are their own nodes (+40 draw calls). Nothing has a body while nobody moves; a knocked prop has one
+only while it moves (≤ 32).

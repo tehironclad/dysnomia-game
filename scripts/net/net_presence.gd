@@ -29,6 +29,7 @@ func setup(p_qing: String, p_player: Node3D, p_hud: CanvasLayer) -> void:
 		return
 	c.peer_joined.connect(_on_peer)
 	c.peer_left.connect(_on_left)
+	_bumps_setup(c)
 	Net.voice_pcm.connect(_on_voice)
 	if not Session.changed.is_connected(Net.refresh_profile):  # autoload to autoload: outlives this scene
 		Session.changed.connect(Net.refresh_profile)
@@ -105,3 +106,38 @@ func _process(_delta: float) -> void:
 			r.visible = true
 			r.apply_pose(s)
 
+
+# ── bumps (NetBump) ─────────────────────────────────────────────────────────
+
+var _bumped_at := -100.0  ## when the local player was last bumped (ms clock, s)
+
+
+func _bumps_setup(c: NetClient) -> void:
+	c.bump_received.connect(_on_bump_received)
+	var kw := KnockWorld.of(self)
+	if kw:
+		kw.character_bumped.connect(_on_character_bumped)
+
+
+## We ran into someone: if it was another player, tell the room.
+func _on_character_bumped(st: Node, level: int, dir: Vector3, bumper: Node3D) -> void:
+	if bumper != player or not (st is Stumble) or (st as Stumble).peer_id < 0:
+		return
+	if Net.client:
+		Net.client.send_bump((st as Stumble).peer_id, BumpMath.yaw_of(dir), level)
+
+
+## Someone ran into a player here: that avatar stumbles; if it was us, a brief stagger.
+func _on_bump_received(_from_id: int, target_id: int, yaw: float, level: int) -> void:
+	var dir := BumpMath.dir_of(yaw)
+	if Net.client and target_id == Net.client.my_id:
+		var now := Time.get_ticks_msec() / 1000.0
+		if now - _bumped_at < NetBump.TARGET_COOLDOWN_S or player == null or not player.has_method("bump_stagger"):
+			return
+		_bumped_at = now
+		player.bump_stagger(BumpMath.stagger_seconds(maxi(level, BumpMath.STUMBLE)), dir * (1.2 if level >= BumpMath.STUMBLE else 0.5))
+		return
+	var r: RemotePlayer = remotes.get(target_id)
+	var st := Stumble.on(r.avatar) if r else null
+	if st and st.ready_for(level):
+		st.bump(dir, level)

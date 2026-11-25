@@ -1011,3 +1011,42 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
 - **Core detail** (`CoreDressing`): metal-plate paving r 22 m with kerb, inlaid light lines and 36 bollards (MultiMesh;
   gaps at the four roads), the Room's plinth band, cornice and door portal (Column_Astra, canopy, threshold, spot),
   stepped bases on the pylons/monolith/World plinth, metal well rims, tower podiums. Label3Ds on the Core have outlines.
+
+## 21. Bumping into things: knockable props and characters who fall over (2026-11-25)
+
+- **What:** small loose props topple when run into (on foot, flying low, in a vehicle, or hit by another knocked
+  prop), and people stumble or fall over. No attacks: only bumps. Transient and local to each screen; never state.
+- **Knockable** (`scripts/world/physics/knockable.gd`): a child Node of the prop (or one per MultiMesh instance,
+  `add_slots`, with the instance transforms passed in: reading a MultiMesh back is a RenderingServer round trip and
+  returns identity headless). No collider while resting. Its node joins `FarProxy.LIVE_GROUP` (never merged into a
+  stand-in). Pub: the bar stools (one MultiMesh), the drying glasses, the lounge tables and high-tops (their
+  colliders went) with their drinks and candles, a pool-cue stand. Fair: bins (their colliders went), crates,
+  barrels (`FairKit.Batch.knock`), generators, the arch's megaphone. Never: buildings, rides, the rocket, stalls,
+  towers, the Core, the Heart, anything `Solid`; the booth tables' drinks (inside the booth collider), the stools
+  under seated regulars (`PubRoom.hold_stool`), the fair's table sets (people sit at them).
+- **KnockWorld** (`knock_world.gd`, one per scene, `KnockWorld.of(node)`): resting props in a 4 m grid; each
+  physics frame it reads the bumpers' motion from position deltas (group `player` + `knock_bumper`; a seated player
+  is skipped: the vehicle bumps). A touch gives the prop a RigidBody3D (layer 10 = `DEBRIS_LAYER`; mask world +
+  debris; collision exceptions with the bumpers, else the solver shoves bodies out of the player's capsule at
+  20 m/s) and `BumpMath.kick`: the contact impulse, along half the heading and half the normal, never past 6.5 m/s,
+  with an 18 % hop, applied above the middle so it tips. Gravity scale 0.5 (the player's low g). Speeds are clamped
+  every frame (≤ 8.5 m/s flat, ≤ 3 m/s up) because a body that starts touching the ground is launched by the
+  solver. What stood on it falls with it; what it stood on holds it up meanwhile (a stand-in box). Bodies go when
+  still for 0.6 s or after 6 s (cylinders get angular damping 2.6, else they roll for ever); the prop stays where
+  it fell, bodiless, and can be kicked again. At most 32 bodies. Home after 25 s once neither where it lies nor its
+  spot is in view (or after 90 s once its spot is out of view): never a pop in front of you.
+- **Stumble** (`stumble.gd`) on a HumanAvatar (AmbientNPC — the fair's visitors and crowd, the Steward —, PubLife,
+  SpeakerEchoes, RemotePlayer): closing speed × √(mass / 80 kg) ≥ 1 nudge (a lean and sidestep), ≥ 7 stumble
+  (`Hit_Chest`), ≥ 9.5 fall (`Death01`, which falls backwards: the body is turned so it falls along the push, then
+  played backwards to get up). Walk 6 m/s nudges, a sprint 14 m/s knocks over, a rover at 5 m/s too. Seated,
+  dancing or another player: a stumble at most. Cooldowns 0.6 / 1.5 / 4 s. A line ("oof!") rises over them; after
+  a fall, a brush-off line. Hooks on HumanAvatar: `react(clip, speed, backwards)` plays over everything, `overlay`
+  (a Transform3D on the body). Owners that walk them (AmbientNPC, FairCrowd, PubLife's walker) wait while `busy()`.
+  Riders on rides are not bumpable (`AmbientNPC.bumpable = false`).
+- **The player** staggers (`bump_stagger`: ≤ 0.6 s of weak steering and a camera jolt, the model stumbles) after
+  knocking someone down or hitting a heavy prop; momentum is shared with props (a barrel slows you).
+- **Online:** `NetBump` (SERVER.md "Bumps"): running into a remote avatar makes it stumble here and sends `C_BUMP`;
+  the server checks distance from the positions it already has and relays `S_BUMP`; the bumped player staggers.
+- **Sounds:** `BumpSfx` (wood, metal, glass, soft, oof, thud), synthesised on FairSfx's helpers, positional.
+- **Check:** `tools/probe_bump.gd [-- --only=pub,fair --shots=<abs dir> --debug]`; `tests/test_bump.gd`;
+  `tools/net_selftest.gd` (the bump block).

@@ -208,6 +208,30 @@ func _run() -> void:
 		ok(not JSON.stringify(inf).contains(a.wallet.trim_prefix("0x")), "info names no wallet")
 		ok(NetProto.size_ok(NetProto.json_msg(NetProto.C_INFO, {"req": 123456})), "a C_INFO request fits its size limit")
 
+	# ── bumps (NetBump): running into another player ──
+	ok(a.features.has("bump"), "the welcome lists the bump feature")
+	var bumps := []
+	b.bump_received.connect(func(from, target, yaw, level): bumps.append([from, target, yaw, level]))
+	var seen := []
+	g.bump_received.connect(func(from, target, _yaw, _level): seen.append([from, target]))
+	a.send_state(Vector3(6.0, 2, 5), 0.0, NetProto.F_ON_FLOOR, 0, true)
+	b.send_state(Vector3(5, 2, 5), 0.0, NetProto.F_ON_FLOOR, 0, true)
+	g.send_state(Vector3(60, 2, 60), 0.0, NetProto.F_ON_FLOOR, 0, true)
+	await wait_s(0.3)
+	ok(a.send_bump(b.my_id, 1.0, BumpMath.FALL), "A ran into B: a bump is sent")
+	ok(await wait_until(func(): return bumps.size() >= 1, 3.0), "B is told it was bumped")
+	if bumps.size() >= 1:
+		ok(int(bumps[0][0]) == a.my_id and int(bumps[0][1]) == b.my_id and int(bumps[0][3]) == BumpMath.STUMBLE
+			and absf(float(bumps[0][2]) - 1.0) < 0.03, "from A, on B, a stumble at most, the push's direction: %s" % [bumps[0]])
+	ok(await wait_until(func(): return seen.any(func(e): return int(e[1]) == b.my_id), 3.0), "the room sees B stumble too")
+	ok(not a.send_bump(b.my_id, 1.0, BumpMath.STUMBLE), "the client doesn't re-send at once")
+	a._send(NetBump.bump_msg(b.my_id, 0.5, BumpMath.STUMBLE))  # straight past the client's own cooldown
+	await wait_s(0.4)
+	ok(bumps.size() == 1, "the server drops a second bump on B inside its cooldown")
+	a._send(NetBump.bump_msg(g.my_id, 0.5, BumpMath.STUMBLE))
+	await wait_s(0.4)
+	ok(not seen.any(func(e): return int(e[1]) == g.my_id), "a bump on someone 60 m away is dropped")
+
 	# ── rate limits ──
 	got.clear()
 	var a_notes := []

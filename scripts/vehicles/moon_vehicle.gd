@@ -94,6 +94,11 @@ func setup(p_kind: String, p_tint: Color, p_height_fn: Callable) -> void:
 	_far_stand_ins()
 	_ray_exclude = [get_rid()]
 	set_physics_process(false)
+	# Driven into a bin, a crate or a crowd: it knocks them over (KnockWorld).
+	add_to_group("knock_bumper")
+	set_meta("bump_radius", 1.1)
+	set_meta("bump_height", 1.6)
+	set_meta("bump_mass", 450.0)
 
 
 func _build_collision() -> void:

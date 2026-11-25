@@ -75,6 +75,10 @@ var _fly_blend := 0.0
 var _fly_speed := 0.0
 var _fly_pitch := 0.0
 var _seat_clip := ""  ## "" = on foot; else the clip held while seated (a vehicle: "Driving")
+## Bumps (Stumble): a clip played over everything while set (react()), and a
+## pose layered on the body (a lean, a sidestep, a turn), in this node's space.
+var overlay := Transform3D.IDENTITY
+var _react := ""
 var air_pose := ""  ## base jumping: "" (jetpack) | freefall | wingsuit | canopy
 var drink := 0.0  ## 0..1: the right hand raised to the mouth (a drink at Sunny's bar), over the clip
 var _outfit_mats: Array = []  # ShaderMaterial per outfit surface
@@ -529,7 +533,10 @@ func _process(delta: float) -> void:
 	if anim == null:
 		return
 	var speed := Vector2(_vel.x, _vel.z).length()
-	if _seat_clip != "":
+	if _react != "":
+		extras.set_flames(false, Vector3.ZERO, Vector3.ZERO)
+		_fly_blend = 0.0
+	elif _seat_clip != "":
 		_play(_seat_clip)
 		extras.set_flames(false, Vector3.ZERO, Vector3.ZERO)
 		_fly_blend = 0.0
@@ -591,6 +598,8 @@ func _process(delta: float) -> void:
 	_bank = lerpf(_bank, clampf(-rate * speed * 0.02, -0.25, 0.25), clampf(6.0 * delta, 0.0, 1.0))
 	if _fly_blend <= 0.0:
 		body.rotation.z = _bank
+	if overlay != Transform3D.IDENTITY:
+		body.transform = overlay * body.transform
 
 
 ## The flying pose, layered over the clip: arms down along the sides and swept
@@ -729,6 +738,24 @@ func set_seated(clip: String) -> void:
 	_vel = Vector3.ZERO
 	_on_floor = true
 	_was_on_floor = true
+
+
+## Plays `clip` over everything (a stumble, a fall: Stumble), forwards or from
+## its end backwards at `speed`; "" hands back to the usual clips.
+func react(clip: String, speed: float = 1.0, backwards: bool = false) -> void:
+	if anim == null:
+		return
+	if clip == "" or not anim.has_animation(clip):
+		_react = ""
+		_clip = ""  # the usual clip is picked again next frame (a crossfade)
+		return
+	_react = clip
+	_clip = clip
+	if backwards:
+		anim.play_backwards(clip, XFADE)
+	else:
+		anim.play(clip, XFADE * 0.5)
+	anim.speed_scale = speed
 
 
 func set_flying(_on: bool) -> void:

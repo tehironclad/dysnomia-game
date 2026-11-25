@@ -79,6 +79,10 @@ var auto_walking: bool = false
 var _auto_target: Vector3 = Vector3.ZERO
 var _auto_speed: float = 2.0
 
+# Bumps (KnockWorld, NetBump): a short stagger after hitting something hard;
+# steering is weak for its length (≤ BumpMath.STAGGER_MAX_S), then it's yours again.
+var _stagger_t: float = 0.0
+
 const COYOTE_TIME: float = 0.2   # Seconds of grace after leaving ledge
 const JUMP_BUFFER: float = 0.15  # Seconds to buffer a jump press
 const MAX_WALL_CLIMB: float = 1.5  # Seconds of wall climbing before sliding
@@ -151,6 +155,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	_update_flashlight()
+	_stagger_t = maxf(0.0, _stagger_t - delta)
 
 	if is_flying:
 		_fly_movement(delta)
@@ -305,6 +310,9 @@ func _ground_movement(delta: float) -> void:
 		target_speed = run_speed
 	else:
 		target_speed = walk_speed
+
+	if _stagger_t > 0.0:
+		target_speed *= 0.35  # staggering: little grip for a moment
 
 	# Sprint momentum bonus (bunny-hopping reward)
 	if is_sprinting and _sprint_momentum > 0.0:
@@ -532,6 +540,30 @@ func _update_land_punch(delta: float) -> void:
 	else:
 		_land_punch = 0.0
 		_land_punch_velocity = 0.0
+
+
+# ─── Bumps ──────────────────────────────────────────────────────────────
+
+## A stagger of `seconds` (capped at BumpMath.STAGGER_MAX_S) after running into
+## something or someone, with `dv` (m/s) taken off the body's velocity. The
+## model stumbles (Stumble) and the camera jolts; control comes straight back.
+func bump_stagger(seconds: float, dv: Vector3 = Vector3.ZERO) -> void:
+	velocity += Vector3(dv.x, 0.0, dv.z)
+	seconds = minf(seconds, BumpMath.STAGGER_MAX_S)
+	if seconds <= _stagger_t or seconds <= 0.05:
+		return
+	_stagger_t = seconds
+	_land_punch = minf(_land_punch, -0.05 * seconds / BumpMath.STAGGER_MAX_S)
+	var model := get_node_or_null("PlayerModel") as Node3D
+	var st := Stumble.on(model)
+	if st == null and model and model.has_method("react"):
+		st = Stumble.attach(model, {"enlisted": false, "max_level": BumpMath.STUMBLE})
+	if st and dv.length() > 0.01 and not is_flying:
+		st.bump(dv.normalized(), BumpMath.STUMBLE)
+
+
+func is_staggering() -> bool:
+	return _stagger_t > 0.0
 
 
 # ─── Appearance ────────────────────────────────────────────────────────

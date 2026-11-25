@@ -56,6 +56,9 @@ func setup(p_room: PubRoom) -> void:
 		["rat", Color(0.82, 0.83, 0.86), "male", la + Vector3(0.35, 0, -0.78), Vector3(0, 0, 1), "Sitting_Idle"],
 		["robot", Color(0.30, 0.34, 0.18), "female", ht + Vector3(0.62, 0, 0.15), Vector3(-1, 0, -0.2), "Idle"],
 	]
+	# The two regulars on bar stools keep theirs (no knocking a stool from under someone).
+	room.hold_stool(0)
+	room.hold_stool(st.size() - 2)
 	var wear := ["street", "pilot", "overalls", "robe", "formal", "longcoat"]  # one each, in cast order
 	for ci in cast.size():
 		var c: Array = cast[ci]
@@ -86,6 +89,7 @@ func _avatar(head: String, fabric: Color, armour: Color, body: String, outfit: S
 	add_child(a)
 	a.set_head(head)
 	a.set_suit_colors(fabric, armour)
+	Stumble.attach(a)  # run into them and they stumble (or fall, if they were standing)
 	return a
 
 
@@ -139,6 +143,9 @@ func _drive_sunny(delta: float) -> void:
 func _drive_walker(delta: float) -> void:
 	if _walker == null:
 		return
+	var st := Stumble.on(_walker)
+	if st and st.busy():
+		return  # knocked over: up first
 	if _walker_pause > 0.0:
 		_walker_pause -= delta
 		_walker.update_movement(Vector3.ZERO, true, false)

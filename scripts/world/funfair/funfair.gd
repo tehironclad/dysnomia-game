@@ -48,6 +48,7 @@ var _bench_spots: Array = []
 func initialize(seed_value: int, tier: int = 3) -> void:
 	_rng.seed = seed_value
 	_tier = clampi(tier, 0, 3)
+	_batch.knock = {"Barrel_01": [40.0, "wood"], "Barrel_02": [40.0, "wood"]}  # barrels topple (KnockWorld)
 	_npc_cap = [0, 6, 12, 24][_tier]   # visitors; vendors and the band come on top
 	if _tier == 0:
 		_build_survey_lot()
@@ -155,6 +156,12 @@ func _apply_time(force: bool) -> void:
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────
+
+## Loose things (crates, bins, generators, barrels) knock over when run into (KnockWorld).
+func _loose(n: Node3D, mass: float, sound: String) -> Node3D:
+	Knockable.add(n, mass, sound, {"cyl": sound == "metal" and mass < 20.0})
+	return n
+
 
 func _p(s: float, w: float, y: float = 0.0) -> Vector3:
 	return U * s + V * w + Vector3(0, y, 0)
@@ -327,8 +334,8 @@ func _build_arch() -> void:
 		FairKit.beam(root, Vector3(x, 0, -0.6), Vector3(x, 1.0, -0.6), 0.05, chrome)
 		FairKit.beam(root, Vector3(x, 1.0, -0.6), Vector3(x, 1.0, 0.8), 0.04, chrome)
 		FairKit.beam(root, Vector3(x, 0, 0.8), Vector3(x, 1.0, 0.8), 0.05, chrome)
-	FairKit.model(root, "Megaphone_01", Vector3(-4.2, 1.4, 1.2), 0.6, 1.4)
-	FairKit.model(root, "wooden_crate_01", Vector3(-4.2, 0.0, 1.2), 0.2, 2.6)
+	_loose(FairKit.model(root, "Megaphone_01", Vector3(-4.2, 1.4, 1.2), 0.6, 1.4), 2.0, "metal")
+	_loose(FairKit.model(root, "wooden_crate_01", Vector3(-4.2, 0.0, 1.2), 0.2, 2.6), 25.0, "wood")
 
 
 func _fit_label(l: Label3D, max_w: float) -> void:
@@ -494,7 +501,7 @@ func _stall(pos: Vector3, facing: Vector3, kind: String, pair: Array) -> void:
 	# Back-of-house clutter
 	for i in 2:
 		_batch.prop("Barrel_02" if i == 0 else "Barrel_01", Transform3D(Basis(Vector3.UP, _rng.randf() * TAU), root.transform * Vector3(-1.2 + i * 0.7, 0.006, -d * 0.5 - 0.55)))
-	FairKit.model(self, "wooden_crate_01", root.transform * Vector3(1.0, 0.0, -d * 0.5 - 0.55), root.rotation.y + _rng.randf_range(-0.3, 0.3))
+	_loose(FairKit.model(self, "wooden_crate_01", root.transform * Vector3(1.0, 0.0, -d * 0.5 - 0.55), root.rotation.y + _rng.randf_range(-0.3, 0.3)), 25.0, "wood")
 
 
 ## A game stall's room board: a marquee on two posts over the stall's sign, facing the midway,
@@ -735,8 +742,7 @@ func _build_plaza_dressing() -> void:
 			FairKit.solid_box(self, Vector3(1.2, 0.9, 0.5), p2 + Vector3(0, 0.45, 0), _yaw_to(-d))
 			_bench_spots.append([p2 + Vector3(0, PATH_Y, 0), -d])
 			var bin := p2 + d.cross(Vector3.UP) * 1.0
-			FairKit.model(self, "metal_trash_can", bin + Vector3(0, PATH_Y + 0.072, 0), _rng.randf() * TAU)
-			FairKit.solid_cyl(self, 0.3, 1.0, bin + Vector3(0, 0.5, 0))
+			_loose(FairKit.model(self, "metal_trash_can", bin + Vector3(0, PATH_Y + 0.072, 0), _rng.randf() * TAU), 8.0, "metal")
 		else:
 			# Crystal planter: a regolith boulder bed with a glowing outcrop
 			var bed := FairKit.model(self, "moon_rock_03", p2, _rng.randf() * TAU, 12.0)
@@ -901,13 +907,13 @@ func _build_side_lanes() -> void:
 	FairKit.solid_box(self, Vector3(2.44, 2.6, 6.1), yard + basis * Vector3(-1.8, 1.3, 0), yaw + PI * 0.5)
 	var stencil := FairKit.label(self, "AFFECTION FAIR  ·  CREW", yard + basis * Vector3(-1.8, 1.7, 1.24), 40, Color(0.9, 0.9, 0.85), yaw)
 	stencil.shaded = true
-	FairKit.model(self, "portable_generator", yard + basis * Vector3(2.0, 0, -1.0), yaw + 0.3)
-	FairKit.model(self, "portable_generator", yard + basis * Vector3(3.2, 0, 0.2), yaw - 0.5)
+	_loose(FairKit.model(self, "portable_generator", yard + basis * Vector3(2.0, 0, -1.0), yaw + 0.3), 90.0, "metal")
+	_loose(FairKit.model(self, "portable_generator", yard + basis * Vector3(3.2, 0, 0.2), yaw - 0.5), 90.0, "metal")
 	for i in 6:
 		_batch.prop("Barrel_01" if i % 2 == 0 else "Barrel_02", Transform3D(Basis(Vector3.UP, i * 0.9), yard + basis * Vector3(1.0 + (i % 3) * 0.65, 0.006, 2.2 + int(i / 3) * 0.65)))
 	for i in 3:
-		FairKit.model(self, "wooden_crate_01", yard + basis * Vector3(-1.2 + i * 0.9, 0.0, 3.6), yaw + i * 0.2)
-	FairKit.model(self, "wooden_crate_01", yard + basis * Vector3(-0.75, 0.35, 3.6), yaw + 0.5)
+		_loose(FairKit.model(self, "wooden_crate_01", yard + basis * Vector3(-1.2 + i * 0.9, 0.0, 3.6), yaw + i * 0.2), 25.0, "wood")
+	_loose(FairKit.model(self, "wooden_crate_01", yard + basis * Vector3(-0.75, 0.35, 3.6), yaw + 0.5), 25.0, "wood")
 	var cable := FairKit.paint(Color(0.04, 0.04, 0.04), 0.7, 0.0)
 	var wheel := _p(-3.0, -23.5)
 	_batch.strut(yard + basis * Vector3(2.0, 0.05, -1.0), wheel + Vector3(0, 0.05, 0), 0.035, cable)
@@ -1126,7 +1132,7 @@ func _build_reactor_yard() -> void:
 		_batch.strut(core + Vector3(cos(a) * 0.95, 0.5, sin(a) * 0.95), core + Vector3(cos(a) * 0.85, 3.2, sin(a) * 0.85), 0.06, steel)
 	var lbl := FairKit.label(self, "CHAIN REACTOR · FAIR POWER", c + tb * Vector3(1.27, 1.95, 4.4), 30, Color(0.1, 0.1, 0.12), yaw + PI * 0.5, Color(0, 0, 0, 0))
 	lbl.shaded = true
-	FairKit.model(self, "portable_generator", c + tb * Vector3(2.4, 0, -3.0), yaw + 0.5)
+	_loose(FairKit.model(self, "portable_generator", c + tb * Vector3(2.4, 0, -3.0), yaw + 0.5), 90.0, "metal")
 	FairKit.solid_box(self, Vector3(2.6, 3.0, 9.6), c + tb * Vector3(0, 1.5, 0.6), yaw)
 	FairKit.omni(self, core + Vector3(0, 2.0, 0), Color(0.45, 0.85, 1.0), 2.4, 14.0, 0.2)
 	_batch.pool(c + Vector3(0, 0.08, 0), 6.0, FairKit.NEON_CYAN * 0.35)
@@ -1288,7 +1294,7 @@ func _path_dressing(a: Vector3, b: Vector3, side: float) -> void:
 	FairKit.model(self, "painted_wooden_bench", Vector3(bp.x, PATH_Y, bp.z), _yaw_to(-n))
 	FairKit.solid_box(self, Vector3(1.2, 0.9, 0.5), Vector3(bp.x, 0.45, bp.z), _yaw_to(-n))
 	var bin := bp + d * 1.1
-	FairKit.model(self, "metal_trash_can", Vector3(bin.x, PATH_Y + 0.072, bin.z), _rng.randf() * TAU)
+	_loose(FairKit.model(self, "metal_trash_can", Vector3(bin.x, PATH_Y + 0.072, bin.z), _rng.randf() * TAU), 8.0, "metal")
 	_seat_spots.append([Vector3(bp.x, PATH_Y, bp.z), -n])
 	var cp := m - n * 2.6
 	FairKit.model(self, "moon_rock_03", Vector3(cp.x, 0, cp.z), _rng.randf() * TAU, 10.0).scale.y *= 1.5
@@ -1449,12 +1455,12 @@ func _build_survey_lot() -> void:
 	FairKit.box(self, Vector3(0.8, 0.4, 0.02), wl + Vector3(0, 6.05, 0) + V * 0.14, FairKit.glow(Color(1.0, 0.9, 0.75), 6.0, 0.5)).rotation.y = _yaw_to(V)
 	FairKit.omni(self, wl + Vector3(0, 5.6, 0) + V * 1.0, Color(1.0, 0.85, 0.65), 1.3, 20.0, 0.0)
 	_batch.pool(wl + V * 4.0 + Vector3(0, 0.08, 0), 7.0, Color(1.0, 0.82, 0.6) * 0.35)
-	FairKit.model(self, "portable_generator", wl + Vector3(-1.5, 0, 0.8), 0.7)
+	_loose(FairKit.model(self, "portable_generator", wl + Vector3(-1.5, 0, 0.8), 0.7), 90.0, "metal")
 	_batch.strut(wl + Vector3(-1.2, 0.05, 0.8), wl + Vector3(0, 0.05, 0), 0.03, FairKit.paint(Color(0.04, 0.04, 0.04), 0.7, 0.0))
 	var yard := wl + V * 5.0 + U * 2.0
 	for i in 5:
-		FairKit.model(self, "wooden_crate_01", yard + Vector3((i % 3) * 0.9, 0.0, int(i / 3) * 0.6), _rng.randf() * TAU)
-	FairKit.model(self, "wooden_crate_01", yard + Vector3(0.45, 0.35, 0.0), _rng.randf() * TAU)
+		_loose(FairKit.model(self, "wooden_crate_01", yard + Vector3((i % 3) * 0.9, 0.0, int(i / 3) * 0.6), _rng.randf() * TAU), 25.0, "wood")
+	_loose(FairKit.model(self, "wooden_crate_01", yard + Vector3(0.45, 0.35, 0.0), _rng.randf() * TAU), 25.0, "wood")
 	for i in 4:
 		_batch.prop("Barrel_01", Transform3D(Basis(Vector3.UP, i * 1.3), yard + Vector3(3.0 + (i % 2) * 0.62, 0.006, int(i / 2) * 0.62)))
 	var cont := FairKit.box(self, Vector3(2.44, 2.6, 6.1), yard + U * 6.0 + Vector3(0, 1.3, 0), FairKit.pbr("corrugated_iron", Color(0.25, 0.45, 0.6), 0.6, 1.0))
@@ -1666,6 +1672,7 @@ func _spawn_visitors(seed_value: int) -> void:
 				continue
 			_npc_count += 1
 			var rider := AmbientNPC.new()
+			rider.bumpable = false  # on a ride: out of reach
 			var m: Node3D = mounts[i]
 			m.add_child(rider)
 			rider.setup(seed_value + 90 + i + (0 if r.ride_id == "carousel" else 20), [], Vector3.FORWARD)

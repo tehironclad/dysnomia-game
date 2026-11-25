@@ -84,6 +84,9 @@ func _process(delta: float) -> void:
 		if not is_instance_valid(npc):
 			continue
 		var model: Node3D = npc.get("_model")
+		if npc.is_down():
+			busy = true  # knocked over: they get up before carrying on
+			continue
 		var spot: Vector3 = f[1]
 		var to := spot - npc.position
 		to.y = 0.0

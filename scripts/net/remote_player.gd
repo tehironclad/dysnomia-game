@@ -33,6 +33,9 @@ func setup(info: Dictionary) -> void:
 	avatar.civilian = true  # ~16 meshes, like the pub's regulars
 	avatar.name = "Avatar"
 	add_child(avatar)
+	# Bumps (NetBump): run into them and they stumble (never fall); they knock props too.
+	Stumble.attach(avatar, {"peer_id": peer_id, "max_level": BumpMath.STUMBLE})
+	add_to_group("knock_bumper")
 	# One line, a fixed size on screen (readable far off), just under ChatLife's bubbles (2.55 m).
 	tag = _label(26, Color(0.86, 0.93, 1.0))
 	tag.position.y = TAG_Y

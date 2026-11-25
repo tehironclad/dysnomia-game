@@ -497,6 +497,8 @@ class Batch:
 	var pools: Array = []        # [pos, radius, color]
 	var balloons: Array = []     # [pos, color, phase]
 	var models: Dictionary = {}  # model id -> Array[Transform3D]
+	## Model ids whose instances are knockable (KnockWorld): id -> [mass kg, sound].
+	var knock: Dictionary = {}
 
 	func bulb(p: Vector3, c: Color, phase: float = 0.0, r: float = 0.07) -> void:
 		# Real festoon bulbs are small: radii are authored generously and drawn at 55 %
@@ -600,7 +602,10 @@ class Batch:
 			var mm6 := _mm(mx[0], xs2.size(), false, false)
 			for i in xs2.size():
 				mm6.set_instance_transform(i, (xs2[i] as Transform3D) * (mx[1] as Transform3D))
-			_add(parent, mm6, null, true, "Props_" + id)
+			var mmi6 := _add(parent, mm6, null, true, "Props_" + id)
+			if knock.has(id):
+				var placed: Array = xs2.map(func(x): return (x as Transform3D) * (mx[1] as Transform3D))
+				Knockable.add_slots(mmi6, float(knock[id][0]), String(knock[id][1]), {"cyl": true, "xforms": placed})
 		bulbs.clear(); struts.clear(); flags.clear(); pools.clear(); balloons.clear(); models.clear()
 
 	func _mm(m: Mesh, count: int, colors: bool, custom: bool) -> MultiMesh:
@@ -612,7 +617,7 @@ class Batch:
 		mm.instance_count = count
 		return mm
 
-	func _add(parent: Node3D, mm: MultiMesh, mat: Material, shadows: bool, nm: String) -> void:
+	func _add(parent: Node3D, mm: MultiMesh, mat: Material, shadows: bool, nm: String) -> MultiMeshInstance3D:
 		var mmi := MultiMeshInstance3D.new()
 		mmi.name = nm
 		mmi.multimesh = mm
@@ -621,6 +626,7 @@ class Batch:
 		if not shadows:
 			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		parent.add_child(mmi)
+		return mmi
 
 
 static func flag_mesh() -> Mesh:
