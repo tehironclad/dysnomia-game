@@ -242,7 +242,7 @@ func _create_flame_particles(node_name: String) -> GPUParticles3D:
 	var particles := GPUParticles3D.new()
 	particles.name = node_name
 	particles.emitting = false
-	particles.amount = 64
+	particles.amount = Config.particles(64)
 	particles.lifetime = 0.5
 	particles.explosiveness = 0.0
 	particles.randomness = 0.4

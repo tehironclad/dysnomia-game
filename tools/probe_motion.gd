@@ -63,6 +63,9 @@ func _wait_scene(path: String, timeout_s: float = 60.0) -> bool:
 	var t0 := Time.get_ticks_msec()
 	while not _scene_is(path) and Time.get_ticks_msec() - t0 < int(timeout_s * 1000.0):
 		await process_frame
+	# A territory builds in stages in the game (and here with -- --staged): its arrival starts once built.
+	while _scene_is(path) and current_scene.get("is_built") == false and Time.get_ticks_msec() - t0 < int(timeout_s * 1000.0):
+		await process_frame
 	await _frames(2)
 	return _scene_is(path)
 

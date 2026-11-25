@@ -23,6 +23,14 @@ var _site: LineEdit
 var _port: SpinBox
 var _browser: LineEdit
 var _note: Label
+var _perf_mode: CheckBox
+var _dynamic: CheckBox
+var _target: OptionButton
+var _gpu: Label
+var _live: Label
+var _cal: Label
+var _live_t := 0.0
+const TARGETS := [0, 30, 60, 120]  ## frame-rate target choices (0 = automatic)
 
 
 func _ready() -> void:
@@ -61,6 +69,13 @@ func _ready() -> void:
 	_row(grid, "Graphics quality", _quality)
 	_auto = _check(grid, "Adjust graphics automatically")
 	_quality.item_selected.connect(func(_i): _auto.button_pressed = false)  # a level picked by hand stays
+	_perf_mode = _check(grid, "Performance mode (frame rate first)")
+	_perf_mode.tooltip_text = "Low at most; the resolution drops before the frame rate does. For weak or hot laptops."
+	_dynamic = _check(grid, "Dynamic resolution (hold the frame rate)")
+	_target = OptionButton.new()
+	for t in TARGETS:
+		_target.add_item("Automatic" if t == 0 else "%d fps" % t)
+	_row(grid, "Frame-rate target", _target)
 	_render = _slider(grid, "Render distance (m)", 300.0, 2000.0, 50.0)
 	_fullscreen = _check(grid, "Fullscreen")
 	_vsync = _check(grid, "V-Sync")
@@ -88,8 +103,9 @@ func _ready() -> void:
 	_note.theme_type_variation = "MutedLabel"
 	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_note.custom_minimum_size = Vector2(520, 0)
-	_note.text = _detected_line() + "Low renders at 60% resolution (FSR upscaled), with less fractal detail and no shadows: pick it on slower PCs. The chain is the source of truth; the site accelerator only speeds up a few reads. RPC and port changes apply to new requests and the next wallet connection."
+	_note.text = _detected_line() + "Potato and Low render at about half resolution (upscaled), with a shorter view, a coarser ground, fewer visitors and no shadows: for integrated graphics. The chain is the source of truth; the site accelerator only speeds up a few reads. RPC and port changes apply to new requests and the next wallet connection."
 	col.add_child(_note)
+	_build_graphics_status(col)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	col.add_child(row)
@@ -110,6 +126,79 @@ func _ready() -> void:
 	wallet_btn.pressed.connect(_open_wallet_test)
 	row.add_child(wallet_btn)
 	_load_from_config()
+
+
+## What the graphics are doing right now: the GPU and renderer in use, the level, the
+## render scale and the measured frame rate (live), the last calibration, and its buttons.
+func _build_graphics_status(col: VBoxContainer) -> void:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	col.add_child(box)
+	_gpu = Label.new()
+	_gpu.theme_type_variation = "MutedLabel"
+	_gpu.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_gpu.custom_minimum_size = Vector2(520, 0)
+	box.add_child(_gpu)
+	_live = Label.new()
+	_live.theme_type_variation = "MonoLabel"
+	box.add_child(_live)
+	_cal = Label.new()
+	_cal.theme_type_variation = "MutedLabel"
+	_cal.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_cal.custom_minimum_size = Vector2(520, 0)
+	box.add_child(_cal)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	box.add_child(row)
+	var recal := Button.new()
+	recal.text = "Recalibrate"
+	recal.tooltip_text = "Measure this computer again (a few seconds, here): the level that holds the frame-rate target is kept."
+	recal.pressed.connect(_recalibrate)
+	row.add_child(recal)
+	var other := Button.new()
+	var cur := RenderingServer.get_current_rendering_method()
+	other.text = "Try %s…" % ("Forward+" if cur == "gl_compatibility" else "Compatibility")
+	other.tooltip_text = "Restart with the other renderer and measure it; the faster one is kept."
+	other.pressed.connect(func(): Config.try_other_renderer())
+	row.add_child(other)
+	_refresh_status()
+
+
+func _refresh_status() -> void:
+	if _gpu == null:
+		return
+	_gpu.text = "GPU in use: %s" % Config.gpu_line() + ("\n" + Config.hybrid_hint if Config.hybrid_hint != "" else "")
+	_live.text = Config.status_line()
+	var recs := []
+	for r in Config.calib_records:
+		var rec: Dictionary = Config.calib_records[r]
+		recs.append("%s: %s, %.1f ms" % [Config.renderer_label(String(r)).split(" ")[0], String(Config.QUALITY_NAMES[int(rec.get("level", 0))]).split(" ")[0], float(rec.get("cost_ms", 0.0))])
+	if Config.is_calibrating():
+		_cal.text = "Measuring…"
+	elif Config.calib_note != "":
+		_cal.text = "Last calibration: %s%s" % [Config.calib_note, (" · by renderer: " + "; ".join(recs)) if recs.size() > 1 else ""]
+	else:
+		_cal.text = "Not measured yet: the next territory arrival measures this computer."
+
+
+func _process(delta: float) -> void:
+	if not visible:
+		return
+	_live_t -= delta
+	if _live_t <= 0.0:
+		_live_t = 0.5
+		_refresh_status()
+
+
+func _recalibrate() -> void:
+	var run := Config.recalibrate()
+	if run == null:
+		_note.text = "Calibration runs on the next territory arrival."
+		return
+	_note.text = "Measuring… (a few seconds; the picture changes as levels are tried)"
+	run.finished.connect(func(_l, _f, _r):
+		_load_from_config()
+		_note.text = "Measured: " + Config.calib_note)
 
 
 func _row(grid: GridContainer, label: String, control: Control) -> void:
@@ -146,12 +235,16 @@ func _slider(grid: GridContainer, label: String, lo: float, hi: float, step: flo
 
 
 func _detected_line() -> String:
-	return ("This PC: %s. Automatic picks a level from it and follows the frame rate (never past High); picking a level turns it off.\n" % Config.detected) if Config.detected != "" else ""
+	return ("This PC: %s. Automatic starts from it, measures this computer on arrival, holds the frame rate with the render resolution, then steps levels (Ultra only if measured with lots of headroom); picking a level turns it off.\n" % Config.detected) if Config.detected != "" else ""
 
 
 func _load_from_config() -> void:
 	_quality.select(clampi(Config.graphics_quality, 0, Config.QUALITY_NAMES.size() - 1))
 	_auto.button_pressed = Config.auto_quality
+	_perf_mode.button_pressed = Config.performance_mode
+	_dynamic.button_pressed = Config.dynamic_resolution
+	_target.select(maxi(0, TARGETS.find(Config.target_fps_setting)))
+	_refresh_status()
 	_render.value = Config.render_distance
 	_fullscreen.button_pressed = Config.fullscreen
 	_vsync.button_pressed = Config.vsync
@@ -171,6 +264,9 @@ func _load_from_config() -> void:
 func _apply() -> void:
 	Config.graphics_quality = _quality.selected
 	Config.auto_quality = _auto.button_pressed
+	Config.performance_mode = _perf_mode.button_pressed
+	Config.dynamic_resolution = _dynamic.button_pressed
+	Config.target_fps_setting = TARGETS[maxi(0, _target.selected)]
 	Config.render_distance = _render.value
 	Config.fullscreen = _fullscreen.button_pressed
 	Config.vsync = _vsync.button_pressed

@@ -10,7 +10,7 @@ static func spawn(parent: Node, at: Vector3, strength: float) -> void:
 	if parent == null or strength <= 0.0 or DisplayServer.get_name() == "headless":
 		return
 	var d := LandDust.new()
-	d.amount = int(lerpf(10.0, 28.0, strength))
+	d.amount = Config.particles(int(lerpf(10.0, 28.0, strength)))
 	d.lifetime = lerpf(0.9, 1.6, strength)
 	d.one_shot = true
 	d.explosiveness = 0.95

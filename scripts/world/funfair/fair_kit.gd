@@ -710,7 +710,7 @@ static func smoke(amount: int, lifetime: float, size: Vector2, tint: Color, spre
 		dir: Vector3 = Vector3.UP, radial: float = 0.0) -> GPUParticles3D:
 	## Billowing, lit smoke/vapour. `hot` adds a fire-lit orange start to the colour ramp.
 	var p := GPUParticles3D.new()
-	p.amount = amount
+	p.amount = Config.particles(amount)
 	p.lifetime = lifetime
 	p.local_coords = false
 	p.emitting = false

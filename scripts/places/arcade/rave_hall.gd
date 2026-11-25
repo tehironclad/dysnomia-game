@@ -13,6 +13,7 @@ extends Node3D
 
 const CROWD_HIGH := 10
 const CROWD_LOW := 6
+const CROWD_POTATO := 4
 const DANCE_SPEED := 1.25
 const AVOID_R := 0.95
 
@@ -328,7 +329,7 @@ func _avatar(head: String, outfit: Dictionary, body: String) -> HumanAvatar:
 
 
 func _build_crowd(lay: Dictionary) -> void:
-	var n := CROWD_HIGH if Config.graphics_quality >= 2 else CROWD_LOW
+	var n := CROWD_HIGH if Config.level() >= 2 else (CROWD_LOW if Config.level() == 1 else CROWD_POTATO)
 	var people := RaveStyle.crowd(style, n)
 	for i in n:
 		var who: Dictionary = people[i]

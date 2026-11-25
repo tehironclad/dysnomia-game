@@ -392,7 +392,7 @@ func burst(at: Vector3, col: Color) -> void:
 	var p := CPUParticles3D.new()
 	p.one_shot = true
 	p.emitting = false
-	p.amount = 90
+	p.amount = Config.particles(90)
 	p.lifetime = 1.8
 	p.explosiveness = 0.92
 	p.direction = Vector3.UP

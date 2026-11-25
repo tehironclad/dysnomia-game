@@ -194,12 +194,16 @@ func _process(_delta: float) -> void:
 	_update_prompt()
 
 
-func _attach_grounds() -> void:
+## Draws neighbours' grounds as their heightfields arrive: `max_n` a call (one per frame in
+## play: each mesh is built here, on the main thread).
+func _attach_grounds(max_n: int = 1) -> void:
 	if _results.is_empty():
 		return
 	_lock.lock()
-	var ready := _results.duplicate()
-	_results.clear()
+	var ready := {}
+	for side in _results.keys().slice(0, max_n):
+		ready[side] = _results[side]
+		_results.erase(side)
 	_lock.unlock()
 	for side in ready:
 		var g := DeepFieldTerrain.new()

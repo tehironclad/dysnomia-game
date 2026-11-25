@@ -81,7 +81,7 @@ func _environment() -> void:
 	add_child(under)
 	# Motes drifting up from the abyss.
 	var motes := GPUParticles3D.new()
-	motes.amount = 400
+	motes.amount = Config.particles(400)
 	motes.lifetime = 14.0
 	motes.preprocess = 14.0
 	motes.visibility_aabb = AABB(Vector3(-40, -30, -40), Vector3(80, 60, 80))

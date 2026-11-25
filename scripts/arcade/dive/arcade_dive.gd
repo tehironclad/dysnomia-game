@@ -199,7 +199,7 @@ func enter(c: ArcadeCabinet, ctx: Dictionary) -> void:
 		_vp = SubViewport.new()
 		_vp.own_world_3d = true
 		_vp.size = _world_size()
-		_vp.msaa_3d = Viewport.MSAA_2X if Config.graphics_quality >= 2 else Viewport.MSAA_DISABLED
+		_vp.msaa_3d = Viewport.MSAA_2X if Config.level() >= 2 else Viewport.MSAA_DISABLED
 		_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 		add_child(_vp)
 		world = load(wpath).new()
@@ -237,7 +237,7 @@ func _world_size() -> Vector2i:
 	var s := Vector2(DisplayServer.window_get_size())
 	if s.x < 64.0 or s.y < 64.0:
 		s = Vector2(1280, 720)
-	var k := 0.6 if Config.graphics_quality <= 0 else (0.8 if Config.graphics_quality == 1 else 1.0)
+	var k := 0.6 if Config.level() <= 0 else (0.8 if Config.level() == 1 else 1.0)
 	s *= k
 	if s.x > 1920.0:
 		s *= 1920.0 / s.x

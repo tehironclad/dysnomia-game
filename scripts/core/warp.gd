@@ -11,6 +11,14 @@ extends CanvasLayer
 ## the compute itself) and lore from the project's own words. After the scene change
 ## the overlay stays up for a few rendered frames, so the new scene's shaders and
 ## pipelines compile behind it instead of hitching the first seconds of play.
+##
+## 2026-11-25: the territory scene's resources load on a thread during the dive
+## (ResourceLoader.load_threaded_request; ~1.2 s that used to freeze the change), the
+## territory builds in stages behind the card (TerritoryV2.build_progress: the card names
+## each stage), the overlay holds until the frame time settles (shaders compiled), and on
+## a first launch (Config.calibration_due) the card measures this computer's graphics
+## (CalibrationRun) before it fades, over a plain backdrop so the dive's fractal shader
+## isn't measured.
 
 const DURATION := 1.4
 const WARM_FRAMES := 12   ## frames the new scene renders behind the overlay before it fades
@@ -53,13 +61,25 @@ var _neighbours: Array = []  ## Registry records of the neighbours whose ground 
 var _thread: Thread
 var _ground_ready := false
 var _done_n := 0             ## neighbours finished (written by the worker; an int, read for display)
+var _scene_res: PackedScene  ## the territory scene, loaded on a thread during the dive (held so the change reuses it)
+var _scene: Node             ## the territory being built
+var _built := false
+var _calibrating := false
+var _settle_dts: Array = []  ## recent frame times while warming (ms)
+var _last_us := 0
+var _plain: ColorRect        ## a flat backdrop for the calibration (the dive's shader would skew it)
+const SETTLE_CAP_S := 4.0    ## the most the overlay waits for the frame time to settle
+var _hold_t := -1.0          ## when the fade began (-1: still holding)
 
 
 static func to(tree: SceneTree, address: String) -> void:
 	var q: Dictionary = tree.root.get_node("Registry").get_territory(address)
 	if q.is_empty():
 		return
+	if tree.root.get_node_or_null("Warp") != null:
+		return  # one warp at a time
 	var w := Warp.new()
+	w.name = "Warp"
 	w._address = String(q["address"])
 	w._p = DeepField.for_territory(q)
 	w._dive = DeepField.dive_point(w._p, w._address)
@@ -81,6 +101,7 @@ static func overall(main: float, main_done: bool, done_n: int, total_n: int) -> 
 
 
 func _start_ground(tree: SceneTree) -> void:
+	ResourceLoader.load_threaded_request(Travel.TERRITORY_SCENE)
 	var main_cached := FileAccess.file_exists(JuliaHeightfield.cache_path(_address, DeepFieldTerrain.SAMPLES))
 	# The neighbours beyond the borders (BorderRing would compute them after arrival).
 	var found := Neighbours.find(_q, tree.root.get_node("Registry").all())
@@ -203,7 +224,7 @@ func _process(delta: float) -> void:
 			_ground_ready = true
 	if k >= 1.0 and not _ground_ready:
 		_t = DURATION  # hold at the end of the dive, still turning, until the ground is built
-	if k >= 1.0 and not _changed and _ground_ready:
+	if k >= 1.0 and not _changed and _ground_ready and _scene_loaded():
 		_changed = true
 		if _card.visible:
 			_bar.value = 1.0
@@ -212,17 +233,109 @@ func _process(delta: float) -> void:
 		Travel.go(get_tree(), _address)
 		return
 	if _changed:
-		# Hold opaque while the new scene renders its first frames (shader warm-up), then fade.
-		if _warm < WARM_FRAMES:
-			_warm += 1
+		_follow_scene()
+		if not _built:
+			_t = DURATION  # the dive holds, turning, while the territory builds in stages
+			return
+		# Hold opaque while the new scene renders its first frames (shader warm-up) until the
+		# frame time settles; measure the graphics if this computer hasn't been; then fade.
+		if _calibrating:
 			_t = DURATION
 			return
-		var fade := clampf((_t - DURATION) / 0.6, 0.0, 1.0)
+		if _hold_t < 0.0:
+			if not _settled(delta):
+				return
+			if Config.calibration_due():
+				_start_calibration()
+				if _calibrating:
+					return
+			_hold_t = _t
+		var fade := clampf((_t - _hold_t) / 0.6, 0.0, 1.0)
 		_view.modulate.a = 1.0 - fade
 		_label.modulate.a = 1.0 - fade
 		_card.modulate.a = 1.0 - fade
+		if _plain:
+			_plain.modulate.a = 1.0 - fade
 		if fade >= 1.0:
 			queue_free()
+
+
+## The territory scene's threaded load: true once it's in memory (held for the change).
+func _scene_loaded() -> bool:
+	if _scene_res != null:
+		return true
+	var st := ResourceLoader.load_threaded_get_status(Travel.TERRITORY_SCENE)
+	if st == ResourceLoader.THREAD_LOAD_LOADED:
+		_scene_res = ResourceLoader.load_threaded_get(Travel.TERRITORY_SCENE)
+		return true
+	return st != ResourceLoader.THREAD_LOAD_IN_PROGRESS  # failed/invalid: the change loads it itself
+
+
+## After the change: follow the new territory's staged build on the card.
+func _follow_scene() -> void:
+	var cur := get_tree().current_scene
+	if cur == null or cur == _scene or not cur.has_signal("built"):
+		return
+	_scene = cur
+	if bool(cur.get("is_built")):
+		_built = true
+		return
+	cur.build_progress.connect(func(f: float, text: String):
+		_card.visible = true
+		_bar.value = maxf(_bar.value, f) if _stage.text.begins_with("Building") else f
+		_pct.text = "%d %%" % int(_bar.value * 100.0)
+		_stage.text = "Building %s · %s" % [String(_q.get("name", "")), text])
+	cur.built.connect(func(): _built = true)
+
+
+func _start_calibration() -> void:
+	_calibrating = true
+	var run := Config.calibrate()
+	if run == null:
+		_calibrating = false
+		return
+	# A flat backdrop instead of the dive: the fractal shader would be measured too.
+	_plain = ColorRect.new()
+	_plain.color = Color(0.012, 0.016, 0.03, 1.0)
+	_plain.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_plain.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_plain)
+	move_child(_plain, 1)
+	_view.visible = false
+	_card.visible = true
+	_bar.value = 0.0
+	_stage.text = "Tuning the graphics for this computer…"
+	_tip.text = "Measured once: each quality level is rendered for a moment and the one that holds the frame rate is kept. F2 → Recalibrate to measure again."
+	run.step.connect(func(text: String, f: float):
+		_stage.text = "Tuning the graphics for this computer · %s" % text
+		_bar.value = f
+		_pct.text = "%d %%" % int(f * 100.0))
+	run.finished.connect(func(_l, _f, _r):
+		_calibrating = false
+		_stage.text = "Graphics: %s" % Config.calib_note)
+
+
+## True once the frame time has settled after the build (pipelines compiled), or the cap passed.
+func _settled(delta: float) -> bool:
+	var now := Time.get_ticks_usec()
+	if _last_us > 0:
+		_settle_dts.append((now - _last_us) / 1000.0)
+	_last_us = now
+	if _warm < WARM_FRAMES:
+		_warm += 1
+		return false
+	if _t - DURATION > SETTLE_CAP_S:
+		return true
+	var last: Array = _settle_dts.slice(-4)
+	if last.size() < 4:
+		return false
+	var sorted := _settle_dts.slice(-12)
+	sorted.sort()
+	var med: float = sorted[sorted.size() / 2]
+	for d in last:
+		if float(d) > maxf(med * 1.8, 40.0):
+			return false
+	return true
 
 
 func _show_progress(delta: float) -> void:

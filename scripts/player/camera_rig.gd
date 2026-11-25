@@ -48,7 +48,7 @@ func _apply_config() -> void:
 	mouse_sensitivity = Config.mouse_sensitivity
 	base_fov = Config.fov
 	camera.fov = base_fov
-	camera.far = Config.render_distance
+	camera.far = Config.far_m()
 
 
 ## Keyboard / gamepad look speed (radians per second): arrow keys and the

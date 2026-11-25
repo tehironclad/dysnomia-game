@@ -134,7 +134,7 @@ func _build_dust() -> void:
 
 func _make_dust(amount: int, life: float, one_shot: bool) -> GPUParticles3D:
 	var p := GPUParticles3D.new()
-	p.amount = amount
+	p.amount = Config.particles(amount)
 	p.lifetime = life
 	p.one_shot = one_shot
 	p.explosiveness = 0.95 if one_shot else 0.0

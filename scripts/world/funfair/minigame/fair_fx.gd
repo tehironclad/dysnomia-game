@@ -87,7 +87,7 @@ static func _vc_mat(billboard: bool) -> StandardMaterial3D:
 func _particles(mesh: Mesh, amount: int, life: float, align: bool) -> CPUParticles3D:
 	var p := CPUParticles3D.new()
 	p.mesh = mesh
-	p.amount = amount
+	p.amount = Config.particles(amount)
 	p.lifetime = life
 	p.one_shot = true
 	p.explosiveness = 0.95
@@ -136,7 +136,7 @@ func _confetti_emitter() -> CPUParticles3D:
 	q.material = mat
 	var p := CPUParticles3D.new()
 	p.mesh = q
-	p.amount = 220
+	p.amount = Config.particles(220)
 	p.lifetime = 3.2
 	p.one_shot = true
 	p.explosiveness = 0.85
@@ -176,7 +176,7 @@ func burst(pos: Vector3, c: Color, power: float = 1.0) -> void:
 	_ib += 1
 	p.position = pos
 	p.color = c
-	p.amount = int(clampf(18.0 * power, 8.0, 40.0))
+	p.amount = Config.particles(int(clampf(18.0 * power, 8.0, 40.0)))
 	p.initial_velocity_max = 2.0 + 2.2 * power
 	_fire(p)
 	flash(pos, c, 1.0 + power * 2.0)
@@ -190,7 +190,7 @@ func sparks(pos: Vector3, c: Color = Color(1.0, 0.8, 0.4), power: float = 1.0, d
 	p.color = c
 	p.direction = dir
 	p.spread = 70.0
-	p.amount = int(clampf(14.0 * power, 6.0, 28.0))
+	p.amount = Config.particles(int(clampf(14.0 * power, 6.0, 28.0)))
 	p.initial_velocity_min = 2.0 * power
 	p.initial_velocity_max = 5.0 + 2.0 * power
 	_fire(p)

@@ -9,7 +9,7 @@ const SHADER := preload("res://assets/shaders/deep_field_terrain.gdshader")
 const STYLE_INDEX := {"glow": 0, "duo": 1, "bands": 2, "ember": 3, "gilded": 4, "prism": 5}
 const SAMPLES := int(JuliaHeightfield.SIZE_M) + 1  ## 1 m spacing (725 over 724 m)
 
-@export var mesh_step := 2  ## 2 → 363² mesh vertices (2 m)
+@export var mesh_step := 2  ## 2 → 363² mesh vertices (2 m); 4 → 182² (4 m) on Potato/Low (Config preset "mesh_step")
 var heightfield: JuliaHeightfield
 var params: Dictionary = {}
 var material: ShaderMaterial
@@ -17,6 +17,12 @@ var _mesh_instance: MeshInstance3D
 var _shadow_instance: MeshInstance3D
 const SHADOW_SINK_M := 0.45
 var _body: StaticBody3D
+## The ground mesh is computed on a worker thread (2026-11-25: ~150–200 ms of GDScript at 363²):
+## build() starts it, mesh_ready() says when it's drawn, finish_mesh() waits for it.
+var _mesh_thread: Thread
+var _mesh_arrays: Array = []  ## [ground arrays, shadow arrays or []] once computed
+var _mesh_has_shadow := false
+var _is_main := false
 
 
 ## Builds ground for a Registry territory record. Blocks while the heightfield
@@ -24,9 +30,16 @@ var _body: StaticBody3D
 func build(q: Dictionary) -> void:
 	params = DeepField.for_territory(q)
 	heightfield = JuliaHeightfield.for_territory(q, SAMPLES)
+	LoadProfile.mark("heightfield")
+	_is_main = true
 	_build_material()
-	_build_mesh()
+	mesh_step = _step_for_level()
+	_start_mesh()
 	_build_collider()
+	LoadProfile.mark("collider")
+	var cfg := get_node_or_null("/root/Config")
+	if cfg and cfg.has_signal("applied") and not cfg.applied.is_connected(_on_config):
+		cfg.applied.connect(_on_config)
 	Inspector.register(self, "Ground",
 		"Heights: the filled Julia set of %s — inside the set is a plateau, its boundary a crest, outside the land falls away with the distance estimate (JuliaHeightfield v%d).\nLight: the same set computed per pixel in world space; filaments glow where the land meets the set." % [
 			DeepField.describe(params, "QING.Entropy()", String(q["entropy"]), String(q["address"])),
@@ -39,7 +52,8 @@ func build(q: Dictionary) -> void:
 func build_distant(q: Dictionary, hf: JuliaHeightfield, centre: Vector3, iterations: int = 40) -> void:
 	params = DeepField.for_territory(q)
 	heightfield = hf
-	mesh_step = 1
+	var cfg := get_node_or_null("/root/Config")
+	mesh_step = int(cfg.preset().get("nb_step", 1)) if cfg else 1  # 181² (4 m), or 91² on Potato/Low
 	_build_material()
 	material.set_shader_parameter("centre", Vector2(centre.x, centre.z))
 	material.set_shader_parameter("max_iter", iterations)
@@ -108,9 +122,76 @@ func set_activity(glow: float, lit_bands: float) -> void:
 		material.set_shader_parameter("lit_bands", lit_bands)
 
 
-func _build_mesh(shadow_proxy: bool = true) -> void:
-	var mesh := _grid_mesh(mesh_step)
+func _step_for_level() -> int:
+	var cfg := get_node_or_null("/root/Config")
+	return int(cfg.preset().get("mesh_step", 2)) if cfg else 2
+
+
+func _shadow_for_level() -> bool:
+	var cfg := get_node_or_null("/root/Config")
+	return bool(cfg.preset().get("shadows", true)) if cfg else true
+
+
+## Starts computing the ground's mesh arrays (and its shadow proxy's, where the level casts
+## sun shadows) on a worker thread; _process adds the mesh when they're done.
+func _start_mesh() -> void:
+	if _mesh_thread != null:
+		return
+	_mesh_has_shadow = _shadow_for_level()
+	var hf := heightfield
+	var step := mesh_step
+	var shadow := _mesh_has_shadow
+	_mesh_thread = Thread.new()
+	_mesh_thread.start(func() -> Array:
+		return [grid_arrays(hf, step), grid_arrays(hf, step * 2) if shadow else []])
+	set_process(true)
+
+
+## True once the ground is drawn (its mesh computed and added).
+func mesh_ready() -> bool:
+	return _mesh_thread == null and _mesh_instance != null
+
+
+## Waits for the mesh thread and adds the mesh now (non-staged builds, tools).
+func finish_mesh() -> void:
+	if _mesh_thread != null:
+		_collect_mesh()
+
+
+func _process(_delta: float) -> void:
+	if _mesh_thread == null:
+		set_process(false)
+		return
+	if not _mesh_thread.is_alive():
+		_collect_mesh()
+
+
+func _collect_mesh() -> void:
+	var res: Array = _mesh_thread.wait_to_finish()
+	_mesh_thread = null
+	var mesh := _mesh_from(res[0])
 	mesh.surface_set_material(0, material)
+	var shadow: ArrayMesh = _mesh_from(res[1]) if not (res[1] as Array).is_empty() else null
+	_set_meshes(mesh, shadow)
+	LoadProfile.mark("ground mesh")
+
+
+## The level changed: a coarser or finer ground, with or without its shadow proxy.
+func _on_config() -> void:
+	if not _is_main or heightfield == null:
+		return
+	if _step_for_level() != mesh_step or _shadow_for_level() != _mesh_has_shadow:
+		mesh_step = _step_for_level()
+		_start_mesh()  # the old mesh stays until the new one is ready
+
+
+func _exit_tree() -> void:
+	if _mesh_thread != null and _mesh_thread.is_started():
+		_mesh_thread.wait_to_finish()
+		_mesh_thread = null
+
+
+func _set_meshes(mesh: ArrayMesh, shadow: ArrayMesh) -> void:
 	if _mesh_instance:
 		_mesh_instance.queue_free()
 	if _shadow_instance:
@@ -123,19 +204,36 @@ func _build_mesh(shadow_proxy: bool = true) -> void:
 	# The ground's shadow caster is a half-resolution copy (perf 2026-11-24): the sun draws a
 	# caster once per cascade, and the full ground (0.26 M triangles) was ~1 M of each frame's
 	# shadow primitives. Hills and terraces still shade; only the shadow maps see the proxy.
-	if shadow_proxy:
-		_mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Levels without sun shadows (Potato, Low) build none.
+	_mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if shadow:
 		_shadow_instance = MeshInstance3D.new()
 		_shadow_instance.name = "GroundShadow"
-		_shadow_instance.mesh = _grid_mesh(mesh_step * 2)
+		_shadow_instance.mesh = shadow
 		_shadow_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		# Sunk a little so its coarser facets never poke above the drawn ground (acne blotches).
 		_shadow_instance.position.y = -SHADOW_SINK_M
 		add_child(_shadow_instance)
 
 
+func _build_mesh(shadow_proxy: bool = true) -> void:
+	var mesh := _grid_mesh(mesh_step)
+	mesh.surface_set_material(0, material)
+	_set_meshes(mesh, _grid_mesh(mesh_step * 2) if shadow_proxy else null)
+
+
 func _grid_mesh(step: int) -> ArrayMesh:
-	var hf := heightfield
+	return _mesh_from(grid_arrays(heightfield, step))
+
+
+static func _mesh_from(arrays: Array) -> ArrayMesh:
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+## The ground's surface arrays at every `step`-th sample. Pure (thread-safe: reads `hf` only).
+static func grid_arrays(hf: JuliaHeightfield, step: int) -> Array:
 	var n := hf.n
 	var m := (n - 1) / step + 1  # vertices per side
 	var sp := JuliaHeightfield.sample_spacing(n) * step
@@ -181,9 +279,7 @@ func _grid_mesh(step: int) -> ArrayMesh:
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_INDEX] = idx
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	return mesh
+	return arrays
 
 
 func _build_collider() -> void:

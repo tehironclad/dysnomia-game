@@ -1,7 +1,8 @@
 extends SceneTree
 ## Headless runtime check: load a real territory from the chain (read-only),
 ## enter the world scene, run a few hundred frames, report HUD card state.
-##   godot --headless --path . -s res://tools/boot_territory.gd [-- --qing=0x…]
+##   godot --headless --path . -s res://tools/boot_territory.gd [-- --qing=0x… --sync]
+## The world builds in stages, as in the game (--sync: in one go, as other tools do).
 
 var _qing := "0xd127839b83cbf537c29b7d268c135f745a0da2e8"
 
@@ -14,10 +15,17 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	if not OS.get_cmdline_user_args().has("--sync"):
+		load("res://scripts/world/territory_v2.gd").force_staged = true
 	print("territory load: ok=%s err=" % root.get_node("Registry").has_territory(_qing))
 	Travel.go(self, _qing)
 	for i in 300:
 		await process_frame
+	var scene = current_scene
+	if scene == null or not bool(scene.get("is_built")):
+		print("FAIL the territory didn't finish building in 300 frames")
+		quit(1)
+		return
 	var card = _find(root, "TerritoryCard")
 	if card == null:
 		print("FAIL no TerritoryCard in the HUD")

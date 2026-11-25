@@ -9,6 +9,8 @@ var _graphs: Array = []
 var _t: float = 0.0
 var _t_limit: float = 1.0 / 30.0  # 30 Hz sampling
 var _built: bool = false
+var _status: Label  # Config.status_line(): level, render scale, fps, frame and GPU time
+var _status_t := 0.0
 
 # Which monitors to display (preconfigured for Dysnomia game)
 var show_fps: bool = true
@@ -51,6 +53,14 @@ func _rebuild_ui() -> void:
 	add_child(sep)
 	_graphs.push_back(sep)
 
+	_status = Label.new()
+	_status.add_theme_font_size_override("font_size", 13)
+	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_status.custom_minimum_size.x = 280
+	_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_status)
+	_graphs.push_back(_status)
+
 	if show_fps:
 		_create_graph(Performance.TIME_FPS, "FPS")
 	if show_process:
@@ -92,6 +102,11 @@ func _create_graph(monitor: int, monitor_name: String, unit: String = "") -> voi
 func _process(delta: float) -> void:
 	if not visible:
 		return
+	_status_t -= delta
+	if _status_t <= 0.0 and _status:
+		_status_t = 0.25
+		var cfg := get_node_or_null("/root/Config")
+		_status.text = cfg.status_line() if cfg else ""
 	_t += delta
 	if _t >= _t_limit:
 		_t = 0.0

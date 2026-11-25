@@ -114,7 +114,7 @@ func test_border_ring_builds_from_territory_state() -> void:
 	if ring._thread:
 		ring._thread.wait_to_finish()
 		ring._thread = null
-	ring._attach_grounds()
+	ring._attach_grounds(4)
 	for side in Neighbours.SIDES:
 		eq(ring.ground_ready(side), found.has(side), "ground drawn only where a QING lies (%s)" % side)
 	if found.has("n"):

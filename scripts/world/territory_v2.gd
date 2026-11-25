@@ -41,6 +41,21 @@ var _monitor: Control
 var _near := ""
 var view_mode := ""  # su | room | beat | void | ""
 
+## Loading (2026-11-25): the world is built in stages, a few per frame, behind the warp's card
+## (or a cover of its own when no warp brought us here), so the window never freezes for the
+## whole build. Tools and headless runs build in one go unless `force_staged` / `--staged`.
+signal build_progress(fraction: float, text: String)
+signal built
+static var force_staged := false
+const BUILD_STAGES := 16
+const FRAME_BUDGET_US := 40000  ## build work per frame before yielding one
+var is_built := false
+var _staged := false
+var _stage_i := 0
+var _frame_t0 := 0
+var _back_door := ""
+var _state_dirty := false
+
 const MONOLITH_AT := Vector2(-26.0, 18.0)
 const PROMPTS := {
 	"su": "Su: react with this territory (your bars grow, +1 YUE)",
@@ -54,6 +69,8 @@ const PROMPTS := {
 
 
 func _ready() -> void:
+	LoadProfile.begin()
+	_staged = force_staged or OS.get_cmdline_user_args().has("--staged") or Config.is_interactive()
 	var addr := ""
 	var view := ""
 	for a in OS.get_cmdline_user_args():
@@ -69,19 +86,28 @@ func _ready() -> void:
 	if territory.is_empty():
 		push_error("[TerritoryV2] unknown territory %s" % addr)
 		return
-	Config.register_scene($WorldEnvironment.environment, $Sun)
+	Config.register_scene($WorldEnvironment.environment, $Sun, true)
+	player.process_mode = Node.PROCESS_MODE_DISABLED  # until the world is built
+	if _staged:
+		_cover()
+		await get_tree().process_frame  # the scene change's frame ends here; building starts on the next
+		_frame_t0 = Time.get_ticks_usec()
 	terrain.build(territory)
 	Config.register_terrain(terrain.material)
+	await _step("ground", "Raising the Core…")
 	sky.setup(terrain.params, String(territory["address"]))
 	Config.register_sky(sky.material)
+	LoadProfile.mark("sky")
 	Config.auto_changed.connect(func(t): hud.ticker(t, DeepFieldTheme.ICE, 14.0))
 	core.build(terrain.params, territory, terrain.heightfield.core_height)
+	await _step("core", "Reading the territory…")
 	state = TerritoryState.new()
 	state.name = "State"
 	add_child(state)
 	state.changed.connect(_on_state_changed)
 	state.setup(territory)
 	hud.bind(String(territory["address"]), state, sky)
+	await _step("state+hud", "The skyline…")
 	columns = BarColumns.new()
 	columns.name = "BarColumns"
 	var core_y := terrain.heightfield.core_height
@@ -91,6 +117,7 @@ func _ready() -> void:
 	development.name = "Development"
 	development.setup(DeepField.to_color(terrain.params["color"]))
 	core.add_child(development)
+	await _step("skyline", "The Void monolith…")
 	monolith = VoidMonolith.new()
 	monolith.name = "VoidMonolith"
 	add_child(monolith)
@@ -106,6 +133,7 @@ func _ready() -> void:
 	actions.name = "Actions"
 	add_child(actions)
 	actions.setup(territory, state, core, hud, phenomena, monolith)
+	await _step("monolith+actions", "The arcade…")
 	arcade = ArcadeFront.new()
 	arcade.name = "Arcade"
 	core.add_child(arcade)
@@ -113,6 +141,7 @@ func _ready() -> void:
 	arcade.position = Vector3(ArcadeFront.AT.x, terrain.get_height_at(core.global_position.x + ArcadeFront.AT.x, core.global_position.z + ArcadeFront.AT.y) - core_y - 0.3, ArcadeFront.AT.y)
 	arcade.look_at(core.global_position + Vector3(0.0, arcade.global_position.y - core.global_position.y, 0.0), Vector3.UP, true)
 	CoreDressing.dress_arcade(arcade, DeepField.to_color(terrain.params["color"]))
+	await _step("arcade", "The Affection Fair…")
 	# The Affection Fair: rides paid in Ⓐ to this QING, sized by Development
 	fair = FairSite.new()
 	fair.name = "AffectionFair"
@@ -121,6 +150,7 @@ func _ready() -> void:
 		func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y,
 		DeepField.to_color(terrain.params["color"]), terrain.material)
 	fair.set_dev_tier(0)
+	await _step("fair", "The vehicle pad…")
 	# The vehicle pad near arrival (unlocks from the viewer's own chain state)
 	garage = GarageSite.new()
 	garage.name = "Garage"
@@ -129,7 +159,9 @@ func _ready() -> void:
 		func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y,
 		func(x, z): return terrain.get_height_at(x, z), DeepField.to_color(terrain.params["color"]), terrain.material,
 		[[Vector2(fair.position.x, fair.position.z), FairSite.RADIUS + 10.0]])
+	await _step("garage", "The skyline landmark…")
 	_add_landmark(core_y)
+	await _step("landmark", "The exchanges…")
 	# --- Exchanges: the Swap Hall (PulseX) and the YUE Exchange (the tower's sky lobby)
 	exchanges = Exchanges.new()
 	exchanges.name = "Exchanges"
@@ -138,11 +170,13 @@ func _ready() -> void:
 		DeepField.to_color(terrain.params["color"]), terrain.material,
 		[[Vector2(fair.position.x, fair.position.z), FairSite.RADIUS], [Vector2(garage.position.x, garage.position.z), GarageSite.RADIUS]], landmark)
 	# --- end Exchanges
+	await _step("exchanges", "Development…")
 	chat_life = ChatLife.new()
 	chat_life.name = "ChatLife"
 	core.add_child(chat_life)
 	chat_life.setup(core, columns, state, player, DeepField.to_color(terrain.params["color"]))
 	_apply_development_snapshot()
+	await _step("development", "Panels and the score…")
 	lattice = WorldLattice.new()
 	lattice.name = "WorldLattice"
 	core.add_child(lattice)
@@ -181,6 +215,7 @@ func _ready() -> void:
 	Session.changed.connect(_on_state_changed)
 	GameManager.territory_address = String(territory["address"])
 	GameManager.territory_name = String(territory.get("name", ""))
+	await _step("panels", "The borders and the neighbours…")
 	# The player arrives in front of the Room's door.
 	var core_h := terrain.heightfield.core_height
 	player.position = Vector3(0.0, core_h + 1.0, 16.0)
@@ -195,14 +230,14 @@ func _ready() -> void:
 	if view == "":
 		border.place_arrival()
 	# --- end Borders
+	await _step("borders", "Roads…")
 	if view == "":
-		var back := Travel.take_door(false)  # back out of a place: out of the same building's door
-		if back != "":
-			_arrive_from(back)
+		_back_door = Travel.take_door(false)  # back out of a place: out of the same building's door (once built)
 	roads = TerritoryRoads.new()
 	roads.name = "Roads"
 	add_child(roads)
 	_build_roads()
+	await _step("roads", "Markers and the Steward…")
 	# --- Online (Net): other players here, free chat and voice; nothing when offline.
 	if view == "":
 		var presence := NetPresence.new()
@@ -217,6 +252,7 @@ func _ready() -> void:
 	act_loop.setup(territory, state, core, hud, actions, border, columns, player,
 		func(x, z): return terrain.get_height_at(core.global_position.x + x, core.global_position.z + z) - core_y, view != "")
 	# --- end Acts
+	await _step("acts", "Detail and labels…")
 	# Props end where they'd cover a few pixels (the fair, garage, halls from afar); state-sized
 	# geometry (the skyline towers, development) is never culled by size.
 	var cull := DetailCull.new()
@@ -229,8 +265,11 @@ func _ready() -> void:
 	legible.name = "LegibleLabels"
 	add_child(legible)
 	legible.watch(core)
+	LoadProfile.mark("cull")
+	await _ground_ready()
 	view_mode = view
 	if view == "":
+		player.process_mode = Node.PROCESS_MODE_INHERIT
 		# Play: the player's camera. (With no current camera, Godot would pick
 		# the first in tree order: the preview camera, under the ground.)
 		camera.queue_free()
@@ -243,6 +282,50 @@ func _ready() -> void:
 		player.process_mode = Node.PROCESS_MODE_DISABLED
 		player.visible = false
 		hud.visible = view == "hud"
+	LoadProfile.report(String(territory.get("name", "")))
+	is_built = true
+	build_progress.emit(1.0, "Entering…")
+	built.emit()
+	if _state_dirty:
+		_on_state_changed()
+	if _back_door != "":
+		_arrive_from(_back_door)
+
+
+## One stage done: timed (LoadProfile), reported (build_progress), and in a staged build
+## a frame is yielded once this frame's build budget is spent.
+func _step(stage: String, next_text: String) -> void:
+	LoadProfile.mark(stage)
+	_stage_i += 1
+	build_progress.emit(float(_stage_i) / float(BUILD_STAGES), next_text)
+	if not _staged:
+		return
+	var fade := get_tree().root.get_node_or_null("ScreenFade")
+	if fade and fade.has_method("alpha") and fade.alpha() > 0.0:
+		fade.set_alpha(fade.alpha())  # a door's fade to black holds until the world is built
+	if Time.get_ticks_usec() - _frame_t0 > FRAME_BUDGET_US:
+		await get_tree().process_frame
+		_frame_t0 = Time.get_ticks_usec()
+
+
+## The ground's mesh is built on a worker thread (DeepFieldTerrain): wait for it.
+func _ground_ready() -> void:
+	while not terrain.mesh_ready():
+		if not _staged:
+			terrain.finish_mesh()
+			return
+		await get_tree().process_frame
+
+
+## A loading cover when no warp brought us here (back from the Field, out of a door): the
+## world isn't seen half-built. The warp shows its own card instead.
+func _cover() -> void:
+	if get_tree().root.get_node_or_null("Warp") != null:
+		return
+	var c := LoadingCover.new()
+	c.name = "LoadingCover"
+	get_tree().root.add_child(c)
+	c.follow(self, String(territory.get("name", "")))
 
 
 func _frame(view: String) -> void:
@@ -309,6 +392,9 @@ var _ticked_block := -1
 
 ## Shared territory state → the world (same for every viewer).
 func _on_state_changed() -> void:
+	if not is_built:
+		_state_dirty = true  # a read landed mid-build: applied once the world is built
+		return
 	if state.block > 0 and state.block != _ticked_block:
 		_ticked_block = state.block
 		core.block_tick()  # the Heart ticks with each new block read here
@@ -412,7 +498,7 @@ func _build_roads() -> void:
 		if border and border.sides.has(side):  # a road to every border with a QING beyond it
 			gates.append(Neighbours.outward(side) * (JuliaHeightfield.SIZE_M * 0.5))
 	roads.build(func(x, z): return terrain.get_height_at(x, z), terrain.material, _road_places(), gates,
-		dev_tier, DeepField.to_color(terrain.params["color"]))
+		dev_tier, DeepField.to_color(terrain.params["color"]), String(territory["address"]))
 
 
 # --- Skyline landmark + base jumping (scripts/world/skyline/) ------------------
@@ -536,7 +622,7 @@ static func arcade_door() -> Vector2:
 
 
 func _process(_delta: float) -> void:
-	if view_mode != "" or actions == null or actions.is_open() or not _can_use_doors():
+	if not is_built or view_mode != "" or actions == null or actions.is_open() or not _can_use_doors():
 		_near = ""  # re-offered (and re-shown) once the player is free again
 		return
 	var z := zone_at(player.global_position - core.global_position, monolith.global_position - core.global_position)
@@ -550,6 +636,8 @@ func _process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not is_built:
+		return
 	if actions != null and actions.is_open():
 		return
 	if DoorSequence.active_in(self):

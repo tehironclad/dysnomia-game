@@ -28,6 +28,13 @@ const LAMP_EVERY := 34.0     ## metres between lamps along a road
 const REUSE := 0.35          ## weight of a cell an earlier road already uses
 const SLOPE_REF := 0.15      ## grade where a cell costs 3× a flat one
 
+## Plans and fields are cached on disk (user://cache/roads), keyed by the territory, this
+## version, the heightfield's version and the places/gates: the same inputs give the same
+## roads, so a later visit skips the routing and rasterising (~130–250 ms). Bump VERSION when
+## plan() or rasterize() change.
+const VERSION := 1
+const CACHE_DIR := "user://cache/roads"
+
 var roads: Array = []        ## [PackedVector2Array] polylines (world x, z)
 var places: Array = []       ## [{name, at: Vector2, r}] as last built
 var field := PackedByteArray()
@@ -42,7 +49,8 @@ var _lamps: Node3D
 ## Builds (or rebuilds, when the places changed) the roads. `places`:
 ## [{name, at: Vector2 (world x, z), r: footprint radius}]; `gates`: [Vector2]
 ## border points (world x, z). `terrain_mat` gets the road_field texture.
-func build(height_fn: Callable, terrain_mat: ShaderMaterial, p_places: Array, gates: Array, p_tier: int, tint: Color) -> void:
+## `cache_id`: the territory's address ("" = no disk cache).
+func build(height_fn: Callable, terrain_mat: ShaderMaterial, p_places: Array, gates: Array, p_tier: int, tint: Color, cache_id: String = "") -> void:
 	_height = height_fn
 	_material = terrain_mat
 	_tint = tint
@@ -51,13 +59,47 @@ func build(height_fn: Callable, terrain_mat: ShaderMaterial, p_places: Array, ga
 		_key = key
 		places = p_places
 		var t0 := Time.get_ticks_msec()
-		roads = plan(height_fn, p_places, gates)
-		field = rasterize(roads, p_places)
+		var path := cache_path(cache_id, key) if cache_id != "" else ""
+		var hit := path != "" and _load_cache(path)
+		if not hit:
+			roads = plan(height_fn, p_places, gates)
+			field = rasterize(roads, p_places)
+			if path != "":
+				_save_cache(path)
 		_apply_field()
-		print("[Roads] %d roads, %d m, to %s · %d ms" % [roads.size(), int(total_length(roads)),
-			", ".join(p_places.map(func(p): return String(p["name"]))) + (" + %d border gates" % gates.size()), Time.get_ticks_msec() - t0])
+		print("[Roads] %d roads, %d m, to %s · %d ms%s" % [roads.size(), int(total_length(roads)),
+			", ".join(p_places.map(func(p): return String(p["name"]))) + (" + %d border gates" % gates.size()), Time.get_ticks_msec() - t0,
+			" (cached)" if hit else ""])
 		tier = -1
 	set_tier(p_tier)
+
+
+## Pure: where a road plan for these inputs is cached.
+static func cache_path(cache_id: String, key: String) -> String:
+	var h := ("%d|%d|%s|%s" % [VERSION, JuliaHeightfield.VERSION, cache_id.to_lower(), key]).sha256_text().substr(0, 24)
+	return "%s/v%d_%s_%s.bin" % [CACHE_DIR, VERSION, cache_id.to_lower(), h]
+
+
+func _load_cache(path: String) -> bool:
+	if not FileAccess.file_exists(path):
+		return false
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return false
+	var v = bytes_to_var(f.get_buffer(f.get_length()))
+	if not (v is Array) or (v as Array).size() != 2 or not (v[0] is Array) or not (v[1] is PackedByteArray) \
+			or (v[1] as PackedByteArray).size() != TEX * TEX:
+		return false
+	roads = v[0]
+	field = v[1]
+	return true
+
+
+func _save_cache(path: String) -> void:
+	DirAccess.make_dir_recursive_absolute(CACHE_DIR)
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f:
+		f.store_buffer(var_to_bytes([roads, field]))
 
 
 ## Development tier → the lamps (and how brightly the road edges glow).
