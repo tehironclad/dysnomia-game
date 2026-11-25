@@ -28,6 +28,9 @@ const ROUND := 20
 const MAX_CODE := 10000
 const MAX_PLAYS := 99
 const UNIT := "1000000000000000000"
+## The fair games by code (MidwaySim.code; FairProgress.ORDER). Kept here so this pure class never
+## pulls in a class that uses autoloads (tools parse it before the autoloads exist).
+const FAIR_GAMES := ["striker", "entropy", "regolith", "crystal", "motzkin", "waat", "saat"]
 
 
 ## The wei for `whole` Ⓐ carrying item and plays: a decimal string (for Abi / ArcadePay).
@@ -97,7 +100,7 @@ static func item_text(item: int) -> String:
 		ARCADE: return "the arcade cabinets"
 		ROUND: return "a round for the house"
 	if item >= 1 and item <= 7:
-		return MidwayGame.title(FairProgress.ORDER[item - 1]).capitalize()
+		return MidwayGame.title(FAIR_GAMES[item - 1]).capitalize()
 	if item > ROUND and item < 100:
 		return "a drink"
 	return "—"

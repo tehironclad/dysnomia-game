@@ -61,8 +61,8 @@ func show_progress(codes: Array, state: String, block: int) -> void:
 			_source.text = ""
 		"failed":
 			_status.text = FairProgress.text(codes) + " (last read failed: —)" if not codes.is_empty() else "Your tickets could not be read: —"
-			_source.text = "AFFECTION Transfer(you → this QING, 1 Ⓐ + the game's code) · retried after your next play"
+			_source.text = "AFFECTION Transfer(you → this QING, a ticket or strip with the game's code) · retried after your next play"
 		_:
 			_status.text = ("ROCKET UNLOCKED · ride it at the booth" if all else FairProgress.text(codes))
-			_source.text = "From AFFECTION Transfer(you → this QING) logs, blocks %s–%s · each ticket's last wei names its game" % [
+			_source.text = "From AFFECTION Transfer(you → this QING) logs, blocks %s–%s · each ticket's last wei names its game · any-game strips: your posted rounds" % [
 				ArcadeScores.grouped(FairProgress.FROM_BLOCK), ArcadeScores.grouped(block)]

@@ -3,10 +3,12 @@ extends SceneTree
 ##   godot --headless --path . -s res://tools/probe_fair.gd [-- --qing=0x… --wallet=0x…]
 ## Every midway game is played through in first person (practice: no wallet, nothing paid),
 ## its score is replayed from the round's input log, and the rocket's lock and progress are
-## read from the chain for --wallet (read-only: nothing is signed).
+## read from the chain for --wallet (read-only: nothing is signed). Ticket strips: the stall's prices,
+## the buy choice (cancelled), and a local fixture strip played twice (seeds, room lines, plays left).
 var _qing := "0xe4169cf239e2fdc6e6e4a3a6fa0a703058ce400b"
 var _wallet := "0x0000000000000000000000000000000000000369"
 var _fails := 0
+const PROBE_BLOCK := 28136000  ## the block the probe's local fixture strip claims (never read from or written to the chain)
 
 
 func _initialize() -> void:
@@ -110,6 +112,7 @@ func _run() -> void:
 		_check(fair._game == null and player.is_physics_processing(), "game %-9s closed, the player walks again" % g["id"])
 		played += 1
 	_check(played == 7, "all seven games played (%d)" % played)
+	await _probe_strips(fair, player)
 	# The rocket: free preview without a wallet; locked with one until all seven are on chain
 	var rk = fair._fair.get_rides().filter(func(x): return x.ride_id == "rocket")
 	if rk.is_empty():
@@ -158,6 +161,128 @@ func _run() -> void:
 		fair.refresh_progress()
 	print("\n%d failed" % _fails)
 	quit(1 if _fails > 0 else 0)
+
+
+## Ticket strips at a stall, with --wallet connected (read-only: nothing is signed). The stall's
+## prompt and plaque show the prices; Use with no plays opens the buy choice (one play / a strip
+## for this game / for any game; cancelled here). Then a strip in the LOCAL ledger only (a probe
+## fixture with a made-up tx, removed afterwards: nothing on chain claims it) plays twice without
+## a payment: play #0 and #1, each seeded by SHA-256("<tx>#<i>"), its room line naming tx#i;
+## after the strip's last play the next strip is offered.
+func _probe_strips(fair, player) -> void:
+	var AP = load("res://scripts/games/arcade_pay.gd")
+	var TC = load("res://scripts/games/ticket_code.gd")
+	var PR = load("res://scripts/games/prices.gd")
+	var TCH = load("res://scripts/ui/ticket_choice.gd")
+	var FB = load("res://scripts/world/funfair/fair_board.gd")
+	var MG = load("res://scripts/world/funfair/midway_game.gd")
+	var wallet_node = root.get_node("Wallet")
+	var q: String = fair._qing
+	var game := "waat"  # a short game
+	var spot = fair._fair.game_spots.filter(func(x): return x["id"] == game)[0]
+	var ledger_key := "%s@%s" % [_wallet, q]
+	var saved := ConfigFile.new()
+	var had := saved.load(AP.LEDGER) == OK and saved.has_section_key("credits", ledger_key)
+	var saved_list = saved.get_value("credits", ledger_key, []) if had else []
+	# The fixture's paid rounds would leave prizes and local scores naming its made-up tx: kept aside
+	var kept := {}
+	for f in ["user://fair_prizes.cfg", "user://arcade_scores.cfg"]:
+		kept[f] = FileAccess.get_file_as_bytes(f) if FileAccess.file_exists(f) else null
+	var clean := ConfigFile.new()
+	clean.load(AP.LEDGER)
+	if clean.has_section_key("credits", ledger_key):
+		clean.erase_section_key("credits", ledger_key)
+		clean.save(AP.LEDGER)
+	wallet_node.address = _wallet
+	player.global_position = fair._fair.to_global(spot["pos"]) + Vector3.UP * 1.0
+	player.velocity = Vector3.ZERO
+	for i in 30:
+		await physics_frame
+	await process_frame
+	var prompt: String = fair._hud.prompt.text
+	_check(prompt.contains(PR.menu_line()), "a stall's prompt shows the prices: %s" % prompt)
+	var plaque: Label3D = fair._plaques.get(game)
+	_check(plaque != null and plaque.text.begins_with(PR.menu_line().to_upper()), "its counter plaque: %s" % (plaque.text.replace("\n", " | ") if plaque else "—"))
+	await _press("interact")
+	var choice = TCH.current()
+	var texts: Array = choice.buttons.map(func(b): return String(b.text)) if choice else []
+	_check(choice != null and texts.size() == 3 and texts[0] == PR.play_button() and String(texts[1]).begins_with(PR.strip_button()) and String(texts[2]).contains("any fair game"),
+		"no plays left: Use offers %s" % str(texts))
+	_check(not fair._paying, "nothing is paid until a button is pressed")
+	if choice:
+		choice.close()
+	# A local strip of 2 (fixture) for any fair game: two plays, no payment
+	var fake_tx := "0x" + "57a1b5".repeat(10) + "0000"
+	AP.add_credit(_wallet, q, fake_tx, PROBE_BLOCK, TC.FAIR_ANY, 2)
+	fair._update_plaques()
+	fair._focus_key = "?"
+	for i in 3:
+		await process_frame
+	prompt = fair._hud.prompt.text
+	_check(prompt.contains("strip: 2 plays left"), "the prompt shows the plays left: %s" % prompt)
+	_check(plaque != null and plaque.text.contains("YOUR STRIP: 2 PLAYS LEFT"), "the plaque shows them: %s" % (plaque.text.replace("\n", " | ") if plaque else "—"))
+	for play in 2:
+		await _press("interact")
+		var mp = fair._game
+		_check(mp != null and mp.paid and int(mp.ticket.get("index", -9)) == play and String(mp.ticket.get("hash", "")) == fake_tx,
+			"strip play #%d starts without a payment (%s)" % [play, str(mp.ticket) if mp else "no game"])
+		if mp == null:
+			break
+		_check(mp.sim.seed_v == MG.seed_from_tx(TC.seed_tx(fake_tx, play)), "play #%d is seeded by SHA-256(\"<tx>#%d\")" % [play, play])
+		var t1 := Time.get_ticks_msec()
+		while not mp.seat.is_inside() and Time.get_ticks_msec() - t1 < 5000:
+			await process_frame
+		await _press("interact")
+		await _play_round(mp)
+		var line: String = FB.line_text(game, mp.sim.score, fake_tx, mp.sim.events, int(mp.ticket["index"]))
+		var p: Dictionary = FB.parse(line)
+		_check(int(p.get("index", -1)) == play and MidwaySim.replay(game, FB.seed_of(p), p["log"]) == mp.sim.score,
+			"its room line names %s#%d and replays to %d (%d chars)" % [fake_tx.left(10), play, mp.sim.score, line.length()])
+		if mp.phase == "celebrate":
+			await _press("interact")
+		await _press("interact")  # leave the result screen
+		t1 = Time.get_ticks_msec()
+		while fair._game != null and Time.get_ticks_msec() - t1 < 5000:
+			await process_frame
+		for i in 5:
+			await process_frame
+		_check(fair.plays_left(game) == 1 - play, "plays left after #%d: %d" % [play, fair.plays_left(game)])
+	choice = TCH.current()
+	_check(choice != null and String(choice.get_child(0).get_child(0).text).contains("USED UP"), "the strip's last play: the next strip is offered")
+	if choice:
+		choice.close()
+	# Put the ledger back
+	var back := ConfigFile.new()
+	back.load(AP.LEDGER)
+	if had:
+		back.set_value("credits", ledger_key, saved_list)
+	elif back.has_section_key("credits", ledger_key):
+		back.erase_section_key("credits", ledger_key)
+	back.save(AP.LEDGER)
+	for f in kept:
+		if kept[f] == null:
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
+		else:
+			var fa := FileAccess.open(f, FileAccess.WRITE)
+			fa.store_buffer(kept[f])
+			fa.close()
+	wallet_node.address = ""
+	fair.refresh_progress()
+	player.global_position += Vector3(0, 0, 30)
+	for i in 5:
+		await physics_frame
+
+
+## Plays a started round through like a human-ish player.
+func _play_round(mp) -> void:
+	var t1 := Time.get_ticks_msec()
+	var presses := 0
+	while mp.phase == "play" and Time.get_ticks_msec() - t1 < 60000:
+		if mp.sim.accepts() and (mp.sim.phase_t > 24 or mp.sim.game == "motzkin" and mp.sim.tick % 23 == 0):
+			mp.set_aim(Vector2((presses * 97) % 600 - 300, (presses * 53) % 400 - 200))
+			await _press("table_shoot" if presses % 2 == 0 else "interact")
+			presses += 1
+		await process_frame
 
 
 func _press(action: String) -> void:

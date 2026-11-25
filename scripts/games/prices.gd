@@ -14,13 +14,11 @@ extends RefCounted
 const SYMBOL := "Ⓐ"
 const UNIT_WEI := "1000000000000000000"
 
-const PLAY := 1           ## a fair stall or an arcade cabinet: one play
+const PLAY := 1           ## one play: a fair stall, an arcade cabinet, a vehicle rental, a base jump
 const STRIP_PLAYS := 10   ## a ticket strip: this many plays…
 const STRIP := 10         ## …for this many Ⓐ, one approval (gas once)
 const RIDE := 1           ## a fair ride (carousel, wheel, drop tower)
 const ROCKET := 5         ## an Upsilon Rocket flight (the practice flight stays free)
-const RENTAL := 1         ## a vehicle for the session at the pad
-const JUMP := 1           ## a base jump ticket on the sky deck
 const ROUND := 1          ## Sunny's round for the house
 ## Sunny's drinks, by drink id (BarTab.DRINKS): whole Ⓐ, paid to the QING before the drink's own call.
 const DRINKS := {"pi_shot": 1, "rho_rocks": 1, "generator_lager": 1, "alpha_sour": 2, "beta_blocker": 2,
