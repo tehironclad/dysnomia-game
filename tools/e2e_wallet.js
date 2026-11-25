@@ -13,6 +13,9 @@
 // 3. Window cases: a page from an earlier game session (old token) reloads itself;
 //    a second window is turned away; later the window is closed and a payment
 //    reopens/relinks it.
+// 3b. Malicious cases: an unlimited approve and a foreign text to sign never reach the
+//    wallet; once, the wallet "signs" a different transaction than the one asked for
+//    (another recipient: a tampering extension) and the game must refuse it at verify.
 // 4. Checks the game's results (results.json) and the requests the wallet saw.
 // 4b. Attacks on the bridge (docs/SECURITY_AUDIT.md): a DNS-rebinding request (Host:
 //    evil.example) gets 403 and no token; a cross-origin page (another local origin)
@@ -22,7 +25,10 @@
 //    the public node unchanged, except one. No ticket strip exists on chain to point at, so when
 //    the wallet signed a transfer larger than --hash's real one (the strip), the receipt of --hash
 //    is served with its AFFECTION Transfer amount set to the signed amount. The harness prints
-//    each time it does that; every other receipt is the chain's own.
+//    each time it does that; every other receipt is the chain's own. Likewise --hash's
+//    transaction (eth_getTransactionByHash) is served with the input/value/to the wallet
+//    signed last, and its receipt with that `to`, since the game checks the mined
+//    transaction is the one it asked for.
 //
 // Usage: node tools/e2e_wallet.js [--godot=godot] [--port=48420] [--keep]
 'use strict';
@@ -62,7 +68,8 @@ async function waitFile(name, ms) {
 
 // ---- The mock wallet: state and decisions live here (shared by every page) ----
 const calls = [];
-const st = { chain: '0x1', switches: 0, txs: 0, signed: null, reencoded: [] };
+const st = { chain: '0x1', switches: 0, txs: 0, signed: null, reencoded: [], lastTx: null, tampered: 0, txServed: 0 };
+const EVIL = '0x' + 'de'.repeat(20);
 const STRICT_QTY = /^0x(0|[1-9a-f][0-9a-f]*)$/;
 async function decide(pageName, method, params) {
   calls.push({ page: pageName, method, params, t: Date.now() });
@@ -96,6 +103,15 @@ async function decide(pageName, method, params) {
       // The amount this transfer(QING, amount) signs (what the strip's receipt is re-encoded to)
       if (String(tx.data).startsWith('0xa9059cbb')) st.signed = BigInt('0x' + String(tx.data).slice(74, 138));
       if (st.txs === 4) await sleep(3000);
+      // What the wallet signs: what was asked, unless the game set the tamper flag (a
+      // tampering extension swaps the recipient).
+      let signedData = String(tx.data).toLowerCase();
+      if (fs.existsSync(path.join(ctl, 'tamper')) && signedData.startsWith('0xa9059cbb')) {
+        signedData = signedData.slice(0, 34) + EVIL.slice(2) + signedData.slice(74);
+        st.tampered++;
+        console.log('  [wallet] tampered: transfer recipient swapped to ' + EVIL);
+      }
+      st.lastTx = { to: String(tx.to).toLowerCase(), input: signedData, value: tx.value || '0x0' };
       return { result: HASH };
     }
     case 'personal_sign':
@@ -170,6 +186,16 @@ function startRpc() {
         try {
           let out = await (await fetch(NODE, { method: 'POST', headers: { 'content-type': 'application/json' }, body })).text();
           const msg = JSON.parse(body);
+          if (msg.method === 'eth_getTransactionByHash' && String(msg.params[0]).toLowerCase() === HASH && st.lastTx) {
+            const j = JSON.parse(out);
+            if (j.result) {
+              j.result.input = st.lastTx.input;
+              j.result.value = st.lastTx.value;
+              j.result.to = st.lastTx.to;
+              st.txServed++;
+              out = JSON.stringify(j);
+            }
+          }
           if (msg.method === 'eth_getTransactionReceipt' && String(msg.params[0]).toLowerCase() === HASH && st.signed !== null) {
             const j = JSON.parse(out);
             const lg = j.result && (j.result.logs || []).find((l) => l.address.toLowerCase() === AFFECTION && l.topics[0] === TRANSFER
@@ -178,6 +204,15 @@ function startRpc() {
               st.reencoded.push({ real: BigInt(lg.data).toString(), served: st.signed.toString() });
               console.log('  [rpc] receipt of ' + HASH.slice(0, 10) + '…: Transfer amount ' + BigInt(lg.data) + ' served as the signed ' + st.signed + ' (no strip exists on chain)');
               lg.data = '0x' + st.signed.toString(16).padStart(64, '0');
+              out = JSON.stringify(j);
+            }
+          }
+          // The real --hash was sent to the QING; the receipt's `to` is served as the contract the
+          // wallet signed for (AFFECTION), like the transaction above.
+          if (msg.method === 'eth_getTransactionReceipt' && String(msg.params[0]).toLowerCase() === HASH && st.lastTx) {
+            const j = JSON.parse(out);
+            if (j.result) {
+              j.result.to = st.lastTx.to;
               out = JSON.stringify(j);
             }
           }
@@ -296,7 +331,9 @@ async function main() {
     expect(fee > 10n ** 18n && fee <= 10n ** 18n + 7n, 'the fair fee is 1 Ⓐ + a 1..7 wei code (' + fee + ')');
     const wantFair = '0xa9059cbb' + pad(QING) + pad(fee.toString(16));
     const wantArcade = '0xa9059cbb' + pad(QING) + pad((10n ** 18n).toString(16));
-    expect(sends.length === 6, 'exactly 6 eth_sendTransaction reached the wallet (got ' + sends.length + '; the reverting one must not)');
+    expect(sends.length === 7, 'exactly 7 eth_sendTransaction reached the wallet (got ' + sends.length + '; the reverting one, the unlimited approve must not)');
+    expect(sends.every((x) => !String(x.data).startsWith('0x095ea7b3')), 'no approve reached the wallet (the unlimited one was refused in the game)');
+    expect(st.tampered === 1 && st.txServed >= 6, 'one transaction was tampered with in the wallet; the game read each of the 6 mined transactions back (' + st.txServed + ')');
     const s0 = sends[0] || {};
     expect(s0.from === WALLET && s0.to === AFFECTION && s0.data === wantFair, 'fair ticket params: from, to = AFFECTION, data = transfer(QING, 1e18+k)');
     expect(s0.chainId === '0x171' && s0.value === undefined && s0.gas === undefined, 'fair ticket: chainId 0x171, no value, no gas (the wallet estimates)');
@@ -306,7 +343,7 @@ async function main() {
     const strip = res.results.find((r) => r.name.startsWith('fair strip')) || {};
     const stripFee = BigInt(strip.fee_wei || '0');
     expect(stripFee === 10n * 10n ** 18n + 1008n, 'the strip is 10 Ⓐ + 1008 wei (' + stripFee + ')');
-    expect((sends[5] || {}).data === '0xa9059cbb' + pad(QING) + pad(stripFee.toString(16)), 'strip data = transfer(QING, 10e18 + 1008): one approval for 10 plays');
+    expect((sends[6] || {}).data === '0xa9059cbb' + pad(QING) + pad(stripFee.toString(16)), 'strip data = transfer(QING, 10e18 + 1008): one approval for 10 plays');
     expect(st.reencoded.length >= 1 && st.reencoded.every((x) => x.served === stripFee.toString()), 'only the strip\'s receipt was re-encoded (' + st.reencoded.length + 'x), to the signed amount');
     expect((strip.plays || []).length === 2 && strip.plays.every((p) => p.verified && p.replay === p.score), 'two plays of the strip replay and verify: ' + JSON.stringify((strip.plays || []).map((p) => [p.game, p.index, p.score])));
     expect(strip.plays_left_local === 8 && strip.plays_left_derived === 8, 'plays left: 8 here, 8 derived from the chain (' + strip.plays_left_local + ', ' + strip.plays_left_derived + ')');
@@ -317,6 +354,7 @@ async function main() {
     const okSwitch = calls.findIndex((c2, i) => c2.method === 'wallet_switchEthereumChain' && i > calls.findIndex((x) => x.method === 'wallet_switchEthereumChain'));
     expect(okSwitch >= 0 && okSwitch < firstSend, 'the chain was switched before the first eth_sendTransaction');
     const ps = calls.find((c2) => c2.method === 'personal_sign');
+    expect(calls.filter((c2) => c2.method === 'personal_sign').length === 1, 'exactly one personal_sign reached the wallet (another site\'s login text was refused in the game)');
     const signRes = res.results.find((r) => r.name === 'personal_sign') || {};
     const msgHex = '0x' + Buffer.from(signRes.message || '', 'utf8').toString('hex');
     expect(ps && ps.params[0] === msgHex && String(ps.params[1]).toLowerCase() === WALLET, 'personal_sign params = [utf-8 hex of the message, account]');

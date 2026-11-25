@@ -137,9 +137,12 @@ func _run() -> void:
 	_record("arcade credit", r.get("ok", false) and credits_after == credits_before + 1, _plain(r).merged({"credits_before": credits_before, "credits_after": credits_after}))
 
 	# 4. personal_sign round trip (the mock signs with a fixed signature: bytes compared on the JS side)
-	var msg := "Dysnomia e2e sign-in\nnonce: 42 · ünïcödé ✓"
+	var msg := "Dysnomia wallet test (free, not a transaction)\ne2e nonce: 42 · ünïcödé ✓"
 	var s: Dictionary = await _W.sign_message(msg)
 	_record("personal_sign", s.get("ok", false), {"message": msg, "signature": s.get("signature", ""), "error": s.get("error", "")})
+	# Anything but the game's own texts never reaches the wallet (a login for another site)
+	s = await _W.sign_message("opensea.io wants you to sign in with your Ethereum account:\n%s\nNonce: 1" % _wallet)
+	_record("a foreign text to sign is refused before the wallet", not s.get("ok", true) and s.get("stage", "") == "precondition", s)
 
 	# 5. Rejected in the wallet (the mock answers 4001): stage sign, plain words
 	r = await _AP.transfer_to_qing(qing, "E2E rejected ticket", fee)
@@ -166,6 +169,18 @@ func _run() -> void:
 	var big := Abi.encode_call("transfer(address,uint256)", [qing, "1000000000000000000000000000000"])
 	r = await _W.send("E2E too-large transfer", Contracts.AFFECTION, big)
 	_record("simulation revert", not r.get("ok", true) and r.get("stage", "") == "simulate" and r.has("revert"), _plain(r))
+
+	# 7b. An unlimited approve is refused before the simulation and the wallet
+	var maxu := "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+	r = await _W.send("E2E unlimited approve", Contracts.AFFECTION, Abi.encode_call("approve(address,uint256)", [Contracts.PULSEX_V2_ROUTER, maxu]))
+	_record("an unlimited approve never reaches the wallet", not r.get("ok", true) and r.get("stage", "") == "precondition" and String(r.get("message", "")).contains("unlimited"), _plain(r))
+
+	# 7c. The wallet signs another transaction than the one asked for (the JS mock swaps
+	#     the transfer's recipient while the tamper flag is set): refused at verify, loudly.
+	_signal("tamper")
+	r = await _AP.transfer_to_qing(qing, "E2E tampered ticket", fee)
+	DirAccess.remove_absolute(_ctl.path_join("tamper"))
+	_record("a tampered transaction is refused", not r.get("ok", true) and r.get("stage", "") == "verify" and String(r.get("message", "")).contains("NOT the one"), _plain(r))
 
 	# 8. The wallet test (read-only checks)
 	var steps: Array = await load("res://scripts/chain/wallet_diagnosis.gd").run({"qing": qing})

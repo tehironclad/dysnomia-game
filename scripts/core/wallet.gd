@@ -9,8 +9,14 @@ extends Node
 ##   4. sign: the window is raised first, then the page relays {from,to,data,value}
 ##      to the browser wallet; the answer (hash or refusal) comes back by request id;
 ##   5. verify: the receipt is read from the chain here (never trusted from the
-##      page), and must be from this wallet with status 0x1;
+##      page), and must be from this wallet, to the contract asked for, with status
+##      0x1; and the transaction itself (eth_getTransactionByHash) must carry exactly
+##      the call data and value the game asked for (a wallet, extension or page that
+##      altered it is caught and named, never reported as success);
 ##   6. the caller re-reads state.
+## Refused before anything reaches the wallet: an approve / increaseAllowance above
+## 2^128 (unlimited in all but name: the game approves exact amounts only) and any
+## setApprovalForAll. sign_message signs only the game's own texts (SIGN_PREFIXES).
 ## Nothing reports success before step 5. Every failure is printed with [Pay] and
 ## emitted as tx_stage(label, "failed", {stage, message}) (WalletChip shows it).
 ## Tested end to end by tools/e2e_wallet.sh.
@@ -30,6 +36,16 @@ const LINK_WAIT_S := 45.0
 const LINK_LOST_S := 90.0
 ## How long send() waits for the wallet to switch to 369 after asking.
 const CHAIN_WAIT_S := 60.0
+## An approval above 2^APPROVE_MAX_BITS is "unlimited" in all but name: never sent.
+const APPROVE_MAX_BITS := 128
+const SEL_APPROVE := "0x095ea7b3"
+const SEL_INCREASE_ALLOWANCE := "0x39509351"
+const SEL_SET_APPROVAL_FOR_ALL := "0xa22cb465"
+## The only texts sign_message signs: the game server's sign-in and the wallet test.
+## Anything else (a login challenge for another site, an order, a permit) is refused
+## before the wallet sees it, whoever asked for it.
+const SIGN_PREFIXES := ["Dysnomia game server sign-in\n", "Dysnomia game server login\n", "Dysnomia wallet test (free, not a transaction)\n"]
+const SIGN_MAX_CHARS := 600
 
 var address := ""
 var chain_id := 0
@@ -123,6 +139,10 @@ func _on_disconnected() -> void:
 func sign_message(message: String) -> Dictionary:
 	if address == "":
 		return {"ok": false, "stage": "precondition", "error": "No wallet connected."}
+	var refusal := sign_refusal(message)
+	if refusal != "":
+		print("[Pay] signature refused before the wallet: %s" % refusal)
+		return {"ok": false, "stage": "precondition", "error": refusal}
 	var linked := await _ensure_link("Free signature")
 	if not linked["ok"]:
 		return {"ok": false, "stage": "link", "error": linked["message"]}
@@ -153,6 +173,9 @@ func send(label: String, to: String, data: String, value_wei: String = "0x0") ->
 	var value := quantity(value_wei)
 	if value == "":
 		return _fail(label, "precondition", "Bad amount %s (the game's bug, not yours)." % value_wei)
+	var refusal := call_refusal(data)
+	if refusal != "":
+		return _fail(label, "precondition", "Refused before your wallet saw it: %s (the game's bug, not yours)." % refusal)
 	if address == "":
 		if is_linked():
 			return _fail(label, "precondition", "The wallet window is open but no account is connected: approve the connection in your wallet (or click the wallet chip).")
@@ -183,7 +206,7 @@ func send(label: String, to: String, data: String, value_wei: String = "0x0") ->
 	# not under a window raised later. The page waits (≤ 4 s) for the focus.
 	bridge.focus_wallet_page()
 	var tx := {"from": from, "to": to.to_lower(), "data": data, "value": value}
-	var id: int = bridge.send_raw(tx, OS.get_name() == "Windows", label)
+	var id: int = bridge.send_raw(tx, OS.get_name() == "Windows", label, call_summary(to, data, value))
 	if id < 0:
 		return _fail(label, "link", "The wallet window is not linked; click the wallet chip to reopen it.")
 	_log(label, "sign", "request #%d sent to the wallet window; waiting for the wallet" % id)
@@ -205,6 +228,16 @@ func send(label: String, to: String, data: String, value_wei: String = "0x0") ->
 	var block := String(rec.get("blockNumber", "0x0")).hex_to_int()
 	if String(rec.get("from", "")).to_lower() != from:
 		return _fail(label, "receipt", "Transaction %s is from %s, not this wallet %s." % [hash, rec.get("from", "?"), from])
+	var want := {"from": from, "to": tx["to"], "data": data, "value": value}
+	var sent := await read_transaction(hash)
+	if sent.is_empty():
+		return _fail(label, "verify", "Mined in block %d (%s), but the transaction could not be read back to check it is the one asked for: —. Check it on the explorer." % [block, hash])
+	var differs := tx_mismatch(sent, want)
+	if differs == "" and String(rec.get("to", "")).to_lower() != want["to"]:
+		differs = "its receipt says it went to %s, not %s" % [String(rec.get("to", "")).to_lower(), want["to"]]
+	if differs != "":
+		push_error("[Pay] %s: transaction %s is not the one the game asked for: %s" % [label, hash, differs])
+		return _fail(label, "verify", "Transaction %s is NOT the one the game asked you to sign: %s. Something between the game and the chain changed it (an extension? the wallet page?). Check your wallet's activity, and don't sign again until you know why." % [hash, differs])
 	if String(rec.get("status", "")) != "0x1":
 		return _fail(label, "receipt", "Mined in block %d but reverted (status %s)." % [block, rec.get("status", "?")])
 	var ok := {"ok": true, "hash": hash, "receipt": rec, "block": block, "simulated": sim["result"]}
@@ -276,6 +309,95 @@ func _ensure_chain() -> Dictionary:
 	if chain_id != Contracts.CHAIN_ID:
 		return {"ok": false, "message": "The wallet is still on chain %d; switch it to PulseChain (369) and try again." % chain_id}
 	return {"ok": true}
+
+
+## eth_getTransactionByHash, a few tries (a node can serve the receipt a moment
+## before the transaction). {} if it can't be read.
+func read_transaction(hash: String) -> Dictionary:
+	for i in 4:
+		var r: Dictionary = await Chain.rpc.request("eth_getTransactionByHash", [hash])
+		if r["ok"] and r["result"] is Dictionary:
+			return r["result"]
+		await get_tree().create_timer(2.0).timeout
+	return {}
+
+
+## Pure: "" when the mined transaction `sent` (eth_getTransactionByHash) is exactly
+## `want` ({from, to, data, value} as asked); else what differs, in words.
+static func tx_mismatch(sent: Dictionary, want: Dictionary) -> String:
+	var out: PackedStringArray = []
+	var f := String(sent.get("from", "")).to_lower()
+	var t := String(sent.get("to", "")).to_lower()
+	var input := String(sent.get("input", sent.get("data", ""))).to_lower()
+	var v := quantity(String(sent.get("value", "0x0")))
+	if f != String(want["from"]).to_lower():
+		out.append("it was sent from %s, not %s" % [f, want["from"]])
+	if t != String(want["to"]).to_lower():
+		out.append("it went to %s, not %s" % [t if t != "" else "(contract creation)", String(want["to"]).to_lower()])
+	if input != String(want["data"]).to_lower():
+		out.append("its call is %s…, not %s…" % [input.left(10), String(want["data"]).to_lower().left(10)] if input.left(10) != String(want["data"]).to_lower().left(10)
+			else "its call's arguments differ from the ones asked for")
+	if v != quantity(String(want["value"])):
+		out.append("its value is %s wei, not %s" % [BigInt.to_decimal(BigInt.from_hex(v)) if v != "" else "?", BigInt.to_decimal(BigInt.from_hex(quantity(String(want["value"]))))])
+	return "; ".join(out)
+
+
+## Pure: "" when calldata `data` may go to the wallet; else why not. No unlimited
+## approvals (approve / increaseAllowance above 2^APPROVE_MAX_BITS), no setApprovalForAll.
+static func call_refusal(data: String) -> String:
+	var d := data.strip_edges().to_lower()
+	var sel := d.left(10)
+	if sel == SEL_SET_APPROVAL_FOR_ALL:
+		return "setApprovalForAll (it would hand over a whole collection) is never asked for"
+	if sel == SEL_APPROVE or sel == SEL_INCREASE_ALLOWANCE:
+		if d.length() < 10 + 128 or not d.substr(10, 128).is_valid_hex_number():
+			return "a malformed approval"
+		var amount := BigInt.from_hex("0x" + d.substr(74, 64))
+		if BigInt.bit_length(amount) > APPROVE_MAX_BITS:
+			return "an unlimited approval (%s wei) was asked for; the game only approves the exact amount it is about to spend" % BigInt.to_decimal(amount)
+	return ""
+
+
+## Pure: "" when `message` is one of the game's own texts (SIGN_PREFIXES, at most
+## SIGN_MAX_CHARS); else why it is refused.
+static func sign_refusal(message: String) -> String:
+	if message.length() > SIGN_MAX_CHARS:
+		return "the text to sign is too long (%d characters)" % message.length()
+	for p in SIGN_PREFIXES:
+		if message.begins_with(p):
+			return ""
+	return "the game only signs its own sign-in and wallet-test texts, not \"%s\"" % message.left(60).replace("\n", " ")
+
+
+static var _names := {}
+
+## Pure: the call in words for the wallet page ("AFFECTION.transfer(address,uint256)
+## to 0x299c…35eb, 1000000000000000003 wei"). Unknown contracts and selectors say so.
+static func call_summary(to: String, data: String, value: String = "0x0") -> String:
+	if _names.is_empty():
+		var consts: Dictionary = load("res://scripts/chain/contracts.gd").get_script_constant_map()
+		for k in consts:
+			var v = consts[k]
+			if v is String and String(v).length() == 42 and String(v).begins_with("0x"):
+				_names[String(v).to_lower()] = String(k)
+	var d := data.to_lower()
+	var sel := d.left(10)
+	var fn := ""
+	for sig in Contracts.SELECTORS:
+		if Contracts.SELECTORS[sig] == sel:
+			fn = sig
+			break
+	if fn == "" and sel == SEL_INCREASE_ALLOWANCE:
+		fn = "increaseAllowance(address,uint256)"
+	var who: String = _names.get(to.to_lower(), "contract %s" % to.to_lower())
+	var out := "%s.%s" % [who, fn if fn != "" else "call %s" % sel]
+	if fn in ["transfer(address,uint256)", "approve(address,uint256)"] and d.length() >= 138:
+		var arg := "0x" + d.substr(34, 40)
+		var amt := BigInt.from_hex("0x" + d.substr(74, 64))
+		out += " %s %s, %s wei" % ["to" if fn.begins_with("transfer") else "for spender", arg, BigInt.to_decimal(amt)]
+	if value != "" and value != "0x0":
+		out += " · paying %s wei of PLS" % BigInt.to_decimal(BigInt.from_hex(value))
+	return out
 
 
 ## Polls eth_getTransactionReceipt; {} on timeout.
