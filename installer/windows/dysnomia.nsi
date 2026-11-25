@@ -30,7 +30,7 @@ ManifestDPIAware true
 !define APP "Dysnomia"
 !define EXE "Dysnomia.exe"
 !define PCK "Dysnomia.pck"
-!define PUBLISHER "Dysnomia"
+!define PUBLISHER "Dysnomia community project"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Dysnomia"
 
 !include "MUI2.nsh"
@@ -64,6 +64,8 @@ VIAddVersionKey "LegalCopyright" "${PUBLISHER}"
 Var DesktopShortcut   ; 1 = create the Desktop shortcut
 Var DesktopBox
 
+; Who made it (the same words as About.COMMUNITY_NOTICE in the game)
+!define MUI_WELCOMEPAGE_TEXT "This will install ${APP} ${VERSION} for your Windows user (no administrator needed).$\r$\n$\r$\nA community project: not made, endorsed or run by the creator of Dysnomia. Fan-built, free, use at your own risk.$\r$\n$\r$\nThe game never asks for your seed phrase or private keys: your browser wallet signs every transaction.$\r$\n$\r$\nClick Next to continue."
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 Page custom OptionsPage OptionsLeave

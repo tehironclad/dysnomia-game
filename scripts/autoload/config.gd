@@ -124,7 +124,9 @@ func _interactive() -> bool:
 ## Starts the game again with another renderer (the renderer can't change
 ## while running), then quits this one.
 func _relaunch(method: String) -> void:
-	var args: Array = ["--path", ProjectSettings.globalize_path("res://"), "--rendering-method", method]
+	# An exported game (a release template) refuses --path and aborts, so only a run
+	# from the project folder (the editor binary) passes it.
+	var args: Array = relaunch_args(method, OS.has_feature("template"), ProjectSettings.globalize_path("res://"))
 	var user := OS.get_cmdline_user_args()
 	if not user.is_empty():
 		args.append("--")
@@ -133,6 +135,14 @@ func _relaunch(method: String) -> void:
 		get_tree().quit()
 	else:
 		apply()  # couldn't start it: carry on as we are
+
+
+## Pure: the command line for a relaunch with another renderer. `exported` = an
+## exported build (feature "template"), which aborts on --path; the editor binary needs it.
+static func relaunch_args(method: String, exported: bool, project_dir: String) -> Array:
+	if exported:
+		return ["--rendering-method", method]
+	return ["--path", project_dir, "--rendering-method", method]
 
 
 ## The level and renderer the hardware asks for. Pure (tests call it).

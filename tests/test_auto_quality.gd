@@ -34,3 +34,10 @@ func test_follow_the_frame_rate() -> void:
 	eq(Config.decide(1, 60.0, 3.0, 4.0, true), 1, "no going back up after a step down")
 	eq(Config.decide(1, 60.0, 0.0, 4.0, false), 1, "no GPU timing (lightweight renderer): no step up")
 	eq(Config.decide(2, 40.0, 9.0, 6.0, false), 2, "fine as it is")
+
+
+func test_relaunch_args() -> void:
+	# An exported game aborts on --path ("compiled without support for path overrides"):
+	# the 0.9.0 release closed itself on first launch. Only the editor binary gets it.
+	eq(Config.relaunch_args("gl_compatibility", true, "/p/"), ["--rendering-method", "gl_compatibility"], "exported: no --path")
+	eq(Config.relaunch_args("mobile", false, "/p/"), ["--path", "/p/", "--rendering-method", "mobile"], "from the project: --path")

@@ -694,8 +694,8 @@ func _build_bottom() -> void:
 	fc.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	fc.offset_left = -112 - RIGHT_W
 	fc.offset_right = -112
-	fc.offset_top = -112
-	fc.offset_bottom = -112
+	fc.offset_top = -124
+	fc.offset_bottom = -124
 	fc.custom_minimum_size = Vector2(RIGHT_W, 0)
 	add_child(fc)
 	var row := HBoxContainer.new()
@@ -737,7 +737,7 @@ func _build_bottom() -> void:
 	_news.offset_left = 112
 	_news.offset_right = 112 + 620
 	_news.offset_top = -106
-	_news.offset_bottom = -106
+	_news.offset_bottom = -124
 	_news.custom_minimum_size = Vector2(620, 0)
 	add_child(_news)
 	# The status strip
@@ -745,8 +745,9 @@ func _build_bottom() -> void:
 	strip.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	strip.offset_left = 112
 	strip.offset_right = -112
-	strip.offset_top = -92
-	strip.offset_bottom = -40
+	strip.offset_top = -98
+	strip.offset_bottom = -46
+	strip.grow_vertical = Control.GROW_DIRECTION_BEGIN  # taller content grows up, clear of the notice
 	add_child(strip)
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 26)
@@ -777,6 +778,17 @@ func _build_bottom() -> void:
 	bv.tooltip_text = ("Dysnomia %s. New versions: %s" % [cur, UpdateCheck.DOWNLOAD_PAGE]) if cur != "" else "A development build (no release version)"
 	bv.mouse_filter = Control.MOUSE_FILTER_PASS
 	bc.add_child(bv)
+	# Who made it: always on the title screen, under the strip
+	var who := _label(About.COMMUNITY_NOTICE, "MutedLabel", DeepFieldTheme.FS_CAPTION, false)
+	who.name = "CommunityNotice"
+	who.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	who.offset_left = 112
+	who.offset_right = -112
+	who.offset_top = -40
+	who.offset_bottom = -12
+	who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	who.add_theme_color_override("font_color", DeepFieldTheme.MUTED)
+	add_child(who)
 
 
 func _refresh_strip() -> void:

@@ -46,6 +46,11 @@ func _ready() -> void:
 	var cur := UpdateCheck.current_version()
 	ver.text = ("Dysnomia %s · new versions: %s" % [cur, UpdateCheck.DOWNLOAD_PAGE]) if cur != "" else "Dysnomia · dev build"
 	col.add_child(ver)
+	var who := Label.new()  # who made it (About)
+	who.theme_type_variation = "MutedLabel"
+	who.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	who.text = About.COMMUNITY_NOTICE
+	col.add_child(who)
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 16)
