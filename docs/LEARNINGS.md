@@ -601,7 +601,8 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
 - **Diving into a cabinet** (`scripts/arcade/dive/`, 2026-11-24). Using a cabinet runs `ArcadeDive`: the
   camera pushes into the screen (CRT bulge, scanlines), a light tunnel and a flash, and you land in the
   game's world; Esc reverses it and the arcade shows your score.
-  - **The 2D game stays the source of truth.** An `ArcadeWorld` (Void Lanes, Entropy Drift, Bar Raiser)
+  - **The 2D game stays the source of truth.** An `ArcadeWorld` (Void Lanes, Entropy Drift, Bar Raiser,
+    Motzkin Sieve, Qing Orbit, YUE Courier)
     only reads its cabinet's `ArcadeGame` state every frame and stages it in 3D (own World3D in a
     SubViewport). Scores, lives, game_over and the unit tests are the 2D game's. A world may remap the
     keys to its camera (`ArcadeGame.input_remap`; scripted test input is never remapped).
@@ -631,7 +632,38 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
     cards, "—".
 - **Cabinet titles:** a backlit marquee topper (1.16 × 0.66 m, wider than the body) whose text
   `ArcadeCabinet.marquee_fit` sets on one or two lines (never wrapping off the panel), the name on the
-  screen's bottom bezel, and a floating title + "1 Ⓐ a play · press E" over the nearest cabinet within 3.4 m.
+  screen's bottom bezel, and a floating title + the price over the cabinet whose Use prompt is showing.
+- **One prompt, never a dead one** (2026-11-25). The owner: "it says press E but then another prompt pops up
+  closer". Cause: the floating title said "press E" from 3.4 m (`TITLE_NEAR`) while Use worked only within
+  1.1 m of the play spot. Now `GamesPlace.pick_spot` (nearest spot whose reach covers you) is the one choice
+  the HUD prompt, the floating title and Use all read; a cabinet's reach is `ArcadeCabinet.REACH` (3.4 m) and
+  Use from further than 0.3 m walks the player up (`player.auto_walk_to`, ≤ 2.6 s, Esc stops) and then dives.
+  The title names no key. The pub's bar-menu key works from anywhere inside (walk-up). `tools/probe_prompts.gd`
+  sweeps the arcade and the pub on a 0.5 m grid and presses Use at every spot's far edge.
+- **Three more original games** (2026-11-25; 2D rules + 3D world each, any arcade credit or strip play starts
+  them, seeded like the others: the credit's tx or SHA-256("<tx>#<i>")):
+  - **Motzkin Sieve**: numbers rain down; a bolt shatters a composite into its prime-factor shards (catch
+    them: value × combo); shooting a prime or letting a composite reach the floor costs a life; primes that
+    reach the floor bank (×2 caught on the sieve); the Motzkin primes 2, 127, 15511 fall gold (+500).
+  - **Qing Orbit**: ride four rings round the QING (left in, right out, up/down throttle); Ⓐ score 10 × a
+    multiplier that builds per Ⓐ in a row (×9 max); Void rifts cost a life; fire = Hong dash (untouchable).
+  - **YUE Courier**: carry YUE between five QING pads against a clock; a delivery = (100 + seconds left × 20)
+    × chain (×8 max); wisps from the central rift hunt you; fire = Hong pulse (stuns, +15 each).
+- **Rave** (2026-11-25, `scripts/places/arcade/`): the arcade in every territory is a blacklight party.
+  - **Territory only.** `RaveStyle.for_territory` takes the Deep Field emblem's two colours (made fluorescent)
+    plus a third, and the address hash picks the tempo (120–128 BPM), key, groove, floor and wall patterns,
+    laser count (from the emblem's arms), the DJ's head and the crowd. Never the viewer.
+  - **The music is synthesised:** `RaveTrack` (pure) renders the 12 distinct bars of a 16-bar cycle (intro,
+    drop, break, build; kick, clap, hats, off-beat bass, arp, pad, riser) at 22,050 Hz from one-shots it
+    computes itself, on a worker thread in ~0.5 s; `RaveMusic` (AudioStreamPlayer3D at the booth, bus
+    "Music") streams them through an AudioStreamGenerator. Its beat clock = frames pushed − frames queued
+    − output latency (wall time with a dummy driver), so lights and dancers follow what you hear.
+    Ducked by 13 dB inside a cabinet dive.
+  - **Cheap:** one floor mesh (tiles and carpet in `rave_floor.gdshader`), wall paint and the LED wall in
+    `rave_uv.gdshader` (incl. the mirror ball's spots), lasers/cones/knobs/glows as MultiMeshes, five
+    shadowless omni lights, and nothing but the player casts a sun shadow (the old hall spent ~1,400 shadow
+    draws on the cabinets). Crowd: 10 avatars at High, 6 below; the `Dance` clip's speed is set so a loop
+    spans a whole number of beats (`RaveHall.dance_clip_speed`), plus a knee dip on each kick.
 - **The Affection Fair's mini games** (`scripts/world/funfair/`, 2026-11-24). The seven midway games
   (Test Your Affection, Entropy Toss, Regolith Ring Toss, Crystal Shy, Motzkin Prime Shooter, Waat Wheel,
   Saat Fortune Teller) play in first person at their stall: Use there → ticket → `MidwayPlay` (the

@@ -80,13 +80,13 @@
 - Games (`scripts/games/`, LEARNINGS §14): `ArcadePay` (1 Ⓐ a play → the QING, receipt-verified),
   `TableBook` (pool and Twenty-One as room lines; signer = tx.from; honour-bound wagers checked by
   Transfer logs), `PoolSim`/`EightBall` (integer physics), `Duel21` (cards from block hashes). The arcade
-  library is `scripts/arcade/` (ArcadeGame, three original games, the Folklore 6502 cart player,
+  library is `scripts/arcade/` (ArcadeGame, six original games, the Folklore 6502 cart player,
   ArcadeCatalog). Places: `arcade_place.gd` (every territory, door `ArcadeFront` on the plaza) and
   `sunny_pub.gd` (TehSunFlowrScioety QING), both on `GamesPlace`. Cabinets are dived into
   (`scripts/arcade/dive/`: `ArcadeDive` transition + overlay, one `ArcadeWorld` per original game that
   only reads the 2D game's state, `DriftTrack` from QING.Entropy() + a block hash, `ArcadeScores` local
   board). Render a dive: `screenshot.gd -- --scene=res://scenes/places/arcade_place.tscn
-  --dive=void_lanes|entropy_drift|bar_raiser|cart_… [--dive-phase=push|warp|inside|menu] [--classic]`.
+  --dive=void_lanes|entropy_drift|bar_raiser|motzkin_sieve|qing_orbit|yue_courier|cart_… [--dive-phase=push|warp|inside|menu] [--classic]`.
   `sunny_pub.gd` (TehSunFlowrScioety QING), both on `GamesPlace`.
   Prices live in ONE table, `scripts/games/prices.gd` (`Prices`: play 1 Ⓐ, strip of 10 for 10 Ⓐ, rocket 5 Ⓐ,
   drinks 1–2 Ⓐ, wager helper); never write a price literal. Ticket strips (LEARNINGS §14): `TicketCode` writes what a
@@ -97,6 +97,12 @@
   `CardSeat`, pure maths in `PoolAim`). Previews: `screenshot.gd -- --seat=pool|cards
   --seat-phase=aim|roll|overhead|seated|enter` (practice: nothing posted), `--near=<cabinet id>` (the
   floating title), and `--view=cabinets` in the arcade place and the pub.
+- Rave arcade (`scripts/places/arcade/`, LEARNINGS §14 "Rave"): `RaveHall` (UV paint `rave_uv`, beat floor `rave_floor`,
+  lasers/cones `rave_beam`, mirror ball, DJ + dancing crowd on `HumanAvatar`, no shadow casters) driven by `RaveMusic`
+  (AudioStreamGenerator from the booth, Music bus, ducked in a dive; beat clock `beats()`/`beat`), the track is `RaveTrack`
+  (pure synth, 16-bar cycle; `tools/rave_wav.gd -- --out=<wav>` to listen), the look/tempo/crowd `RaveStyle` (territory
+  only). Shots: `--view=rave|dj|dancers [--rave-bar=5]` (the drop). One prompt rule: `GamesPlace.pick_spot` feeds the HUD
+  prompt, the floating title and Use (cabinets reach `ArcadeCabinet.REACH`, Use walks you up); `tools/probe_prompts.gd`.
 - Vehicles (`scripts/vehicles/`, LEARNINGS §15): a pad per territory (`scripts/world/garage/garage_site.gd`), five
   vehicles (`MoonVehicle`, specs and pure physics in `VehicleSpecs`), unlocks from real state (`VehicleUnlocks`).
   V in/out, R upright. Shots: `--view=garage`, or `--drive=<kind> [--drive-s=N --steer=left] [--session=0x…]`.
