@@ -10,6 +10,10 @@ extends CanvasLayer
 ##
 ## The dive is presentation only. Paying, credits, starting and recording a run stay in GamesPlace
 ## (ArcadePay's pipeline is untouched); the menu's buttons just emit signals.
+##
+## How to play: the menu is the start screen (it stays until Play or Leave) and lists every
+## control as a key chip; with the menu down, GameHowto's strip keeps them along the bottom, and
+## the help key brings the full card back (a run pauses while it is up).
 
 signal pay_pressed
 signal start_pressed
@@ -44,6 +48,7 @@ var menu: PanelContainer
 var menu_title: Label
 var menu_blurb: Label
 var menu_info: Label
+var menu_controls: GridContainer  ## how to play: every control as a key chip
 var pay_button: Button
 var start_button: Button
 var view_button: Button
@@ -71,11 +76,13 @@ var _hud_lives: Label
 var _hud_stats: Label
 var _hud_center: Label
 var _hud_source: Label
-var _hud_hint: Label
 var _bar_box: VBoxContainer
 var _bars: Array = []  # [Label, ColorRect bg, ColorRect fill]
 var _toast: Label
 var _toast_t := 0.0
+var howto: GameHowto
+var _strip_want := false
+var _rows_key := ""
 
 
 func _ready() -> void:
@@ -111,6 +118,57 @@ func _ready() -> void:
 	_toast.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_toast.visible = false
 	root.add_child(_toast)
+	howto = GameHowto.new()
+	howto.name = "HowTo"
+	add_child(howto)
+	howto.opened.connect(func(m: int) -> void:
+		if m == GameHowto.Mode.HELP and running and cab and cab.game:
+			cab.game.set_process(false))  # the run waits while the card is up
+	howto.dismissed.connect(func(m: int) -> void:
+		if m == GameHowto.Mode.HELP and cab and cab.game:
+			cab.game.set_process(true))
+
+
+## The controls in this view, as [[key, words]]: the 3D world's own, or the cabinet's screen
+## (the move keys and fire), then the view switch and Esc.
+func controls_rows() -> Array:
+	var rows: Array = []
+	if world != null and not classic:
+		rows = world.controls_list()
+	else:
+		rows = [["%s%s%s%s / arrows" % [ControlsHelp.key_of("move_forward"), ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_back"), ControlsHelp.key_of("move_right")], "move"],
+			[ControlsHelp.key_of("jump"), "fire"]]
+	if world != null:
+		rows.append([ControlsHelp.key_of("arcade_view"), "3D world" if classic else "classic screen"])
+	rows.append(["Esc", "end the run" if running else "leave"])
+	return rows
+
+
+## The how-to card's words for this cabinet.
+func howto_spec() -> Dictionary:
+	var title := String(cab.entry.get("title", "")) if cab else ""
+	var rules := PackedStringArray()
+	if cab:
+		rules.append(String(cab.entry.get("blurb", "")))
+	rules.append("A run is a credit: %s paid to this QING (the receipt is checked). The demo plays itself for free." % ArcadePay.fee_text())
+	return {"title": title, "tag": "Arcade cabinet · %s" % ("classic screen" if classic else "3D world"), "rules": rules,
+		"controls": controls_rows(), "accent": ICE, "verb": "play", "esc": "end the run" if running else "leave"}
+
+
+## Menu up: the menu lists the controls. Menu down (a run, or the demo full screen): the strip.
+func _refresh_controls() -> void:
+	var rows := controls_rows()
+	var k := str(rows)
+	if k != _rows_key:
+		_rows_key = k
+		if menu_controls:
+			GameHowto.fill_grid(menu_controls, rows, 18, 380.0)
+		howto.setup(howto_spec())
+		howto.set_strip(rows)
+	var want := phase == Phase.INSIDE and not menu.visible
+	if want != _strip_want:
+		_strip_want = want
+		howto.show_strip(want)
 
 
 func is_active() -> bool:
@@ -213,6 +271,7 @@ func _set_classic(on: bool) -> void:
 	if view_button:
 		view_button.visible = world != null
 		view_button.text = ("3D world (%s)" if classic else "Classic screen (%s)") % ControlsHelp.key_of("arcade_view")
+	_rows_key = ""
 
 
 func _screen_aspect() -> float:
@@ -302,6 +361,9 @@ func leave() -> void:
 	get_viewport().disable_3d = false
 	menu.visible = false
 	_hud.visible = false
+	howto.end()
+	_strip_want = false
+	_rows_key = ""
 	_flash_rect.color = Color(0, 0, 0, 0)
 	if _from_cam and is_instance_valid(_from_cam):
 		_from_xf = _from_cam.global_transform
@@ -374,6 +436,7 @@ func _process(delta: float) -> void:
 			if _clock >= T_OUT_WARP + T_OUT_PULL:
 				_done()
 		Phase.INSIDE:
+			_refresh_controls()
 			_hud_frame()
 
 
@@ -382,6 +445,7 @@ func _process(delta: float) -> void:
 
 func set_running(on: bool, source: String = "") -> void:
 	running = on
+	_rows_key = ""
 	if source != "":
 		source_text = source
 	menu.visible = not on and phase == Phase.INSIDE
@@ -430,7 +494,6 @@ func _hud_frame() -> void:
 		_hud_source.text = source_text + ("\n" + ws if ws.begins_with("PAID") else "")
 	else:
 		_hud_source.text = ws if ws.begins_with("DEMO") else "DEMO: the cabinet plays itself, no credit spent"
-	_hud_hint.text = "%s   ·   %s %s   ·   Esc %s" % [world.controls_hint(), ControlsHelp.key_of("arcade_view"), "classic screen", "end the run" if running else "leave"]
 	var f := float(h.get("flash", 0.0))
 	var fc: Color = h.get("flash_color", MAGENTA)
 	_flash_rect.color = Color(fc, clampf(f, 0.0, 1.0) * 0.35)
@@ -494,11 +557,8 @@ func _build_hud(root: Control) -> void:
 	_place(_hud_center, Control.PRESET_CENTER, Vector2(-500, -200), Vector2(1000, 90))
 	_hud_center.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hud_source = _label(_hud, 15, Color("#8e97a9"))
-	_place(_hud_source, Control.PRESET_BOTTOM_LEFT, Vector2(36, -100), Vector2(1100, 50))
+	_place(_hud_source, Control.PRESET_BOTTOM_LEFT, Vector2(36, -118), Vector2(1100, 50))
 	_hud_source.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_hud_hint = _label(_hud, 16, ICE)
-	_place(_hud_hint, Control.PRESET_CENTER_BOTTOM, Vector2(-800, -44), Vector2(1600, 30))
-	_hud_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 
 func _button(parent: Control, text: String, sig: Signal) -> Button:
@@ -533,7 +593,16 @@ func _build_menu(root: Control) -> void:
 	menu_blurb = Label.new()
 	menu_blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	menu_blurb.custom_minimum_size = Vector2(560, 0)
+	menu_blurb.add_theme_font_size_override("font_size", 19)
 	col.add_child(menu_blurb)
+	var ch := Label.new()
+	ch.theme_type_variation = "DisplayLabel"
+	ch.add_theme_font_size_override("font_size", 14)
+	ch.add_theme_color_override("font_color", ICE)
+	ch.text = "HOW TO PLAY  ·  %s: this card again in a run" % ControlsHelp.key_of(GameHowto.HELP_ACTION)
+	col.add_child(ch)
+	menu_controls = GameHowto.controls_grid([], 18, 380.0)
+	col.add_child(menu_controls)
 	menu_info = Label.new()
 	menu_info.theme_type_variation = "MutedLabel"
 	menu_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

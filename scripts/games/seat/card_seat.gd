@@ -79,12 +79,45 @@ func sit() -> void:
 	seat.title.text = "TWENTY-ONE · %s" % String(place.territory.get("name", "")).to_upper()
 	_show(false)
 	seat.enter(_view_xf(), 54.0, place.player.get_node_or_null("PlayerModel"), [place.hud_layer])
+	seat.howto.setup(howto_spec())
+	seat.howto.open_card(GameHowto.Mode.KEY)
 	await seat.entered
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	if mode == "practice" and (practice == null or practice.over()):
 		await _practice_deal()
 	else:
 		_show(true)
+
+
+## The how-to card: Twenty-One's rules (cards from block hashes), this seat's mode, the controls.
+func howto_spec() -> Dictionary:
+	var rules := PackedStringArray(["Get closer to 21 than the other hand without going over. Aces count 11 or 1; faces 10. A tie is a push.",
+		"Every card comes from a block hash: SHA-256(block hash : draw) over the cards left. Nobody knows a card before its block.",
+		"Hit to draw a card; stand to hold. Over 21 is bust."])
+	match mode:
+		"practice": rules.append("Practice against the house, dealt from the latest block; nothing is posted. A live game starts from the games list (%s)." % ControlsHelp.key_of("table_lobby"))
+		"play": rules.append("Live game %s: each hit or stand is a room line signed in your wallet; the card is that line's block hash." % match_id)
+		_: rules.append("Live game %s: every move replays here from its room line." % match_id)
+	return {"title": "Twenty-One", "tag": String(place.territory.get("name", "")), "rules": rules,
+		"controls": controls(), "accent": TableSeat.GOLD, "verb": "play", "esc": "stand up"}
+
+
+## [[key, words]] for the card and the strip.
+func controls() -> Array:
+	var rows: Array = []
+	var again := mode == "practice" and (practice == null or practice.over())
+	if again:
+		rows.append([ControlsHelp.key_of("table_hit"), "deal again (new block hash)"])
+	elif mode == "play" or mode == "practice":
+		rows.append([ControlsHelp.key_of("table_hit"), "hit"])
+		rows.append([ControlsHelp.key_of("table_stand"), "stand"])
+		rows.append(["Click", "the plates on the table"])
+	else:
+		rows.append(["", "watching"])
+	rows.append([ControlsHelp.key_of("table_view"), "back to your seat" if overhead else "table view"])
+	rows.append([ControlsHelp.key_of("table_lobby"), "games & challenges"])
+	rows.append(["Esc", "stand up"])
+	return rows
 
 
 func stand() -> void:
@@ -380,13 +413,7 @@ func _refresh_texts() -> void:
 	if not m.is_empty() and not BigInt.is_zero(m["stake"]):
 		lines.append("stake: %s (honour-bound)" % ArcadePay.fmt(m["stake"]))
 	seat.stats.text = "\n".join(lines)
-	var again := mode == "practice" and (practice == null or practice.over())
-	var keys := "%s hit · %s stand · or click the plates" % [ControlsHelp.key_of("table_hit"), ControlsHelp.key_of("table_stand")]
-	if again:
-		keys = "%s deal again (new block hash)" % ControlsHelp.key_of("table_hit")
-	elif not (mode == "play" or mode == "practice"):
-		keys = "watching"
-	seat.hint.text = "%s · %s %s · %s games & challenges · Esc stand up" % [keys, ControlsHelp.key_of("table_view"), "back to your seat" if overhead else "table view", ControlsHelp.key_of("table_lobby")]
+	seat.set_controls(controls())
 
 
 func _view_xf() -> Transform3D:
@@ -398,6 +425,8 @@ func _view_xf() -> Transform3D:
 
 ## Previews (tools/screenshot.gd): "seated" deals a practice hand from the latest block and hits once.
 func preview(phase: String) -> void:
+	if phase != "howto":
+		seat.howto.close_card(false)
 	while _busy or (practice == null and is_active() and seat.status.text.begins_with("Reading")):
 		await get_tree().process_frame
 	if phase == "seated" and practice and not practice.over():

@@ -48,6 +48,7 @@ var _panel: Label
 var _card: PanelContainer
 var _card_label: Label
 var _card_t := 0.0
+var howto: GameHowto  ## the jump's card as you leave the plank, and the strip for the flight
 var _t := 0.0
 var _focus := ""
 var _lift_t := 0.0
@@ -81,6 +82,42 @@ func setup(player: CharacterBody3D, hud: Node, landmark: Landmark, columns: BarC
 	_build_hud()
 
 
+# --- How to fly (GameHowto) ---------------------------------------------------
+
+func _ensure_howto() -> void:
+	if howto == null:
+		howto = GameHowto.new()
+		howto.name = "HowTo"
+		add_child(howto)
+
+
+## Every flight control (the card).
+static func all_controls() -> Array:
+	return [[ControlsHelp.key_of("wingsuit"), "wingsuit on / off (in freefall)"], [ControlsHelp.key_of("parachute"), "open the canopy"],
+		["%s %s" % [ControlsHelp.key_of("move_forward"), ControlsHelp.key_of("move_back")], "wingsuit: dive / flare · canopy: %s brakes" % ControlsHelp.key_of("move_back")],
+		["%s %s" % [ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right")], "turn / steer"],
+		["hold %s" % ControlsHelp.key_of("jump"), "flare at the ground (canopy)"]]
+
+
+## The controls for the mode you are in (the strip).
+static func mode_controls(m: int) -> Array:
+	var lr := "%s %s" % [ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right")]
+	match m:
+		JumpPhysics.Mode.WINGSUIT:
+			return [["%s %s" % [ControlsHelp.key_of("move_forward"), ControlsHelp.key_of("move_back")], "dive / flare"], [lr, "turn"],
+				[ControlsHelp.key_of("wingsuit"), "wingsuit off"], [ControlsHelp.key_of("parachute"), "canopy"]]
+		JumpPhysics.Mode.CANOPY:
+			return [[lr, "steer"], [ControlsHelp.key_of("move_back"), "brakes"], ["hold %s" % ControlsHelp.key_of("jump"), "flare at the ground"]]
+	return [[ControlsHelp.key_of("wingsuit"), "wingsuit"], [ControlsHelp.key_of("parachute"), "canopy"], [lr, "turn"]]
+
+
+func _strip_for_mode() -> void:
+	if howto == null:
+		return
+	howto.set_strip(mode_controls(mode))
+	howto.show_strip(state == FLYING)
+
+
 # --- Starting ---------------------------------------------------------------
 
 ## Leaves the plank (or a roof) at `at`, moving along `dir`.
@@ -89,9 +126,6 @@ func launch(at: Vector3, dir: Vector3, p_source: String, p_ticket: Dictionary) -
 	var d := Vector3(dir.x, 0.0, dir.z).normalized()
 	_begin(d * 6.5 + Vector3(0, 3.5, 0), p_source, p_ticket)
 	yaw = atan2(-d.x, -d.z)
-	_hud.ticker("%s · %s to deploy the wingsuit · %s the canopy" % [
-		{"ticket": "TICKETED JUMP · block %d" % int(p_ticket.get("block", 0)), "own tower": "YOUR TOWER", "practice": "PRACTICE JUMP · not recorded"}.get(p_source, p_source),
-		ControlsHelp.key_of("wingsuit"), ControlsHelp.key_of("parachute")], Color("#ffd27a"), 8.0)
 
 
 func _begin(vel: Vector3, p_source: String, p_ticket: Dictionary) -> void:
@@ -112,6 +146,15 @@ func _begin(vel: Vector3, p_source: String, p_ticket: Dictionary) -> void:
 	_set_pose("freefall")
 	_streaks.emitting = true
 	_panel.visible = true
+	var what: String = {"ticket": "Ticketed jump · block %d · scored" % int(p_ticket.get("block", 0)), "own tower": "Your tower · free · scored", "practice": "Practice jump · not recorded"}.get(p_source, p_source)
+	_ensure_howto()
+	howto.setup({"title": "Base jump", "tag": what, "accent": Color("#ffd27a"), "verb": "fly",
+		"rules": ["Freefall first; open the wingsuit to glide and steer, then the canopy to land.",
+			"Below %d m still falling fast, the canopy opens by itself. Land soft: hold %s to flare at the ground." % [int(AAD_AGL), ControlsHelp.key_of("jump")],
+			"Score: distance flown, air time and a soft landing."],
+		"controls": all_controls()})
+	howto.open_card(GameHowto.Mode.COUNTDOWN, 7.0, false)  # you are falling meanwhile: any key closes it
+	_strip_for_mode()
 
 
 # --- Watching for drops and your own tower --------------------------------------
@@ -208,12 +251,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			if mode == JumpPhysics.Mode.FREEFALL:
 				mode = JumpPhysics.Mode.WINGSUIT
 				_set_pose("wingsuit")
-				_hud.ticker("WINGSUIT · glide %.1f : 1 · %s/%s dive and flare, %s/%s turn" % [
-					JumpPhysics.steady(mode, 0.0).x / JumpPhysics.steady(mode, 0.0).y, ControlsHelp.key_of("move_forward"),
-					ControlsHelp.key_of("move_back"), ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right")], DeepFieldTheme.ICE, 5.0)
+				_hud.ticker("WINGSUIT · glide %.1f : 1" % (JumpPhysics.steady(mode, 0.0).x / JumpPhysics.steady(mode, 0.0).y), DeepFieldTheme.ICE, 5.0)
 			elif mode == JumpPhysics.Mode.WINGSUIT:
 				mode = JumpPhysics.Mode.FREEFALL
 				_set_pose("freefall")
+			_strip_for_mode()
 		elif event.is_action_pressed("parachute") and mode != JumpPhysics.Mode.CANOPY:
 			get_viewport().set_input_as_handled()
 			_deploy_canopy("CANOPY")
@@ -237,8 +279,8 @@ func _deploy_canopy(why: String) -> void:
 	mode = JumpPhysics.Mode.CANOPY
 	canopy_t = 0.0
 	_set_pose("canopy")
-	_hud.ticker("%s · %s/%s steer · %s brakes · hold %s to flare at the ground" % [why, ControlsHelp.key_of("move_left"),
-		ControlsHelp.key_of("move_right"), ControlsHelp.key_of("move_back"), ControlsHelp.key_of("jump")], DeepFieldTheme.ICE, 6.0)
+	_hud.ticker(why, DeepFieldTheme.ICE, 6.0)
+	_strip_for_mode()
 
 
 # --- Your own tower's lift (a window-washer's cradle up the facade) -------------
@@ -345,6 +387,8 @@ func _land(v: Vector3) -> void:
 
 func _end(landed: bool) -> void:
 	state = IDLE
+	if howto:
+		howto.end()
 	_set_pose("")
 	_streaks.emitting = false
 	_panel.visible = false

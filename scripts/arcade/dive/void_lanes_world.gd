@@ -26,6 +26,11 @@ var _pops: Array = []
 var _cx := 0.0
 
 
+func controls_list() -> Array:
+	return [["%s %s / ← →" % [ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right")], "switch lanes"],
+		[ControlsHelp.key_of("jump"), "flag the line in your lane (an imposter)"]]
+
+
 func controls_hint() -> String:
 	return "%s / %s or ← → switch lanes · %s flags the line in your lane" % [ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right"), ControlsHelp.key_of("jump")]
 

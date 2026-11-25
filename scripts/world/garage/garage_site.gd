@@ -39,6 +39,7 @@ var _focus := ""  ## "kind" (a vehicle in reach) or "bay:kind" (an empty bay)
 var _prompt := ""
 var _paying := false
 var _speedo: Label
+var _howto: GameHowto  ## the vehicle's card at the start and its controls strip while driving
 var _arm_len := 3.5
 var _alighting := false  ## stepping out (a short animation; input waits)
 const ALIGHT_S := 0.5
@@ -435,14 +436,33 @@ func mount(kind: String) -> void:
 	v.mount(_player)
 	_hud.hide_prompt()
 	_prompt = ""
-	_hud.ticker("%s · %s / %s drive · %s / %s steer · %s %s · %s boost · %s %s · %s lights · %s upright · %s get out" % [
-		VehicleSpecs.display_name(kind).to_upper(), ControlsHelp.key_of("move_forward"), ControlsHelp.key_of("move_back"),
-		ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right"), ControlsHelp.key_of("jump"), _jump_word(kind),
-		ControlsHelp.key_of("sprint"), ControlsHelp.key_of("crouch_descend"), "descend" if kind == "hopper" else "brake / slide",
-		ControlsHelp.key_of("flashlight"), ControlsHelp.key_of("vehicle_reset"), ControlsHelp.key_of("vehicle_enter")], DeepFieldTheme.ICE, 12.0)
+	if _howto == null:
+		_howto = GameHowto.new()
+		_howto.name = "HowTo"
+		add_child(_howto)
+	_howto.setup({"title": VehicleSpecs.display_name(kind), "tag": "Vehicle pad · this territory", "accent": DeepFieldTheme.ICE,
+		"rules": [String(v.spec.get("blurb", "")), "Drive anywhere in the territory; %s gets out beside it, %s puts it back on its wheels." % [
+			ControlsHelp.key_of("vehicle_enter"), ControlsHelp.key_of("vehicle_reset")]],
+		"controls": controls(kind), "verb": "drive"})
+	_howto.open_card(GameHowto.Mode.COUNTDOWN, 8.0, false)  # the vehicle drives meanwhile: a key closes it and drives
+	_howto.show_strip(true)
 	_ensure_speedo()
 	_speedo.visible = true
 	driving_changed.emit(true)
+
+
+## A vehicle's controls as [[key, words]] (GameHowto's card and strip). Keys from the InputMap.
+static func controls(kind: String) -> Array:
+	var rows: Array = [["%s %s" % [ControlsHelp.key_of("move_forward"), ControlsHelp.key_of("move_back")], "drive / reverse"],
+		["%s %s" % [ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right")], "steer"]]
+	if _jump_word(kind) != "—":
+		rows.append([ControlsHelp.key_of("jump"), _jump_word(kind)])
+	rows.append([ControlsHelp.key_of("sprint"), "boost"])
+	rows.append([ControlsHelp.key_of("crouch_descend"), "descend" if kind == "hopper" else "brake / slide"])
+	rows.append([ControlsHelp.key_of("flashlight"), "lights"])
+	rows.append([ControlsHelp.key_of("vehicle_reset"), "upright"])
+	rows.append([ControlsHelp.key_of("vehicle_enter"), "get out"])
+	return rows
 
 
 static func _jump_word(kind: String) -> String:
@@ -493,6 +513,8 @@ func dismount() -> void:
 		arm.remove_excluded_object(v.get_rid())
 	if _speedo:
 		_speedo.visible = false
+	if _howto:
+		_howto.end()
 	_focus = ""
 	_prompt = ""
 	driving_changed.emit(false)

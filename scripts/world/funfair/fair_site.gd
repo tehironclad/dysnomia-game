@@ -24,6 +24,7 @@ const MIN_CORE := 78.0 * TerritoryLayout.SCALE  ## and from the Core itself (≈
 
 var _qing := ""
 var _hud: Node
+var _howto: GameHowto  ## a ride's card and strip while riding
 var _player: CharacterBody3D
 var _fair: Node3D
 var _tier := -1
@@ -419,12 +420,10 @@ func preview_game(id: String, phase: String, codes: Array = []) -> void:
 		return
 	var g := _game
 	await get_tree().create_timer(1.3).timeout
+	if phase == "howto":
+		return  # the how-to card, waiting for a key
 	g.begin_play()
 	g.hold = true
-	if phase != "howto":
-		g.skip_tutorial()
-	else:
-		return
 	if phase in ["hit", "cheer"]:
 		await _preview_auto(g, phase)
 		return
@@ -508,6 +507,7 @@ func _start(ride: RideBase, note: String) -> void:
 	_focus = null
 	_focus_key = ""
 	_hud.ticker(note, DeepFieldTheme.ICE, 6.0)
+	_ride_howto(ride, note)
 	ride.start_ride(_player)
 	if ride is RocketRide:
 		# After liftoff the player flies it (RocketVoyage)
@@ -516,7 +516,29 @@ func _start(ride: RideBase, note: String) -> void:
 			ride.voyage_handoff.connect(_start_voyage)
 
 
+## A ride's card (what it is, how long, what you can do) for a few seconds, then the strip.
+func _ride_howto(ride: RideBase, note: String) -> void:
+	if _howto == null:
+		_howto = GameHowto.new()
+		_howto.name = "RideHowTo"
+		add_child(_howto)
+	var rules := PackedStringArray([String(ride.item.get("blurb", ""))])
+	rules.append("Sit back: the ride runs about %d s by itself and sets you down at its exit." % int(ride.ride_duration()))
+	if ride is RocketRide:
+		rules.append("After liftoff the rocket is yours to fly.")
+	_howto.setup({"title": String(ride.item.get("name", "Ride")), "tag": note, "accent": Color("#ffd27a"), "verb": "ride", "rules": rules,
+		"controls": ride_controls()})
+	_howto.open_card(GameHowto.Mode.COUNTDOWN, 7.0, false)
+	_howto.show_strip(true)
+
+
+static func ride_controls() -> Array:
+	return [["Mouse", "look around"], [ControlsHelp.key_of("toggle_camera"), "first / third person"]]
+
+
 func _start_voyage(ride: RocketRide) -> void:
+	if _howto:
+		_howto.end()  # the voyage has its own card
 	_voyage = RocketVoyage.new()
 	_voyage.name = "RocketVoyage"
 	get_tree().current_scene.add_child(_voyage)
@@ -537,6 +559,8 @@ func ground_y(x: float, z: float) -> float:
 func _on_finished(ride: RideBase) -> void:
 	if ride == _riding:
 		_riding = null
+		if _howto:
+			_howto.end()
 
 
 func _build_terrace(depth: float, tint: Color) -> void:

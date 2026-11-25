@@ -9,7 +9,8 @@ extends CanvasLayer
 ## left, numbers top right, a big centre call, where the numbers come from at
 ## the bottom left and the controls at the bottom. It is presentation only:
 ## every move still goes through TableBook (a room line: simulate, sign, the
-## receipt, read back) in the controller.
+## receipt, read back) in the controller. The controls are GameHowto's strip
+## (`set_controls`), and its card says how to play when the controller opens it.
 
 signal entered
 signal exited
@@ -56,6 +57,7 @@ var _meter_fill: ColorRect
 var _toast: Label
 var _toast_t := 0.0
 var _center_t := 0.0
+var howto: GameHowto  ## the how-to card and the controls strip (set_controls)
 
 
 func _ready() -> void:
@@ -66,6 +68,16 @@ func _ready() -> void:
 	root.theme = DeepFieldTheme.get_theme()
 	add_child(root)
 	_build_hud(root)
+	howto = GameHowto.new()
+	howto.name = "HowTo"
+	add_child(howto)
+
+
+## The controls along the bottom for as long as the player is seated ([[key, words], …]).
+func set_controls(rows: Array) -> void:
+	hint.text = ""
+	howto.set_strip(rows)
+	howto.show_strip(phase != Phase.LEAVING and phase != Phase.IDLE)
 
 
 func is_active() -> bool:
@@ -103,6 +115,7 @@ func enter(to: Transform3D, fov: float, model: Node3D, hide_layers: Array = []) 
 	status.text = ""
 	_clock = 0.0
 	phase = Phase.ENTERING
+	howto.show_strip(true)  # the controls (set_controls) for as long as the player is seated
 	_frame_in(0.0)
 
 
@@ -111,6 +124,7 @@ func leave() -> void:
 	if phase != Phase.INSIDE and phase != Phase.ENTERING:
 		return
 	_hud.visible = false
+	howto.end()
 	_start_xf = cam.global_transform
 	_start_fov = cam.fov
 	_clock = 0.0
@@ -194,6 +208,7 @@ func _done() -> void:
 		if is_instance_valid(l):
 			l.visible = true
 	_hidden = []
+	howto.end()
 	cam.queue_free()
 	cam = null
 	phase = Phase.IDLE
@@ -291,7 +306,7 @@ func _build_hud(root: Control) -> void:
 	_place(center, Control.PRESET_CENTER, Vector2(-520, -190), Vector2(1040, 90))
 	center.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_meter = VBoxContainer.new()
-	_place(_meter, Control.PRESET_CENTER_BOTTOM, Vector2(-230, -150), Vector2(460, 50))
+	_place(_meter, Control.PRESET_CENTER_BOTTOM, Vector2(-230, -176), Vector2(460, 50))
 	_meter.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_meter.add_theme_constant_override("separation", 4)
 	_hud.add_child(_meter)
@@ -307,7 +322,7 @@ func _build_hud(root: Control) -> void:
 	_meter_bg.add_child(_meter_fill)
 	_meter.visible = false
 	source = _label(_hud, 14, DIM)
-	_place(source, Control.PRESET_BOTTOM_LEFT, Vector2(36, -96), Vector2(1100, 50))
+	_place(source, Control.PRESET_BOTTOM_LEFT, Vector2(36, -118), Vector2(1100, 50))
 	source.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint = _label(_hud, 16, ICE)
 	_place(hint, Control.PRESET_CENTER_BOTTOM, Vector2(-820, -42), Vector2(1640, 30))

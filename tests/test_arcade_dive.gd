@@ -106,6 +106,10 @@ func test_catalog_worlds() -> void:
 		var w = s.new()
 		check(w is ArcadeWorld, e["id"] + " world is an ArcadeWorld")
 		check(w.controls_hint() != "", e["id"] + " says how to play in 3D")
+		var rows: Array = w.controls_list()
+		check(rows.size() >= 1, e["id"] + " lists its controls (GameHowto)")
+		for r in rows:
+			check(String(r[0]) != "" and not String(r[0]).contains("—"), "%s: a control with a bound key: %s" % [e["id"], str(r)])
 		w.free()
 	eq(n, 3, "the three original games each have a world")
 

@@ -13,8 +13,9 @@ extends Node
 ##
 ## Game feel (2026-11-24): every press and result is dressed by the stage's FairFx (bursts,
 ## sparks, pop-ups, chase bulbs), FairSfx sounds, camera shake and a hit-stop on big hits (the
-## sim's ticks only pause: replay is unaffected), streak / frenzy call-outs, a first-time
-## how-to card, onlookers (FairCrowd) who gather and cheer, and on a good round a short
+## sim's ticks only pause: replay is unaffected), streak / frenzy call-outs, a how-to
+## card at the start (GameHowto: it stays until a key starts the round; the help key brings it
+## back, and the sim's ticks wait meanwhile), the controls strip for the whole round, onlookers (FairCrowd) who gather and cheer, and on a good round a short
 ## celebration (a wide shot, confetti, the prize spinning over the counter). A paid round's
 ## prize goes on the stall's shelf (FairPrizes, this computer).
 
@@ -57,15 +58,13 @@ var _seen_last := -1
 var _frenzy_shown := false
 var _shake := 0.0
 var _stop_t := 0.0
-var _tut: PanelContainer
-var _tut_t := 0.0
+var howto: GameHowto            ## the how-to card and the controls strip
 var _celebrate_t := 0.0
 var _prize: Node3D
 var prize_kind := ""            ## the prize shown at the end ("" none)
 var prize_kept := ""            ## the kind that went on the shelf (paid rounds)
 var _seed_v := 1
 
-const SEEN_PATH := "user://fair_seen.cfg"
 const CELEBRATE_T := 3.4
 
 
@@ -89,12 +88,32 @@ func start(p_site: Node, p_stage: MidwayStage, p_game: String, seed_v: int, p_pa
 	seat.title.text = "%s · AFFECTION FAIR" % MidwayGame.title(game)
 	seat.set_badge(note, paid)
 	seat.headline.text = "SCORE 0"
-	seat.status.text = String(MidwayGame.GAMES[game]["how"])
+	seat.status.text = ""
 	seat.source.text = _source_line()
-	seat.hint.text = "%s / click: %s   ·   Esc: leave" % [ControlsHelp.key_of("interact"), "start"]
+	seat.hint.text = ""
+	howto = seat.howto
+	howto.setup(howto_spec())
+	howto.dismissed.connect(_on_howto_dismissed)
+	howto.open_card(GameHowto.Mode.KEY)
 	var player: Node3D = site.get("_player")
 	var model: Node3D = player.get_node_or_null("PlayerModel") if player else null
 	seat.enter(stage.global_transform * stage.eye(), stage.fov(), model, hide_layers)
+
+
+## The card: the game's rules, its tips, and every control (keys from the InputMap).
+func howto_spec() -> Dictionary:
+	var rules := PackedStringArray([String(MidwayGame.GAMES[game]["how"])])
+	rules.append_array(PackedStringArray(MidwayGame.GAMES[game].get("tips", [])))
+	return {"title": MidwayGame.title(game), "tag": "Affection Fair · " + note, "rules": rules,
+		"controls": play_controls(), "strip": play_controls(), "accent": Color("#ffd27a"), "verb": "start", "esc": "leave (in play: the round is forfeit)"}
+
+
+func _on_howto_dismissed(mode: int) -> void:
+	if mode == GameHowto.Mode.KEY and phase == "intro":
+		if not seat.is_inside():
+			await seat.entered
+		if phase == "intro":
+			begin_play()
 
 
 func _source_line() -> String:
@@ -113,19 +132,15 @@ func _process(delta: float) -> void:
 	seat.target_fov = stage.fov()
 	_apply_shake(delta)
 	if phase == "play":
-		if _tut_t > 0.0:
-			_tut_t -= delta
-			_tut.modulate.a = clampf(_tut_t * 2.0, 0.0, 1.0)
-			if _tut_t <= 0.0:
-				_tut.visible = false
-		if stage.aim_axes() > 0:
+		var reading := howto.is_card_open()  # the help card is up: the round waits (ticks, not rules)
+		if stage.aim_axes() > 0 and not reading:
 			var kx := Input.get_action_strength("move_right") - Input.get_action_strength("move_left")
 			var ky := Input.get_action_strength("move_forward") - Input.get_action_strength("move_back")
 			_aim = (_aim + Vector2(kx, ky) * KEY_AIM * delta).clamp(Vector2(-MidwaySim.AIM, -MidwaySim.AIM), Vector2(MidwaySim.AIM, MidwaySim.AIM))
 		stage.aim = _aim
 		if _stop_t > 0.0:
 			_stop_t -= delta  # hit-stop: the sim's clock pauses a beat (ticks, not rules)
-		elif not hold and _tut_t <= 0.0:
+		elif not hold and not reading:
 			_acc = minf(_acc + delta, float(MAX_STEPS) / MidwaySim.HZ)
 			var n := 0
 			while _acc >= 1.0 / MidwaySim.HZ and n < MAX_STEPS and not sim.done:
@@ -287,6 +302,8 @@ func _unit() -> String:
 func _input(event: InputEvent) -> void:
 	if seat == null or phase == "leaving" or not seat.is_active():
 		return
+	if howto and howto.wants(event):
+		return  # the how-to card takes it (any key starts / goes back; the help key opens it)
 	if event is InputEventMouseMotion:
 		if phase == "play" and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
 			_aim = (_aim + Vector2(event.relative.x, -event.relative.y) * AIM_SENS).clamp(Vector2(-MidwaySim.AIM, -MidwaySim.AIM), Vector2(MidwaySim.AIM, MidwaySim.AIM))
@@ -312,10 +329,7 @@ func _input(event: InputEvent) -> void:
 			if seat.is_inside():
 				begin_play()
 		"play":
-			if _tut_t > 0.0:
-				_tut_t = minf(_tut_t, 0.25)  # a press during the how-to card just dismisses it
-			else:
-				press()
+			press()
 		"celebrate":
 			_end_celebration()
 		"result":
@@ -323,22 +337,19 @@ func _input(event: InputEvent) -> void:
 				leave()
 
 
-## Starts the round (after the how-to).
+## Starts the round (after the how-to card): the controls strip stays for the whole round.
 func begin_play() -> void:
 	phase = "play"
 	seat.status.text = ""
-	seat.hint.text = _play_hint()
+	seat.hint.text = ""
+	howto.close_card(false)
+	howto.set_strip(play_controls())
+	howto.show_strip(true)
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	if stage.fx:
 		stage.fx.set_mode("idle")
-	if not _seen_before(game):
-		_show_tutorial()
 
 
-## Previews: no how-to card.
-func skip_tutorial() -> void:
-	_tut_t = 0.0
-	_tut.visible = false
 
 
 ## Previews: what happened so far has been reacted to (the next result gets the effects).
@@ -349,33 +360,23 @@ func mark_seen() -> void:
 	_seen_motz = sim.last_tick
 
 
-## The first time on this computer, a how-to card for a few seconds (the round waits for it).
-func _seen_before(id: String) -> bool:
-	var c := ConfigFile.new()
-	c.load(SEEN_PATH)
-	return bool(c.get_value("seen", id, false))
-
-
-func _show_tutorial() -> void:
-	var c := ConfigFile.new()
-	c.load(SEEN_PATH)
-	c.set_value("seen", game, true)
-	c.save(SEEN_PATH)
-	_tut.visible = true
-	_tut.modulate.a = 1.0
-	_tut_t = 3.4
-
-func _play_hint() -> String:
-	var k := ControlsHelp.key_of("interact")
+## The round's controls as [[key, words]] (the card and the strip). The one button is Use,
+## the shoot key or a click; the aim is the mouse or the move keys.
+func play_controls() -> Array:
+	var go := "%s / %s" % [ControlsHelp.key_of("interact"), ControlsHelp.key_of("table_shoot")]  # Space / Mouse 1
+	var lr := "Mouse / %s %s" % [ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right")]
+	var all4 := "Mouse / %s%s%s%s" % [ControlsHelp.key_of("move_forward"), ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_back"), ControlsHelp.key_of("move_right")]
+	var rows: Array = []
 	match game:
-		"striker": return "%s / Space / click: swing at the top of the meter   ·   Esc: leave" % k
-		"entropy": return "mouse or A/D: aim   ·   %s / click: toss at the right power   ·   Esc: leave" % k
-		"regolith": return "mouse or WASD: aim at a peg   ·   %s / click: throw   ·   Esc: leave" % k
-		"crystal": return "mouse or WASD: aim (up: the high rail)   ·   %s / click: throw   ·   Esc: leave" % k
-		"motzkin": return "mouse or WASD: aim   ·   %s / click: shoot primes only   ·   Esc: leave" % k
-		"waat": return "%s / click: brake   ·   Esc: leave" % k
-		"saat": return "mouse or A/D: LOWER (left) or HIGHER (right)   ·   %s / click: guess   ·   Esc: leave" % k
-	return ""
+		"striker": rows = [[go, "swing at the top of the meter"]]
+		"entropy": rows = [[lr, "aim"], [go, "toss at the right power"]]
+		"regolith": rows = [[all4, "aim at a peg"], [go, "throw"]]
+		"crystal": rows = [[all4, "aim (up: the high rail)"], [go, "throw"]]
+		"motzkin": rows = [[all4, "aim"], [go, "shoot primes only"]]
+		"waat": rows = [[go, "brake the wheel"]]
+		"saat": rows = [[lr, "LOWER (left) or HIGHER (right)"], [go, "guess"]]
+	rows.append(["Esc", "leave"])
+	return rows
 
 
 ## A press of the one button, with the current aim (also used by previews and the probe).
@@ -406,6 +407,8 @@ func _finish() -> void:
 			"log": MidwaySim.encode_log(game, sim.events)})
 	seat.status.text = ""
 	seat.hint.text = ""
+	howto.close_card(false)
+	howto.show_strip(false)  # the result screen lists what can be done next
 	if prize_kind != "" and (prize_kind != "pennant" or sim.best_streak >= 3):
 		_celebrate()
 	else:
@@ -421,7 +424,8 @@ func _celebrate() -> void:
 	_celebrate_t = CELEBRATE_T
 	var grand := prize_kind == "trophy"
 	seat.call_out("GRAND PRIZE!" if grand else "YOU WIN!", Color("#ffe45c") if grand else Color("#7dffb0"), CELEBRATE_T)
-	seat.hint.text = "%s: continue" % ControlsHelp.key_of("interact")
+	howto.set_strip([["%s / %s" % [ControlsHelp.key_of("interact"), ControlsHelp.key_of("table_shoot")], "continue"]])
+	howto.show_strip(true)
 	if stage.crowd:
 		stage.crowd.gather(5 if grand else 4, _seed_v)
 		stage.crowd.cheer(CELEBRATE_T + 0.6)
@@ -451,6 +455,7 @@ func _end_celebration() -> void:
 		return
 	phase = "result"
 	seat.hint.text = ""
+	howto.show_strip(false)
 	seat.call_out("", Color.WHITE, 0.0)
 	show_result()
 
@@ -567,7 +572,8 @@ func leave() -> void:
 		return
 	var forfeit := phase not in ["result", "celebrate"]
 	phase = "leaving"
-	_tut_t = 0.0
+	if howto:
+		howto.end()
 	_shake = 0.0
 	if seat.cam:
 		seat.cam.h_offset = 0.0
@@ -623,28 +629,6 @@ func _build_panel() -> void:
 	_p_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_p_hint = _lab(col, "MonoLabel", 15, Color("#7fe9ff"))
 	_p_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	# The first-time how-to card (top centre, over the play)
-	_tut = PanelContainer.new()
-	_tut.theme = DeepFieldTheme.get_theme()
-	var ts := DeepFieldTheme.panel_style(Color("#ffd27a"))
-	ts.bg_color = Color(0.03, 0.02, 0.07, 0.9)
-	_tut.add_theme_stylebox_override("panel", ts)
-	_tut.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_tut.offset_left = -330
-	_tut.offset_right = 330
-	_tut.offset_top = 110
-	_tut.offset_bottom = 290
-	_tut.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_tut.visible = false
-	seat.add_child(_tut)
-	var tc := VBoxContainer.new()
-	_tut.add_child(tc)
-	var th := _lab(tc, "DisplayLabel", 26, Color("#ffd27a"))
-	th.text = "HOW TO PLAY · %s" % MidwayGame.title(game)
-	th.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var tb := _lab(tc, "", 22, DeepFieldTheme.INK)
-	tb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tb.text = "\n".join(PackedStringArray(MidwayGame.GAMES[game].get("tips", [])))
 
 
 func _lab(parent: Control, variation: String, size: int, c: Color) -> Label:

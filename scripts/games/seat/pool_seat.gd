@@ -93,8 +93,35 @@ func sit() -> void:
 	seat.title.text = "POOL · EIGHT-BALL · %s" % String(place.territory.get("name", "")).to_upper()
 	_refresh_texts()
 	seat.enter(_view_xf(), _view_fov(), place.player.get_node_or_null("PlayerModel"), [place.hud_layer])
+	seat.howto.setup(howto_spec())
+	seat.howto.open_card(GameHowto.Mode.KEY)
 	await seat.entered
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+
+## The how-to card: eight-ball's rules, what this seat is (practice / live / watching), the controls.
+func howto_spec() -> Dictionary:
+	var rules := PackedStringArray(["Eight-ball: the first ball you pot picks your group (solids or stripes). Clear it, then sink the 8 to win.",
+		"Aim with the mouse: the ghost line is the real sim run ahead. Hold %s for power, let go to strike." % ControlsHelp.key_of("table_shoot")])
+	match mode:
+		"practice": rules.append("Practice: a table on this computer only; nothing is posted. A live game starts from the games list (%s)." % ControlsHelp.key_of("table_lobby"))
+		"play": rules.append("Live game %s: your shot is a room line signed in your wallet; the balls roll once the chain has it." % match_id)
+		_: rules.append("Live game %s: every shot replays here from its room line." % match_id)
+	return {"title": "Pool · Eight-ball", "tag": String(place.territory.get("name", "")), "rules": rules,
+		"controls": controls(), "accent": TableSeat.ICE, "verb": "play", "esc": "stand up"}
+
+
+## [[key, words]] for the card and the strip.
+func controls() -> Array:
+	var rows: Array = []
+	if _can_aim_view():
+		rows.append(["Mouse", "aim"])
+		rows.append(["%s %s" % [ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right")], "fine aim (%s: slower)" % ControlsHelp.key_of("sprint")])
+		rows.append(["hold %s" % ControlsHelp.key_of("table_shoot"), "power · release to strike"])
+	rows.append([ControlsHelp.key_of("table_view"), "first person" if overhead else "overhead view"])
+	rows.append([ControlsHelp.key_of("table_lobby"), "games & challenges"])
+	rows.append(["Esc", "stand up"])
+	return rows
 
 
 func stand() -> void:
@@ -617,7 +644,6 @@ func _stats_text() -> String:
 
 func _refresh_texts() -> void:
 	var m := _match()
-	var fine := ControlsHelp.key_of("sprint")
 	match mode:
 		"practice":
 			seat.headline.text = "PRACTICE"
@@ -634,12 +660,13 @@ func _refresh_texts() -> void:
 			seat.set_badge("LIVE GAME #%s · %s vs %s · every shot replays from its room line" % [m["id"], book.display(m["players"][0]), book.display(m["players"][1])], true)
 	if mode != "practice" and not m.is_empty():
 		seat.source.text = "Table: replayed from this QING's room lines (%s), the game started at block %d, last move at block %d. Who shot = the line's tx.from." % [TableBook.short(place.qing), m["created_block"], m["last_block"]]
-	var aim := "Mouse aim · %s/%s fine aim (%s slower) · hold %s for power, release to strike · " % [ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right"), fine, ControlsHelp.key_of("table_shoot")] if _can_aim_view() else ""
-	seat.hint.text = "%s%s %s · %s games & challenges · Esc stand up" % [aim, ControlsHelp.key_of("table_view"), "first person" if overhead else "overhead", ControlsHelp.key_of("table_lobby")]
+	seat.set_controls(controls())
 
 
 ## Previews (tools/screenshot.gd): "aim" holds a charge with the ghost; "roll" breaks and holds mid-roll.
 func preview(phase: String) -> void:
+	if phase != "howto":
+		seat.howto.close_card(false)
 	await get_tree().create_timer(0.3).timeout
 	if phase == "overhead":
 		overhead = true

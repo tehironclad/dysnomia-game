@@ -45,6 +45,7 @@ var _milestone := 0
 var _hud_t := 0.0
 var _done := false
 var _prev_pos := Vector3.ZERO
+var howto: GameHowto  ## the pilot's card at the controls handover, and the strip while flying
 
 
 func begin(ride: RocketRide, player: Node3D, hud: Node, ground: Callable) -> void:
@@ -75,11 +76,23 @@ func begin(ride: RocketRide, player: Node3D, hud: Node, ground: Callable) -> voi
 	_flash.color = Color(1, 1, 1, 0)
 	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_flash)
-	if _hud:
-		_hud.ticker("YOU HAVE THE CONTROLS · %s thrust · %s brake · mouse / %s %s steer · %s burn harder · Esc abort" % [
-			ControlsHelp.key_of("move_forward"), ControlsHelp.key_of("move_back"), ControlsHelp.key_of("move_left"),
-			ControlsHelp.key_of("move_right"), ControlsHelp.key_of("sprint")], Color("#ffd27a"), 12.0)
+	howto = GameHowto.new()
+	howto.name = "HowTo"
+	add_child(howto)
+	howto.setup({"title": "You have the controls", "tag": "The Upsilon Rocket · Affection Fair", "accent": Color("#ffd27a"),
+		"rules": ["Climb toward this world's light speed: the faster you go, the harder it pulls.",
+			"Past %.2f c a wormhole opens on your flight line: fly through it to reach the Field and pick another QING." % WORMHOLE_BETA],
+		"controls": controls(), "verb": "fly", "esc": "abort: back to the pad"})
+	howto.open_card(GameHowto.Mode.COUNTDOWN, 8.0, false)  # the rocket flies meanwhile: any key closes it
+	howto.show_strip(true)
 	_place(0.0)
+
+
+## The pilot's controls as [[key, words]].
+static func controls() -> Array:
+	return [[ControlsHelp.key_of("move_forward"), "thrust"], [ControlsHelp.key_of("move_back"), "brake"],
+		["Mouse / %s %s" % [ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right")], "steer"],
+		[ControlsHelp.key_of("sprint"), "burn harder"], ["Esc", "abort"]]
 
 
 ## Pure: heading for yaw/pitch (pitch 0 = level toward −Z turned by yaw, PI/2 = straight up).
@@ -127,6 +140,7 @@ func _process(delta: float) -> void:
 		_wormhole.rotate_object_local(Vector3.UP, delta * 0.6)
 		if _through(_prev_pos, _pos):
 			_leaving = 0.0
+			howto.end()
 			if _hud:
 				_hud.ticker("THROUGH THE WORMHOLE · to the Field", Color("#ffd27a"), 6.0)
 	_hud_t -= delta
@@ -167,8 +181,9 @@ func _input(event: InputEvent) -> void:
 		_yaw -= event.relative.x * 0.0022
 		_pitch = clampf(_pitch - event.relative.y * 0.0022, -1.2, PI * 0.5)
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("ui_cancel"):
+	elif event.is_action_pressed("ui_cancel") and not howto.wants(event):
 		get_viewport().set_input_as_handled()
+		howto.end()
 		if _hud:
 			_hud.ticker("Voyage aborted · back to the pad", DeepFieldTheme.ICE, 6.0)
 		_finish(false)
