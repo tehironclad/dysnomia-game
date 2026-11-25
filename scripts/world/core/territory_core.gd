@@ -240,11 +240,11 @@ func _build_room(tint: Color) -> void:
 	sign.position = Vector3(0.0, 5.3, ROOM_RADIUS + 0.4)
 	sign.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	room.add_child(sign)
-	# Over the name: what the building is, and how it is talking (ChatLife keeps it).
+	# Under the name: what the building is, and how it is talking (ChatLife keeps it).
 	var tag := _label("THE ROOM", 30)
 	tag.name = "RoomTag"
 	tag.modulate = tint.lerp(DeepFieldTheme.ICE, 0.5)
-	tag.position = Vector3(0.0, 5.95, ROOM_RADIUS + 0.42)
+	tag.position = Vector3(0.0, 4.86, ROOM_RADIUS + 0.42)  # under the name: above it, the beacons speak
 	tag.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	room.add_child(tag)
 

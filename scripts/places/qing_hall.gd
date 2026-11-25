@@ -189,7 +189,7 @@ func _build_board() -> void:
 	head.font = DeepFieldTheme.display_font()
 	head.font_size = 64
 	head.pixel_size = 0.01
-	head.position = Vector3(0, 5.25, -HALF + 0.8)
+	head.position = Vector3(0, 5.62, -HALF + 0.8)
 	head.modulate = ChatFeedPanel.room_tint(territory).lerp(Color.WHITE, 0.35)
 	add_child(head)
 	var sub := Label3D.new()
@@ -197,7 +197,7 @@ func _build_board() -> void:
 	sub.font = DeepFieldTheme.mono_font()
 	sub.font_size = 28
 	sub.pixel_size = 0.01
-	sub.position = Vector3(0, 4.72, -HALF + 0.8)
+	sub.position = Vector3(0, 5.16, -HALF + 0.8)  # over the board (its top edge is at 4.98 m)
 	sub.modulate = DeepFieldTheme.MUTED
 	add_child(sub)
 
