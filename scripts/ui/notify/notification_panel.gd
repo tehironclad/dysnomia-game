@@ -45,13 +45,15 @@ func _ready() -> void:
 	add_child(root)
 	_bell = Bell.new()
 	_bell.set_anchors_preset(Control.PRESET_CENTER_TOP)  # beside the wallet chip: clear of the HUD's corners and a table's numbers
-	_bell.offset_left = 150
-	_bell.offset_right = 192
+	_bell.offset_left = 250  # clear of the wallet chip at the theme's type scale
+	_bell.offset_right = 292
 	_bell.offset_top = 4
 	_bell.offset_bottom = 46
 	_bell.tooltip_text = "Notifications (%s): invites, stakes, wagers, who is online" % ControlsHelp.key_of("notifications")
 	_bell.pressed.connect(toggle)
 	root.add_child(_bell)
+	if _dock_slot != null and is_instance_valid(_dock_slot):
+		dock_bell(_dock_slot)
 	_build_toast(root)
 	_build_panel(root)
 	Invites.notes_changed.connect(_mark_dirty)
@@ -63,6 +65,26 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	_unguard()
+
+
+var _dock_slot: Control = null
+
+## Put the bell in a HUD slot (HudV2.notify_slot, the top-right corner) instead of
+## its fallback spot beside the wallet chip. Safe to call before or after _ready.
+func dock_bell(slot: Control) -> void:
+	_dock_slot = slot
+	if _bell == null or slot == null:
+		return
+	if _bell.get_parent() != null:
+		_bell.get_parent().remove_child(_bell)
+	_bell.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_bell.offset_left = 0
+	_bell.offset_top = 0
+	_bell.offset_right = 42
+	_bell.offset_bottom = 42
+	_bell.custom_minimum_size = Vector2(42, 42)
+	_bell.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	slot.add_child(_bell)
 
 
 func is_open() -> bool:

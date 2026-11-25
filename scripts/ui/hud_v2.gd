@@ -222,7 +222,9 @@ func _build_keys() -> void:
 		l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))  # readable over bright regolith
 		l.add_theme_constant_override("outline_size", 6)
 		hint.add_child(l)
-	add_child(NotificationPanel.new())  # invites, stakes, wagers (its own layer: scripts/ui/notify/)
+	var notes := NotificationPanel.new()  # invites, stakes, wagers (its own layer: scripts/ui/notify/)
+	notes.dock_bell(notify_slot)  # the bell sits in the top-right corner
+	add_child(notes)
 
 
 ## [[key, words]] of the HUD's key row (bound keys, read from the InputMap).
