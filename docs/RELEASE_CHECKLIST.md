@@ -21,11 +21,56 @@
 - [ ] Include `assets/web/wallet.html` and `assets/data/*.json`: add `*.json, *.html` to the
       non-resource export filter.
 - [ ] No `user://` data is shipped. Caches (terrain, score) are rebuilt on the player's machine.
-- [ ] Version: set `application/config/version` in `project.godot`, and use the same value for the git tag.
+- [ ] Version: the git tag (`v1.2.3`) is the version. `release.yml` writes it into `application/config/version`
+      (absent in dev runs, so dev builds show "dev" and never check for updates). Strict `x.y.z` only.
+- [ ] Windows icon: `release.yml` converts `icon.svg` to a 16/32/48/256 `.ico`
+      (`installer/windows/make_icon.sh`, needs `librsvg2-bin` + `imagemagick`) and sets it on the Windows preset
+      only, for the exe and the installer. The committed preset keeps `application/icon=""` so local exports
+      work without it. `icon.svg` is still Godot's stock logo: replace it to give the game its own icon.
+
+## Windows installer
+
+`installer/windows/dysnomia.nsi` (NSIS 3, Modern UI 2, Unicode), built in CI on Linux after the Windows export:
+`makensis -DVERSION=<V> -DSRC_DIR=<build/windows> -DICON=<ico> -DOUT_FILE=dist/Dysnomia-<V>-windows-setup.exe`.
+Locally: `sudo apt-get install -y nsis`, then the same line (any dummy `Dysnomia.exe`/`Dysnomia.pck` proves it compiles).
+
+- Per user, no admin prompt: `%LOCALAPPDATA%\Programs\Dysnomia` (`Dysnomia.exe`, `Dysnomia.pck`, `uninstall.exe`).
+  Start Menu shortcut always; Desktop shortcut is a checkbox (on for a fresh install, kept as it was on an upgrade);
+  "Launch Dysnomia" on the finish page.
+- Add/Remove Programs under `HKCU\…\Uninstall\Dysnomia`: DisplayName, DisplayVersion, Publisher "Dysnomia",
+  DisplayIcon, UninstallString, QuietUninstallString, InstallLocation, EstimatedSize, NoModify/NoRepair.
+- Upgrade = run the newer installer: it finds the old folder from InstallLocation and replaces the two files.
+  The uninstaller deletes exactly those files, its shortcuts and its key (no recursive delete).
+- The player's data (`user://` = `%APPDATA%\Godot\app_userdata\Dysnomia`) is never touched by install,
+  upgrade or uninstall.
+- The workflow fails if the Windows export holds anything but `Dysnomia.exe` + `Dysnomia.pck` (the installer
+  would miss it: add it to the `.nsi`).
+- **Unsigned:** SmartScreen shows "Windows protected your PC" on first run (More info → Run anyway). Expected
+  until release signing ([`SECURITY_AUDIT.md`](SECURITY_AUDIT.md)). Say so on the download page.
+
+`latest.json` lists every file with its kind; the installer entry is
+`{"platform":"windows","kind":"installer","name":"Dysnomia-<V>-windows-setup.exe","size":…,"sha256":…,"url":"<base>/releases/<V>/Dysnomia-<V>-windows-setup.exe"}`
+and the zips carry `"kind":"zip"`. `SHA256SUMS` covers the zips and the installer.
+
+## Update notice
+
+The front door reads `GET https://enterdysnomia.com/api/download-manifest` once per launch (`UpdateCheck`:
+HTTPS, 8 s timeout, 64 KB cap, no redirects, quiet on failure; skipped in dev builds and when the site
+accelerator is off). When its strict `x.y.z` `version` is newer than this build's, a strip at the top right says
+"Dysnomia x.y.z is out · Download · Later". Download opens the constant `https://enterdysnomia.com/download`,
+never a URL from the manifest. Later hides it for that version (`settings.cfg` `[update] dismissed`).
+The build's version shows in the front door's status strip (BUILD) and at the top of F2 settings.
+
+- [ ] After publishing, start the previous release: the notice names the new version, Download opens the
+      download page, Later hides it across a restart, and the next version shows it again.
+- [ ] Preview: `screenshot.gd -- --update=9.9.9` (labelled PREVIEW).
 
 ## After building
 
 - [ ] Each binary starts at the front door with the default RPC and no settings file.
+- [ ] Windows installer on a clean Windows user: installs without an admin prompt, Start Menu (and Desktop if
+      ticked) shortcuts start the game, it is listed in Apps & features with the version; installing the next
+      version over it keeps settings and the Desktop choice; uninstalling leaves `%APPDATA%\Godot\app_userdata\Dysnomia`.
 - [ ] The wallet relay starts and opens the browser page. The page carries the session token, and a
       page without it is refused.
 - [ ] Publish SHA-256 checksums next to the binaries, and reproduce one build from the tag.

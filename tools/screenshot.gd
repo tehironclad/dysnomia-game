@@ -6,6 +6,7 @@ extends SceneTree
 ##       [--session=0x…] [--open=su|beat|world|steward] (with --view=hud: a move's panel, previewed only)
 ##       [--toggle=guide|help] (with --view=hud: show that panel)
 ##       (the front door: --open=void|identity|guide|opps shows that panel on the right)
+##       [--update=x.y.z] (the front door: the "new version" notice as if the site named x.y.z, labelled PREVIEW)
 ##       [--dive=<arcade catalog id> --dive-phase=push|warp|inside|menu --classic] (an arcade place:
 ##       dive into that cabinet; the attract demo plays, nothing is paid)
 ##       [--seat=pool|cards --seat-phase=aim|roll|overhead|seated|enter] (an arcade place or the pub:
@@ -55,6 +56,7 @@ var _field_filter: Array = []
 var _access := ""
 var _access_fee := ""
 var _invite := ""  # panel | seated | result
+var _update := ""  # the front door: preview the update notice for this version
 var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
@@ -103,6 +105,8 @@ func _initialize() -> void:
 			_access = a.substr(9)
 		elif a.begins_with("--invite="):
 			_invite = a.substr(9)
+		elif a.begins_with("--update="):
+			_update = a.substr(9)
 		elif a.begins_with("--access-fee="):
 			_access_fee = a.substr(13)
 		elif a == "--classic":
@@ -236,6 +240,11 @@ func _run() -> void:
 			await process_frame
 	if _invite != "":
 		await _invite_preview()
+	if _update != "":
+		for i in 10:
+			await process_frame
+		if current_scene and current_scene.has_method("preview_update"):
+			current_scene.preview_update(_update)
 	for i in _frames:
 		await process_frame
 	await RenderingServer.frame_post_draw

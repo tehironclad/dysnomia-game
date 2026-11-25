@@ -1,16 +1,20 @@
 # Release: on a version tag (v1.2.3), check → export Windows/Linux/macOS with release
-# templates → zip → SHA-256 → upload to the public download bucket (Cloudflare R2) →
-# update latest.json, which the site (systm0.vercel.app/download) reads.
+# templates → zip, plus a Windows installer (NSIS, installer/windows/dysnomia.nsi) → SHA-256 →
+# upload to the public download bucket (Cloudflare R2) → update latest.json, which the site
+# (https://enterdysnomia.com/download, and /api/download-manifest that the game's update notice reads) reads.
 #
 # Repository secrets (Settings → Secrets and variables → Actions):
 #   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY  — an R2 API token scoped to the bucket only
 #   R2_BUCKET            — e.g. dysnomia-downloads
 #   R2_PUBLIC_BASE_URL   — the bucket's public URL, e.g. https://pub-xxxx.r2.dev or https://dl.systm0.app
-# The source stays private; only the built zips, SHA256SUMS and latest.json are public.
+# The source stays private; only the built zips, the installer, SHA256SUMS and latest.json are public.
+# The installer is unsigned: Windows SmartScreen warns on first run (More info → Run anyway) until
+# release signing lands (docs/SECURITY_AUDIT.md).
 #
 # Supply chain (docs/SECURITY_AUDIT.md): third-party actions are pinned to a commit SHA
 # (the tag in the comment); Godot and its export templates are checked against SHA-512
 # sums pinned here (from the 4.6.1-stable release's SHA512-SUMS.txt) before they run;
+# NSIS, ImageMagick and librsvg come from Ubuntu's signed apt archive (makensis must be 3.x);
 # the workflow token is read-only and secrets reach only the upload step, as env vars;
 # inputs never reach a shell through ${{ }}.
 
@@ -71,8 +75,21 @@ jobs:
           dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
           mkdir -p "$dest" && unzip -q tpl.tpz -d tpl && mv tpl/templates/* "$dest/"
 
+      - name: Installer tools (NSIS, icon conversion)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends nsis imagemagick librsvg2-bin
+          makensis -VERSION | grep -Eq '^v3\.' || { echo "makensis 3.x required"; makensis -VERSION; exit 1; }
+
       - name: Checks (import, compile, shaders, unit tests)
         run: GODOT=./godot tools/check.sh
+
+      - name: Windows icon (icon.svg → .ico, set on the Windows preset only)
+        run: |
+          installer/windows/make_icon.sh icon.svg build/icon/dysnomia.ico
+          # [preset.0.options] is Windows; the macOS preset has its own application/icon line
+          sed -i '/^\[preset\.0\.options\]/,/^\[preset\.1\]/ s|^application/icon=.*|application/icon="res://build/icon/dysnomia.ico"|' export_presets.cfg
+          [ "$(grep -c '^application/icon="res://build/icon/dysnomia.ico"' export_presets.cfg)" = 1 ] || { echo "icon not set on the Windows preset"; exit 1; }
 
       - name: Export
         env:
@@ -83,14 +100,22 @@ jobs:
           ./godot --headless --path . --export-release "Windows" build/windows/Dysnomia.exe
           ./godot --headless --path . --export-release "Linux"   build/linux/Dysnomia.x86_64
           ./godot --headless --path . --export-release "macOS"   build/macos/Dysnomia.zip
+          # The installer carries exactly Dysnomia.exe + Dysnomia.pck: anything else in the export would be missed
+          extra="$(ls -A build/windows | grep -vxE 'Dysnomia\.(exe|pck)' || true)"
+          [ -z "$extra" ] || { echo "unexpected files in the Windows export (add them to dysnomia.nsi): $extra"; exit 1; }
+          [ -f build/windows/Dysnomia.exe ] && [ -f build/windows/Dysnomia.pck ] || { echo "Windows export incomplete"; exit 1; }
           (cd build/windows && zip -qr9 "../../dist/Dysnomia-${V}-windows-x86_64.zip" .)
           (cd build/linux   && chmod +x Dysnomia.x86_64 && zip -qr9 "../../dist/Dysnomia-${V}-linux-x86_64.zip" .)
           cp build/macos/Dysnomia.zip "dist/Dysnomia-${V}-macos-universal.zip"
+          makensis -V2 -DVERSION="$V" -DSRC_DIR="$PWD/build/windows" -DICON="$PWD/build/icon/dysnomia.ico" \
+            -DOUT_FILE="$PWD/dist/Dysnomia-${V}-windows-setup.exe" installer/windows/dysnomia.nsi
           # Nothing from user:// or the dev tree may ride along
           for z in dist/*.zip; do
             if unzip -l "$z" | grep -Eq '(\.env|settings\.cfg|arcade_credits|wagers_agreed|tokens\.json|\.claude/|/tools/|/tests/)'; then echo "unexpected file in $z"; exit 1; fi
           done
-          (cd dist && sha256sum *.zip > SHA256SUMS)
+          # The installer's contents are fixed by dysnomia.nsi (the two files checked above)
+          [ "$(ls dist/*.exe)" = "dist/Dysnomia-${V}-windows-setup.exe" ] || { echo "installer missing"; exit 1; }
+          (cd dist && sha256sum *.zip *.exe > SHA256SUMS)
           cat dist/SHA256SUMS
 
       - name: Manifest
@@ -104,11 +129,15 @@ jobs:
           v, base, sha = sys.argv[1], sys.argv[2].rstrip("/"), sys.argv[3]
           files = []
           for name in sorted(os.listdir("dist")):
-              if not name.endswith(".zip"):
+              if name.endswith(".zip"):
+                  kind = "zip"
+              elif name.endswith("-windows-setup.exe"):
+                  kind = "installer"
+              else:
                   continue
               p = os.path.join("dist", name)
               plat = "windows" if "windows" in name else "macos" if "macos" in name else "linux"
-              files.append({"platform": plat, "name": name, "size": os.path.getsize(p),
+              files.append({"platform": plat, "kind": kind, "name": name, "size": os.path.getsize(p),
                             "sha256": hashlib.sha256(open(p, "rb").read()).hexdigest(),
                             "url": f"{base}/releases/{v}/{name}"})
           json.dump({"version": v, "commit": sha, "published": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),

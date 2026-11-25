@@ -224,4 +224,10 @@
   Wherever a move is blocked, show the steps, not a refusal. Hooks: `add_provider(callable)`, `set_handler(action, c)`.
   Shot: `--access=<goal> [--qing=0x… --session=0x… --access-fee=wei]`.
 
+- Releases (`docs/RELEASE_CHECKLIST.md`): `release.yml` builds zips + a Windows installer (NSIS,
+  `installer/windows/dysnomia.nsi`, per-user, never touches `user://`) and `latest.json` (files carry `kind`
+  zip|installer). The front door's update notice is `UpdateCheck` (`scripts/core/update_check.gd`: strict x.y.z,
+  the site's `/api/download-manifest` once per launch; Download opens the constant
+  `https://enterdysnomia.com/download`, never a manifest URL). Shot: `--update=9.9.9` (PREVIEW).
+
 **Research source:** `tehironclad/entropy-ai-pulse`. Attach it read-only when a WP says "port from …".

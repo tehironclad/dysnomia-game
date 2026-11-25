@@ -8,7 +8,9 @@ extends Control
 ## my QING · The Field. Then a territory search, the Void (identity), opportunities,
 ## the guide and settings. Right: who you are (an AccessSteps path in until you can
 ## play as yourself; then your LAU, your QINGs and your YUE). Bottom: news and the
-## status strip (chain block, QINGs, WORLD, online players when the Net server is up).
+## status strip (chain block, QINGs, WORLD, online players when the Net server is up, this
+## build's version). Top: a dismissible "Dysnomia x.y.z is out" notice when the site's download
+## manifest names a newer release (UpdateCheck; read once per launch, never in dev builds).
 ## Keyboard: the arrow keys move between the doors, Enter opens one.
 
 const SETTINGS := preload("res://scripts/ui/settings_menu.gd")
@@ -53,6 +55,10 @@ var _t := 0.0
 var _head_timer := 0.0
 var _lead_news := ""
 var _current := "summary"
+var _update: PanelContainer  ## the "new version" notice (hidden until UpdateCheck finds one)
+var _update_text: Label
+var _update_ver := ""
+var _update_preview := false
 
 
 func _ready() -> void:
@@ -65,6 +71,7 @@ func _ready() -> void:
 	_build_left()
 	_build_right()
 	_build_bottom()
+	_build_update()
 	Session.changed.connect(_refresh_identity)
 	Session.lead_changed.connect(_on_leads)
 	Wallet.connected.connect(func(_a): _set_status(""))
@@ -79,6 +86,7 @@ func _ready() -> void:
 	if Net.has_signal("status_changed"):
 		Net.status_changed.connect(func(_s): _refresh_strip())
 	_read_head()
+	_check_update()
 	# Arrival: fade the doors in; a step elsewhere may have asked for a panel
 	_left.modulate.a = 0.0
 	create_tween().tween_property(_left, "modulate:a", 1.0, 0.7).set_delay(0.15)
@@ -606,6 +614,75 @@ func _unhandled_input(event: InputEvent) -> void:
 		open_panel("summary")
 
 
+# --- Top: the update notice ---------------------------------------------------------
+
+func _build_update() -> void:
+	# Top right, over the right column (the wallet chip and its toasts own the top centre)
+	_update = PanelContainer.new()
+	_update.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_update.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_update.offset_left = -112
+	_update.offset_right = -112
+	_update.offset_top = 32  # below the wallet chip, above the right column (92)
+	_update.offset_bottom = 32
+	var usb := DeepFieldTheme.panel_style(DeepFieldTheme.ICE)
+	usb.content_margin_top = 5
+	usb.content_margin_bottom = 5
+	_update.add_theme_stylebox_override("panel", usb)
+	_update.visible = false
+	add_child(_update)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 14)
+	_update.add_child(h)
+	_update_text = _label("", "MonoLabel", DeepFieldTheme.FS_SMALL, false)
+	_update_text.add_theme_color_override("font_color", DeepFieldTheme.ICE)
+	_update_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	h.add_child(_update_text)
+	var dl := Button.new()
+	dl.text = "Download"
+	dl.tooltip_text = "Opens %s in your browser" % UpdateCheck.DOWNLOAD_PAGE
+	# Always the constant page: never a URL from the manifest (LEARNINGS §22)
+	dl.pressed.connect(func(): OS.shell_open(UpdateCheck.DOWNLOAD_PAGE))
+	h.add_child(dl)
+	var later := Button.new()
+	later.text = "Later"
+	later.tooltip_text = "Hide this until the next version"
+	later.pressed.connect(_dismiss_update)
+	h.add_child(later)
+
+
+## Once per launch (UpdateCheck caches the answer); quiet on any failure.
+func _check_update() -> void:
+	var r: Dictionary = await UpdateCheck.check_once(self, Config.site_api_enabled)
+	if not is_inside_tree() or _update_preview:
+		return
+	var v := String(r.get("version", ""))
+	if UpdateCheck.should_notify(UpdateCheck.current_version(), v, Config.update_dismissed):
+		_show_update(v)
+
+
+func _show_update(v: String) -> void:
+	_update_ver = v
+	var cur := UpdateCheck.current_version()
+	_update_text.text = "%sDysnomia %s is out" % ["PREVIEW  ·  " if _update_preview else "", v]
+	_update_text.tooltip_text = "You have %s. The download page lists every platform with its SHA-256." % (cur if cur != "" else "a dev build")
+	_update_text.mouse_filter = Control.MOUSE_FILTER_PASS
+	_update.visible = true
+
+
+## Screenshot preview (--update=x.y.z): the notice as if the site named that version.
+func preview_update(v: String) -> void:
+	_update_preview = true
+	_show_update(v)
+
+
+func _dismiss_update() -> void:
+	_update.visible = false
+	if not _update_preview:
+		Config.update_dismissed = _update_ver
+		Config.save_settings()
+
+
 # --- Bottom: news, the featured QING, the status strip ------------------------------
 
 func _build_bottom() -> void:
@@ -687,6 +764,19 @@ func _build_bottom() -> void:
 		v.clip_text = true
 		cell.add_child(v)
 		_strip[key] = v
+	# This build (release.yml writes it): a narrow last cell
+	var cur := UpdateCheck.current_version()
+	var bc := VBoxContainer.new()
+	bc.add_theme_constant_override("separation", 0)
+	h.add_child(bc)
+	var bt := _label("BUILD", "MutedLabel", DeepFieldTheme.FS_CAPTION, false)
+	bt.add_theme_color_override("font_color", DeepFieldTheme.DIM)
+	bc.add_child(bt)
+	var bv := _label(cur if cur != "" else "dev", "MonoLabel", DeepFieldTheme.FS_CAPTION, false)
+	bv.add_theme_color_override("font_color", DeepFieldTheme.MUTED)
+	bv.tooltip_text = ("Dysnomia %s. New versions: %s" % [cur, UpdateCheck.DOWNLOAD_PAGE]) if cur != "" else "A development build (no release version)"
+	bv.mouse_filter = Control.MOUSE_FILTER_PASS
+	bc.add_child(bv)
 
 
 func _refresh_strip() -> void:

@@ -41,6 +41,11 @@ func _ready() -> void:
 	title.add_theme_font_size_override("font_size", 20)
 	title.text = "SETTINGS"
 	col.add_child(title)
+	var ver := Label.new()  # this build (release.yml writes application/config/version)
+	ver.theme_type_variation = "MutedLabel"
+	var cur := UpdateCheck.current_version()
+	ver.text = ("Dysnomia %s · new versions: %s" % [cur, UpdateCheck.DOWNLOAD_PAGE]) if cur != "" else "Dysnomia · dev build"
+	col.add_child(ver)
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 16)
