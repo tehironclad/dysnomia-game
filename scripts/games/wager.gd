@@ -10,11 +10,13 @@ extends RefCounted
 ##
 ## m: a TableBook-shaped match (NetMatch.m or a room-line match).
 ## Pure (no autoloads).
-## code: none | proposed | agreed | dropped | push | owed | paid | unpaid
+## code: none | proposed | agreed | dropped | push | owed | paid | unpaid | disputed
 
 static func code(m: Dictionary) -> String:
 	if m.is_empty():
 		return "none"
+	if m.get("disputed", false):
+		return "disputed"
 	var state := String(m.get("stake_state", "agreed" if not BigInt.is_zero(m.get("stake", BigInt.zero())) else "none"))
 	if state == "none" or state == "dropped":
 		return state
@@ -44,10 +46,13 @@ static func text(m: Dictionary, me: String, display: Callable = Callable()) -> S
 		if w == me:
 			return "you"
 		return String(display.call(w)) if display.is_valid() else NetMatch.short(w)
+	var owes := func(w: String) -> String: return "you owe" if w == me else "%s owes" % nm.call(w)
 	var amt := NetMatch.fmt(m.get("stake", BigInt.zero()))
 	match code(m):
 		"none":
 			return "no stake"
+		"disputed":
+			return "disputed: the two tables replayed differently, so there is no result and nobody owes"
 		"dropped":
 			return "played without a stake"
 		"proposed":
@@ -62,12 +67,30 @@ static func text(m: Dictionary, me: String, display: Callable = Callable()) -> S
 		"push":
 			return "push: nobody owes the %s stake" % amt
 		"owed":
-			return "%s owes %s %s · checking the chain for the payment…" % [nm.call(m["loser"]), nm.call(m["winner"]), amt]
+			return "%s %s %s · checking the chain for the payment…" % [owes.call(m["loser"]), nm.call(m["winner"]), amt]
 		"paid":
 			return "✓ paid: %s → %s %s, Transfer in block %d" % [nm.call(m["loser"]), nm.call(m["winner"]), amt, int(m.get("paid_block", -1))]
 		"unpaid":
-			return "⚠ unpaid: %s owes %s %s (no Transfer on chain since block %s)" % [nm.call(m["loser"]), nm.call(m["winner"]), amt,
+			return "⚠ unpaid: %s %s %s (no Transfer on chain since block %s)" % [owes.call(m["loser"]), nm.call(m["winner"]), amt,
 				str(m["end_block"]) if int(m.get("end_block", -1)) >= 0 else "—"]
+	return "—"
+
+
+## A few words for the table's numbers corner.
+static func short(m: Dictionary, me: String) -> String:
+	var amt := NetMatch.fmt(m.get("stake", BigInt.zero()))
+	match code(m):
+		"none": return "no stake"
+		"dropped": return "no stake (declined)"
+		"proposed": return "stake %s? both confirm" % amt
+		"agreed": return "stake %s · honour-bound" % amt
+		"push": return "push · nobody owes"
+		"disputed": return "disputed · nobody owes"
+		"owed":
+			var who := "you owe" if m["loser"] == me else ("owed to you:" if m["winner"] == me else "owed")
+			return "%s %s · checking the chain" % [who, amt]
+		"paid": return "✓ %s paid · block %d" % [amt, int(m.get("paid_block", -1))]
+		"unpaid": return "⚠ %s unpaid%s" % [amt, " (yours to pay)" if m["loser"] == me else ""]
 	return "—"
 
 

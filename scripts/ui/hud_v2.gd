@@ -128,6 +128,7 @@ func _ready() -> void:
 		ControlsHelp.key_of("interact"), ControlsHelp.key_of("inspect"), ControlsHelp.key_of("open_field"),
 		ControlsHelp.key_of("controls_help"), ControlsHelp.key_of("settings")]
 	_root.add_child(hint)
+	add_child(NotificationPanel.new())  # invites, stakes, wagers (its own layer: scripts/ui/notify/)
 
 
 func bind(address: String, state: TerritoryState, sky: DeepFieldSky) -> void:

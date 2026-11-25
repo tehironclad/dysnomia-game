@@ -87,6 +87,7 @@ func setup_hud(title: String) -> void:
 	help = ControlsHelp.new()
 	help.position = Vector2(20, 130)
 	root.add_child(help)
+	add_child(NotificationPanel.new())  # invites, stakes, wagers: above a seated table too
 
 
 func setup_chat(mode: String, q: Dictionary, history: int = 80) -> void:

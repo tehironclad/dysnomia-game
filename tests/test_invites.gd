@@ -250,3 +250,31 @@ func test_wager_states() -> void:
 	conf.apply(_e(1, 0, "concede"))
 	eq(Wager.code(conf.m), "dropped", "conceding before the stake was agreed owes nothing")
 	check(Wager.debt(conf.m).is_empty())
+
+
+func test_wager_words() -> void:
+	var nm := NetMatch.replay(_rec("cards", "1", [_e(1, 0, "stake_ok"), _e(2, 1, "stake_ok"), _e(3, 0, "concede")]), _fake_block)
+	eq(nm.m["winner"], B)
+	check(Wager.text(nm.m, A).begins_with("you owe "), "you owe, not you owes: %s" % Wager.text(nm.m, A))
+	check(Wager.text(nm.m, B).contains("owes you"), Wager.text(nm.m, B))
+	eq(Wager.short(nm.m, A), "you owe 1 Ⓐ · checking the chain")
+	nm.m["paid"] = false
+	eq(Wager.short(nm.m, A), "⚠ 1 Ⓐ unpaid (yours to pay)")
+	nm.m["disputed"] = true
+	eq(Wager.code(nm.m), "disputed")
+	check(Wager.debt(nm.m).is_empty(), "a disputed game owes nothing")
+
+
+func test_offline_says_invites_need_the_server() -> void:
+	var inv: Node = (Engine.get_main_loop() as SceneTree).root.get_node("Invites")
+	check(String(inv.blocker()).begins_with("Invites need the game server"), "offline: %s" % inv.blocker())
+	eq(inv.me(), "", "nobody is signed in offline")
+	eq(inv.invite(B, "pool", ""), inv.blocker(), "inviting offline says why")
+	eq(inv.table_match(ROOM, "pool", A), {}, "no game over the server: the tables play room lines as before")
+	var p := NotificationPanel.new()
+	(Engine.get_main_loop() as SceneTree).root.add_child(p)
+	p.open()
+	check(p.is_open())
+	check(String(p._online_note.text).contains("game server"), "the panel says invites need the server: %s" % p._online_note.text)
+	p.close()
+	p.free()
