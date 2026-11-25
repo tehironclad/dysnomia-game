@@ -111,7 +111,7 @@ func test_catalog_worlds() -> void:
 		for r in rows:
 			check(String(r[0]) != "" and not String(r[0]).contains("—"), "%s: a control with a bound key: %s" % [e["id"], str(r)])
 		w.free()
-	eq(n, 3, "the three original games each have a world")
+	eq(n, 6, "the six original games each have a world")
 
 
 ## Each world builds and follows its game for a while, headless (no renderer needed): the attract

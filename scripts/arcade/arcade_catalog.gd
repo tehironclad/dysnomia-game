@@ -33,10 +33,28 @@ const GAMES := [
 		"script": "res://scripts/arcade/bar_raiser.gd",
 		"world": "res://scripts/arcade/dive/bar_raiser_world.gd",
 	},
+	{
+		"id": "motzkin_sieve", "title": "Motzkin Sieve",
+		"blurb": "Shoot composites into prime shards; let primes through. Fire: bolt.",
+		"script": "res://scripts/arcade/motzkin_sieve.gd",
+		"world": "res://scripts/arcade/dive/motzkin_sieve_world.gd",
+	},
+	{
+		"id": "qing_orbit", "title": "Qing Orbit",
+		"blurb": "Ride the QING's rings for Ⓐ; dodge Void rifts. Fire: Hong dash.",
+		"script": "res://scripts/arcade/qing_orbit.gd",
+		"world": "res://scripts/arcade/dive/qing_orbit_world.gd",
+	},
+	{
+		"id": "yue_courier", "title": "YUE Courier",
+		"blurb": "Carry YUE pad to pad before time runs out; dodge Void wisps. Fire: Hong pulse.",
+		"script": "res://scripts/arcade/yue_courier.gd",
+		"world": "res://scripts/arcade/dive/yue_courier_world.gd",
+	},
 ]
 
 
-## The three games, then every Folklore cartridge in the manifest (games before sprites).
+## The original games, then every Folklore cartridge in the manifest (games before sprites).
 static func games() -> Array:
 	var out: Array = []
 	for g in GAMES:

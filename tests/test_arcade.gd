@@ -228,7 +228,7 @@ func test_cpu_adc_sbc_binary_and_decimal() -> void:
 
 func test_catalog_entries_load() -> void:
 	var entries := ArcadeCatalog.games()
-	check(entries.size() >= 3 + 10, "three games plus the ten cartridges")
+	check(entries.size() >= 6 + 10, "six games plus the ten cartridges")
 	var ids := {}
 	var games := 0
 	for e in entries:
@@ -254,9 +254,9 @@ func test_catalog_entries_load() -> void:
 			g.step(ArcadeGame.DT)
 		check(g.attract_mode and not g.playing, e["id"] + " attract runs")
 		g.free()
-	eq(games, 3)
+	eq(games, 6)
 	check(not ArcadeCatalog.find("bar_raiser").is_empty(), "find by id")
-	check(ArcadeCatalog.playable().size() == 3 + 4, "3 games + 4 game cartridges are playable")
+	check(ArcadeCatalog.playable().size() == 6 + 4, "6 games + 4 game cartridges are playable")
 
 
 func test_games_deterministic() -> void:
