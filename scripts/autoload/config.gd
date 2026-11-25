@@ -338,8 +338,12 @@ func render_scale() -> float:
 	return _scale_now
 
 
+## Tools (tools/calibrate.gd) turn the in-play follow on in a -s run, under xvfb.
+var follow_in_tools := false
+
+
 func _process(delta: float) -> void:
-	if not _interactive():
+	if not _interactive() and not follow_in_tools:
 		return
 	var now := Time.get_ticks_usec()
 	var dt_ms := (now - _last_us) / 1000.0 if _last_us > 0 else delta * 1000.0
@@ -352,7 +356,7 @@ func _process(delta: float) -> void:
 		fps_now = 1000.0 / maxf(frame_ms_now, 0.1)
 	if _calibration != null or not is_instance_valid(_environment):
 		return
-	if not DisplayServer.window_is_focused() or get_tree().paused:
+	if (not DisplayServer.window_is_focused() and not follow_in_tools) or get_tree().paused:
 		_mon_time = 0.0
 		_mon_frames = 0
 		return
@@ -419,10 +423,18 @@ func _set_scale(sc: float) -> void:
 	var vp := get_viewport()
 	if vp == null or DisplayServer.get_name() == "headless":
 		return
-	var compat := RenderingServer.get_current_rendering_method() == "gl_compatibility"
-	# FSR 1 upscales on Forward+ and Mobile; the Compatibility renderer has bilinear only.
-	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if (sc < 1.0 and not compat) else Viewport.SCALING_3D_MODE_BILINEAR
+	# FSR 1 upscales on Forward+ and Mobile (≈ 1–2 ms on an iGPU at 1080p, much sharper than
+	# bilinear); the Compatibility renderer has bilinear only, and so does software rendering
+	# (its two FSR passes over the whole window cost more than they save there).
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if (sc < 1.0 and _fsr_ok()) else Viewport.SCALING_3D_MODE_BILINEAR
 	vp.scaling_3d_scale = sc
+
+
+func _fsr_ok() -> bool:
+	if DisplayServer.get_name() == "headless" or RenderingServer.get_current_rendering_method() == "gl_compatibility":
+		return false
+	return RenderingServer.get_video_adapter_type() != RenderingDevice.DEVICE_TYPE_CPU \
+		and not RenderingServer.get_video_adapter_name().to_lower().contains("llvmpipe")
 
 
 func _note(text: String) -> void:
@@ -572,7 +584,7 @@ func gpu_line() -> String:
 func status_line() -> String:
 	var gpu := (" · GPU %.1f ms" % gpu_ms_now) if gpu_ms_now > 0.05 else ""
 	var lv := String(QUALITY_NAMES[level()]).split(" ")[0]
-	var mode := "FSR" if _scale_now < 1.0 and RenderingServer.get_current_rendering_method() != "gl_compatibility" else "bilinear"
+	var mode := "FSR" if _scale_now < 1.0 and _fsr_ok() else "bilinear"
 	return "%s%s · render %d%% (%s%s) · %.0f fps · %.1f ms%s · target %d" % [lv, " (performance mode)" if performance_mode else "",
 		int(round(_scale_now * 100.0)), mode, ", dynamic" if dynamic_resolution and (auto_quality or performance_mode) else "",
 		fps_now, frame_ms_now, gpu, target_fps()]
@@ -663,7 +675,7 @@ func apply() -> void:
 	if vp and DisplayServer.get_name() != "headless":
 		vp.msaa_3d = p["msaa"]
 		if _cal_level < 0:
-			if not _dyn_ok or not (dynamic_resolution and (auto_quality or performance_mode) and _interactive()):
+			if not _dyn_ok or not (dynamic_resolution and (auto_quality or performance_mode) and (_interactive() or follow_in_tools)):
 				_configure_dynamic()
 				_set_scale(nominal_scale())
 			else:

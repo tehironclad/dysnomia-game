@@ -90,6 +90,9 @@ func _ready() -> void:
 	player.process_mode = Node.PROCESS_MODE_DISABLED  # until the world is built
 	if _staged:
 		_cover()
+		# Nothing 3D is drawn while the world builds (the warp's card or a cover hides it anyway):
+		# every frame between stages would otherwise render the half-built scene, ~a full frame each.
+		get_viewport().disable_3d = true
 		await get_tree().process_frame  # the scene change's frame ends here; building starts on the next
 		_frame_t0 = Time.get_ticks_usec()
 	terrain.build(territory)
@@ -284,6 +287,7 @@ func _ready() -> void:
 		hud.visible = view == "hud"
 	LoadProfile.report(String(territory.get("name", "")))
 	is_built = true
+	get_viewport().disable_3d = false
 	build_progress.emit(1.0, "Entering…")
 	built.emit()
 	if _state_dirty:
@@ -326,6 +330,11 @@ func _cover() -> void:
 	c.name = "LoadingCover"
 	get_tree().root.add_child(c)
 	c.follow(self, String(territory.get("name", "")))
+
+
+func _exit_tree() -> void:
+	if _staged and not is_built and get_viewport():
+		get_viewport().disable_3d = false  # left mid-build: the next scene draws
 
 
 func _frame(view: String) -> void:
