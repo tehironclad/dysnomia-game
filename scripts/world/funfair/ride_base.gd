@@ -54,6 +54,7 @@ func setup(seed_val: int) -> void:
 	item = AttractionCatalog.ride(ride_id)
 	_build()
 	_build_booth_trigger()
+	FarProxy.enqueue_groups(_lod_groups())  # far stand-ins, built over the next frames
 
 
 func is_riding() -> bool:
@@ -195,6 +196,13 @@ func _idle_tick(_time: float, _delta: float) -> void:
 func get_seat_transform(_time: float) -> Transform3D:
 	## Global transform where the rider's feet go at ride time t.
 	return global_transform
+
+
+func _lod_groups() -> Array:
+	## The ride's rigid parts for its far stand-ins (FarProxy.enqueue_groups): [[node, stop_at, cache_key], …].
+	## Every part that moves on its own (a turntable, a car, a gondola) is its own group, or is
+	## stopped at (left live). Default: the whole ride is one rigid group.
+	return [[self, []]]
 
 
 func _on_ride_start() -> void:

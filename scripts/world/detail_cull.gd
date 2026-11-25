@@ -24,6 +24,8 @@ const SKIP_SIZE := 24.0       ## a prop this big (m) or bigger is never culled b
 const NO_SHADOW_SIZE := 1.2   ## props smaller than this cast no shadow (bulbs, prizes, crates, heads:
                               ## their shadows are a few pixels; each caster is redrawn per cascade)
 const META := "dc_size"
+const SHADOW_META := "dc_shadow"  ## a caster's own shadow setting (its shadow LOD switches it)
+const LABEL_MIN_PX := 3.0     ## a fixed sign's text ends where its em is this tall on screen
 
 var _roots: Array[Node] = []
 var _skip: Array[Node] = []
@@ -110,6 +112,8 @@ func _flush() -> void:
 
 
 func _process(delta: float) -> void:
+	if FarProxy.busy():
+		FarProxy.pump()  # far stand-ins (the fair, the garage) land over the first frames
 	_update_shadows()
 	if _retry.is_empty():
 		return
@@ -143,8 +147,8 @@ static func end_for(size: float, k: float) -> float:
 func _apply(gi: GeometryInstance3D, retried: bool = false) -> void:
 	if gi.has_meta(META):
 		return
-	if gi.visibility_range_end > 0.0 or gi.visibility_parent != NodePath():
-		return  # its own range (ambient NPCs, prizes): theirs stands
+	if gi.visibility_range_end > 0.0 or (gi.visibility_parent != NodePath() and not gi.has_meta(FarProxy.META)):
+		return  # its own range (ambient NPCs, prizes): theirs stands (a part behind a fair stand-in is still culled by size)
 	if gi is Label3D and ((gi as Label3D).fixed_size or (gi as Label3D).billboard != BaseMaterial3D.BILLBOARD_DISABLED):
 		return  # screen-sized, or kept legible by LegibleLabels (which gives it its own range)
 	var size := world_size(gi)
@@ -152,6 +156,8 @@ func _apply(gi: GeometryInstance3D, retried: bool = false) -> void:
 		if not retried:
 			_retry.append(gi)
 		return
+	if gi is Label3D:
+		size = label_size(gi as Label3D) if size <= 0.01 else minf(size, label_size(gi as Label3D))  # empty yet: its letters decide
 	var end := end_for(size, _k)
 	if end <= 0.0:
 		return
@@ -162,8 +168,17 @@ func _apply(gi: GeometryInstance3D, retried: bool = false) -> void:
 	if size < NO_SHADOW_SIZE:
 		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	elif gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY:
+		gi.set_meta(SHADOW_META, gi.cast_shadow)
 		_casters.append([gi, size, gi.cast_shadow, true])
 	culled += 1
+
+
+## A sign's text is judged by its letters, not its width: a line of small print 1 m wide would
+## keep a 1 m prop's range, but its letters are a smear long before. The size whose range
+## (at High's K) ends where the em is LABEL_MIN_PX tall (FOCAL_REF: 720p at 60°).
+static func label_size(l: Label3D) -> float:
+	var em := l.font_size * l.pixel_size * l.global_transform.basis.get_scale().y
+	return em * LegibleLabels.FOCAL_REF / LABEL_MIN_PX / K_BY_QUALITY[3]
 
 
 ## Pure: does a prop of `size` metres at distance `d` cast into the shadow maps?

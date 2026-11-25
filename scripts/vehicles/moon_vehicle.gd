@@ -91,6 +91,7 @@ func setup(p_kind: String, p_tint: Color, p_height_fn: Callable) -> void:
 		body.add_child(_under_glow)
 	_build_dust()
 	_set_flames(0.0)
+	_far_stand_ins()
 	_ray_exclude = [get_rid()]
 	set_physics_process(false)
 
@@ -255,6 +256,18 @@ func speed() -> float:
 func toggle_lights() -> void:
 	lights_on = not lights_on
 	_set_lights(lights_on and driver != null)
+
+
+## Far stand-ins (FarProxy): the hull is one mesh past FarProxy.BEGIN_M, each wheel another
+## (they keep turning and following the ground). Flames and the beacon stay live.
+func _far_stand_ins() -> void:
+	var stop: Array = parts.get("flames", []).duplicate()
+	if parts.get("beacon", null) != null:
+		stop.append(parts["beacon"])
+	var groups: Array = [[body, stop]]
+	for w in parts.get("wheels", []):
+		groups.append([w["spin"], [], "vehicle_wheel_%s_%s_%s" % [kind, w["radius"], tint.to_html()]])  # alike: one mesh
+	FarProxy.enqueue_groups(groups)
 
 
 func _set_lights(on: bool) -> void:

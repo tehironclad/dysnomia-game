@@ -233,6 +233,7 @@ func _build_tower(batch: FairKit.Batch) -> void:
 	FairKit.box(self, Vector3(TOWER_W + 1.2, 0.18, TOWER_W + 1.2), TOWER_C + Vector3(0, TOWER_H, 0), FairKit.pbr("metal_plate", Color.WHITE, 0.5, 1.0))
 	batch.strut(TOWER_C + Vector3(0, TOWER_H, 0), TOWER_C + Vector3(0, TOWER_H + 9.0, 0), 0.08, grey)
 	_beacon_mat = FairKit.glow(Color(1.0, 0.08, 0.04), 8.0, 3.0)
+	_beacon_mat.set_meta(FarProxy.KEEP_META, true)  # blinks
 	FairKit.mesh(self, FairKit.sphere_mesh(0.22, 12), TOWER_C + Vector3(0, TOWER_H + 9.1, 0), _beacon_mat, Vector3.ZERO, false)
 	for c in corners:
 		FairKit.mesh(self, FairKit.sphere_mesh(0.14, 8), TOWER_C + c * 1.15 + Vector3(0, TOWER_H + 0.2, 0), _beacon_mat, Vector3.ZERO, false)
@@ -314,6 +315,7 @@ func _build_rocket() -> void:
 		FairKit.beam(_rocket, d + Vector3.UP * CAPSULE_FLOOR, d + Vector3.UP * y0, 0.05, frame)
 	FairKit.cyl(_rocket, 1.36, 1.36, 0.06, Vector3(0, CAPSULE_FLOOR + 0.03, 0), FairKit.pbr("metal_plate", Color(0.8, 0.8, 0.85), 0.8, 1.0), 32)
 	_capsule_glow = FairKit.glow(Color(0.35, 0.85, 1.0), 4.5, 1.5)
+	_capsule_glow.set_meta(FarProxy.KEEP_META, true)  # pulses in flight
 	FairKit.mesh(_rocket, FairKit.torus_mesh(1.3, 1.38, 40, 6), Vector3(0, CAPSULE_FLOOR + 0.1, 0), _capsule_glow, Vector3.ZERO, false)
 	FairKit.mesh(_rocket, FairKit.torus_mesh(1.3, 1.38, 40, 6), Vector3(0, y0 - 0.15, 0), _capsule_glow, Vector3.ZERO, false)
 	var seat := FairKit.paint(Color(0.12, 0.12, 0.14), 0.6, 0.1)
@@ -511,6 +513,10 @@ func _ride_tick(t: float, _delta: float) -> void:
 	# Capsule lights pulse during the countdown
 	if t > 6.5 and t < T_LIFT:
 		_capsule_glow.emission_energy_multiplier = 4.0 + 3.0 * absf(sin(t * PI))
+
+
+func _lod_groups() -> Array:
+	return [[self, [_pad_smoke]], [_elevator, []], [_arm, []], [_rocket, [_chutes, _flame, _trail, _vent]]]
 
 
 ## The flying parts, for RocketVoyage (it reparents the rocket, then gives it back).

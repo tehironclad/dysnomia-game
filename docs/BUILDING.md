@@ -147,6 +147,58 @@ parts. What changed:
   part by part.
 - `tools/perf_breakdown.gd [--by-shadow]` lists which subtrees the objects and sun casters come from.
 
+### Fair far LOD (2026-11-25)
+
+Same method (RatKing, lavapipe, 60 frames, `--quality=3` / `--quality=1`; Sunny's Pub at `0x2b78…96de`),
+`7c5f4a0` → `fair-lod`, both measured in the same session; draw calls / objects / primitives:
+
+| View | High, before | High, after | Low, before | Low, after |
+|---|---|---|---|---|
+| `--view=fair` | 1,351 / 2,644 / 1.72 M | **651 / 923 / 1.47 M** | 877 / 1,691 / 1.12 M | **466 / 615** / 0.98 M |
+| `--view=aerial` | 882 / 1,384 / 1.15 M | 662 / 848 / 0.92 M | 494 / 743 / 0.95 M | 558 / 714 / 0.80 M |
+| player camera | 899 / 1,812 / 1.15 M | 767 / **1,677** / 1.15 M | 397 / 1,044 / 0.60 M | 267 / 905 / 0.57 M |
+| Sunny's Pub `--view=room` | 664 / 1,034 / 0.51 M | 664 / 1,034 / 0.51 M | 380 / 750 / 0.32 M | 380 / 750 / 0.32 M |
+
+The fair seen whole is inside every High budget now. Still over: the player camera's objects at High (1,677;
+the shadow pass is ~70 % of them: ~280 sun casters × ~3 cascades, mostly the Core's own props, the room,
+the arcade front and the vehicles beside the spawn). At Low the aerial view draws ~60 more calls than
+before (each stand-in is a few surfaces where DetailCull used to end the small parts one by one; still
+well inside the budget). What changed:
+- `FarProxy` (`scripts/world/far_proxy.gd`, Godot's HLOD): past `BEGIN_M` (36 m) a rigid group draws as one
+  stand-in mesh and its parts hide (each part's `visibility_parent` is the stand-in, so they swap at the same
+  distance). Groups: each ride's rigid parts (`RideBase._lod_groups()`: the frame, the carousel's turntable,
+  the drop tower's car, the wheel and each gondola, the rocket's pad, lift, arm and rocket), the static fair
+  in 24 m cells (stalls with their games' idle props, the arch, kiosks, lamps, rocks), each vehicle's hull
+  and wheels, the Swap Hall. A stand-in is a child of its group, so the wheel still turns and gondolas
+  still swing far away. Plain paints collapse into ONE surface per stand-in (`far_paint.gdshader`: albedo,
+  clearcoat per vertex colour, roughness and metallic per UV2), plain glows into one more
+  (`far_glow.gdshader`), triplanar textures one per texture set (tint as vertex colour); glass and model
+  materials keep theirs; materials animated at runtime carry `FarProxy.KEEP_META`. Live, never merged:
+  labels, particles, lights, bulbs and other coloured MultiMeshes, ShaderMaterial meshes (awnings, the
+  rocket's hull), anything with its own range (prizes, NPCs), anything hidden at build time (flames, chutes),
+  scripted nodes (effects, crowds, boards) and the group `lod_live` (the searchlight heads).
+- Shadows: each stand-in has one shadow-only caster per tier (parts ≥ 1.8 m from 36 m, ≥ 4.8 m past 72 m,
+  `lod_bias` 0.2). The first try, one caster with everything ≥ 1.2 m at full LOD, cost 0.56 M shadow triangles.
+- Stand-ins get automatic LODs (`ImporterMesh.generate_lods`). They are built after load, a group per frame
+  (`FarProxy.pump`, from DetailCull and the fair): the merge on the main thread (RatKing's grand fair: 52
+  stand-ins from 1,914 parts, ~1.1 s of merging under lavapipe on a busy 4-core box, i.e. ~20 ms a frame for
+  ~50 frames), the LODs on a WorkerThreadPool task (~1.5 s). Until a stand-in lands its group draws its parts.
+- Festoon bulbs: a real-size sphere with LODs (`FairKit.bulb_mesh`). A MultiMesh picks the LOD for the mesh as
+  modelled, so the old unit sphere scaled to 3 cm per instance never left LOD 0 (~0.3 M triangles at the fair view).
+- Idle `FairFx` particle emitters are hidden (a CPUParticles3D draws its whole zero-scaled batch while idle:
+  ~49 objects at the fair view). Fixed signs (`Label3D`, billboard off) end where their letters are ~3 px
+  (`DetailCull.label_size`), not where their width is: the prize-shelf small print went at 24 m, not 120 m.
+- The skyline's tower names don't pile up at mid range (`LabelDeclutter`, `scripts/world/label_declutter.gd`):
+  each label's screen box (at the scale LegibleLabels gives it), shown in board order (#1 first) only where it
+  doesn't overlap one already shown; the rest fade out and come back when there's room. Shot:
+  `--view=skyline` (add `--no-declutter` for every label).
+- Tools: `perf.gd --hide=<name part>` (what those nodes cost), `--no-far-proxy` (any scene, for A/B),
+  `perf_breakdown.gd --merge-ids --list=<path part> [--by-tris | --list-casters]` and a ktris column; it now
+  counts a part behind a stand-in as hidden. `--view=fair_near` frames the fair from its edge (near rides in
+  full, the far side as stand-ins).
+- `tools/probe_fair.gd` passes as before; its one failure ("a locked rocket sells no ticket and flies a free
+  practice flight") fails the same on `7c5f4a0`.
+
 Loading: a first visit's ground (≈ 8 s) is built on a thread during the warp with a progress card (real
 progress from `JuliaHeightfield.progress_of`) and lore lines; the neighbours' grounds are cached in the
 same wait, and the overlay holds over the new scene's first 12 frames, so its pipelines compile unseen.

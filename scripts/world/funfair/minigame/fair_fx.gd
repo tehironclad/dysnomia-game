@@ -109,8 +109,23 @@ func _particles(mesh: Mesh, amount: int, life: float, align: bool) -> CPUParticl
 	sc.add_point(Vector2(0.7, 0.8))
 	sc.add_point(Vector2(1, 0))
 	p.scale_amount_curve = sc
+	_idle_hidden(p)
 	add_child(p)
 	return p
+
+
+## An idle emitter is hidden: CPUParticles3D still draws its whole (zero-scaled) batch when
+## it isn't emitting, one object and one draw call each, ~7 per stall (perf, 2026-11-24).
+## It shows on a trigger and hides again once its one shot is done.
+static func _idle_hidden(p: CPUParticles3D) -> void:
+	p.visible = false
+	p.finished.connect(func() -> void: p.visible = false)
+
+
+static func _fire(p: CPUParticles3D) -> void:
+	p.visible = true
+	p.restart()
+	p.emitting = true
 
 
 func _confetti_emitter() -> CPUParticles3D:
@@ -148,6 +163,7 @@ func _confetti_emitter() -> CPUParticles3D:
 	g.colors = PackedColorArray([Color(1.0, 0.3, 0.45), Color(1.0, 0.85, 0.3), Color(0.35, 0.9, 1.0), Color(0.6, 1.0, 0.45), Color(0.8, 0.5, 1.0)])
 	p.color_initial_ramp = g
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_idle_hidden(p)
 	add_child(p)
 	return p
 
@@ -162,8 +178,7 @@ func burst(pos: Vector3, c: Color, power: float = 1.0) -> void:
 	p.color = c
 	p.amount = int(clampf(18.0 * power, 8.0, 40.0))
 	p.initial_velocity_max = 2.0 + 2.2 * power
-	p.restart()
-	p.emitting = true
+	_fire(p)
 	flash(pos, c, 1.0 + power * 2.0)
 
 
@@ -178,15 +193,13 @@ func sparks(pos: Vector3, c: Color = Color(1.0, 0.8, 0.4), power: float = 1.0, d
 	p.amount = int(clampf(14.0 * power, 6.0, 28.0))
 	p.initial_velocity_min = 2.0 * power
 	p.initial_velocity_max = 5.0 + 2.0 * power
-	p.restart()
-	p.emitting = true
+	_fire(p)
 
 
 ## Confetti from `pos` (a box ~3 m wide).
 func confetti(pos: Vector3) -> void:
 	_confetti.position = pos
-	_confetti.restart()
-	_confetti.emitting = true
+	_fire(_confetti)
 
 
 ## A rising score pop-up.
@@ -249,11 +262,11 @@ func bulb_frame(c: Vector3, w: float, h: float, spacing: float = 0.2) -> void:
 	_bulb_mm = MultiMesh.new()
 	_bulb_mm.transform_format = MultiMesh.TRANSFORM_3D
 	_bulb_mm.use_colors = true
-	_bulb_mm.mesh = FairKit.sphere_mesh(0.032, 8)
+	_bulb_mm.mesh = FairKit.bulb_mesh()  # 0.032 m, with LODs
 	_bulb_mm.instance_count = pts.size()
 	var sockets := MultiMesh.new()
 	sockets.transform_format = MultiMesh.TRANSFORM_3D
-	sockets.mesh = FairKit.cyl_mesh(0.02, 0.024, 0.03, 8)
+	sockets.mesh = FairKit.cached_mesh("socket_lod", func() -> Mesh: return FairKit.with_lods(FairKit.cyl_mesh(0.02, 0.024, 0.03, 8)))
 	sockets.instance_count = pts.size()
 	var up := Basis(Vector3.RIGHT, PI * 0.5)
 	for i in pts.size():

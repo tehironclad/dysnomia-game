@@ -81,6 +81,7 @@ func _build() -> void:
 		Vector2(3.6, TOWER_H + 1.5), Vector2(2.2, TOWER_H + 2.6), Vector2(0.4, TOWER_H + 3.2), Vector2(0.0, TOWER_H + 3.25)])
 	FairKit.mesh(self, FairKit.lathe(crown, 32), Vector3.ZERO, FairKit.paint(Color(0.12, 0.3, 0.62), 0.35, 0.5, 0.6))
 	_crown_mat = FairKit.glow(Color(0.25, 0.9, 1.0), 4.0, 1.2)
+	_crown_mat.set_meta(FarProxy.KEEP_META, true)  # flashes before the drop: its own surface far away
 	FairKit.mesh(self, FairKit.torus_mesh(3.55, 3.7, 48, 6), Vector3(0, TOWER_H + 0.9, 0), _crown_mat, Vector3.ZERO, false)
 	for i in 4:
 		var a := TAU * i / 4.0
@@ -146,6 +147,7 @@ func _build() -> void:
 			bar.rotation.y = -PI * 0.5   # profile X → +Z (forward over the shoulder)
 		FairKit.box(r, Vector3(0.46, 0.12, 0.1), Vector3(0, -0.5, 0.62), harness_m)
 		FairKit.cyl(r, 0.022, 0.022, 0.3, Vector3(0, -0.6, 0.68), accent_m, 8).rotation.z = PI * 0.5
+		r.rotation.x = -1.3   # raised, as it idles (the far stand-in is built from this pose)
 		_restraints.append(r)
 	_car.position.y = Y0
 	FairKit.ticket_booth(self, batch, booth_local_position, Vector3(signf(booth_local_position.x) * absf(0.1), 0, 1), item, Color(0.25, 0.8, 1.0))
@@ -200,6 +202,10 @@ func _idle_tick(time: float, delta: float) -> void:
 
 func _on_ride_start() -> void:
 	_cap_idx = 0
+
+
+func _lod_groups() -> Array:
+	return [[self, []], [_car, []]]
 
 
 func get_seat_transform(_time: float) -> Transform3D:

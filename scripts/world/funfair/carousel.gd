@@ -240,6 +240,13 @@ func _ride_tick(t: float, _delta: float) -> void:
 	_animate(_idle_t)
 
 
+func _lod_groups() -> Array:
+	var orrery: Array = []
+	for o in _orrery:
+		orrery.append(o[0])
+	return [[self, orrery], [_turntable, []]]
+
+
 func get_rider_mounts() -> Array:
 	## The bobbing part of each inner-ring sled (the paying rider always gets an outer one);
 	## Funfair seats a couple of locals on them in the sit pose.

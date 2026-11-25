@@ -101,6 +101,7 @@ func set_tier(t: int, p_tower_note: String) -> void:
 		_build_lot()
 	else:
 		_build_hall()
+	FarProxy.enqueue_groups([[_built, []]])  # one stand-in past 36 m (the boards' labels stay live)
 	_update_yue_sign()
 	_paint_boards()
 	if _next_read <= _t:

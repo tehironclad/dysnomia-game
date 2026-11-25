@@ -19,6 +19,13 @@ var _cols := {}  # wallet → {root, body, mat, label, crown, beacon, last, flas
 var _tint := Color("#7fd3ff")
 var _height_at: Callable  # (x, z) → ground height in this node's space
 var energy := 0.0
+var _declutter: LabelDeclutter  # the names don't pile up on screen at mid range
+
+
+func _init() -> void:
+	_declutter = LabelDeclutter.new()
+	_declutter.name = "LabelDeclutter"
+	add_child(_declutter)
 
 
 func setup(tint: Color, height_at: Callable = Callable()) -> void:
@@ -93,6 +100,7 @@ func update_board(board: Array, block: int, me: String = "") -> void:
 		lab.text = "#%d %s\n%s Hypobar · %d floor%s%s" % [i + 1, short(w), TokenFormat.group(BigInt.to_decimal(hb)),
 			floors_for(hb), "" if floors_for(hb) == 1 else "s", "\nYOU" if me != "" and w == me else ""]
 		lab.position.y = h + 2.4
+		_declutter.track(lab, i)  # rank = priority: the tallest names win the space
 		var crown: Node3D = c["crown"]
 		crown.visible = i == 0
 		crown.position.y = h + 0.6
