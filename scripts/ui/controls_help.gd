@@ -13,8 +13,10 @@ const ACTIONS := [
 	["wingsuit", "Base jump: wingsuit on / off (in freefall)"], ["parachute", "Base jump: open the canopy"],
 	["vehicle_enter", "Vehicle pad: get in / out (W/S drive, A/D steer, Space hop or lift, Shift boost, Ctrl brake)"], ["vehicle_reset", "Vehicle: back on its wheels"],
 	["chat", "Chat bar anywhere in the territory (Enter send, Esc close); in a hall or the Void: the board"], ["arcade_start", "Arcade, inside a cabinet: play a credit"], ["arcade_view", "Arcade, inside a cabinet: 3D world / classic screen"], ["table_shoot", "Pool, seated: hold for power, release to strike · fair games: throw / swing / shoot (or Use)"], ["table_hit", "Twenty-One, seated: hit"], ["table_stand", "Twenty-One, seated: stand"], ["table_view", "Seated at a table: overhead / table view"], ["table_lobby", "Seated at a table: the games list (challenge, accept, concede, pay)"], ["fair_post", "Fair game result: post your score to the room (one approval; checked by replay)"], ["bar_menu", "Bar menu (at the counter in Sunny's Pub)"], ["game_help", "In any game, ride or vehicle: how to play and every control again (the strip along the bottom lists the keys)"], ["opportunities", "Opportunities: hot spots, leads in reach, crowns, streak"], ["guide", "Guide: the acts"], ["settings", "Settings"], ["toggle_debug", "Performance overlay"], ["controls_help", "This list"],
-	["chat_history", "Room chat history (scroll; hover a line for its block)"], ["chat_quick_1", "Quick line 1 into the chat bar (2–4: more; Enter sends)"], ["chat_recall_prev", "Chat bar: recall the previous line"], ["chat_mode", "Chat bar: say (free) / post (on chain), when the presence server is up"], ["push_to_talk", "Push to talk (online voice; turn the mic on in Settings · Online & voice)"], ["notifications", "Notifications: game invites, stakes and wagers; who is online (invite them to pool or Twenty-One)"],
+	["chat_history", "Room chat history (scroll; hover a line for its block)"], ["chat_dock", "Fold / unfold the room chat dock (folded: an unread count)"], ["chat_quick_1", "Quick line 1 into the chat bar (2–4: more; Enter sends)"], ["chat_recall_prev", "Chat bar: recall the previous line"], ["chat_mode", "Chat bar: say (free) / post (on chain), when the presence server is up"], ["push_to_talk", "Push to talk (online voice; turn the mic on in Settings · Online & voice)"], ["notifications", "Notifications: game invites, stakes and wagers; who is online (invite them to pool or Twenty-One)"],
 ]
+
+const COLS := 3  # three columns: the list fits a 720p screen at the type floor
 
 var _cols: Array[GridContainer] = []
 
@@ -37,7 +39,7 @@ func _init() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 28)
 	col.add_child(row)
-	for i in 2:
+	for i in COLS:
 		var g := GridContainer.new()
 		g.columns = 2
 		g.add_theme_constant_override("h_separation", 12)
@@ -62,20 +64,20 @@ func _fill() -> void:
 		for c in g.get_children():
 			c.queue_free()
 	var rs := rows()
-	var half := (rs.size() + 1) / 2
+	var per := (rs.size() + COLS - 1) / COLS
 	for i in rs.size():
-		var g: GridContainer = _cols[0 if i < half else 1]
+		var g: GridContainer = _cols[mini(i / per, COLS - 1)]
 		var k := Label.new()
 		k.theme_type_variation = "MonoLabel"
-		k.add_theme_font_size_override("font_size", 12)
+		k.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 		k.add_theme_color_override("font_color", DeepFieldTheme.ICE)
 		k.text = String(rs[i][0])
 		k.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		g.add_child(k)
 		var d := Label.new()
-		d.add_theme_font_size_override("font_size", 13)
+		d.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		d.custom_minimum_size = Vector2(640, 0)
+		d.custom_minimum_size = Vector2(470, 0)
 		d.text = String(rs[i][1])
 		g.add_child(d)
 

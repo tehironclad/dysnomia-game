@@ -13,7 +13,7 @@ extends PanelContainer
 signal opened
 signal closed
 
-const WIDTH := 640.0
+const WIDTH := 540.0  # HudLayout.DOCK_W: the bar opens under the dock, as wide
 
 var edit: LineEdit
 var mode_btn: Button
@@ -45,14 +45,14 @@ func _init() -> void:
 	mode_btn.focus_mode = Control.FOCUS_NONE
 	mode_btn.custom_minimum_size = Vector2(74, 0)
 	mode_btn.add_theme_font_override("font", DeepFieldTheme.mono_font())
-	mode_btn.add_theme_font_size_override("font_size", 12)
+	mode_btn.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	mode_btn.pressed.connect(func(): ChatFeed.toggle_mode())
 	row.add_child(mode_btn)
 	edit = LineEdit.new()
 	edit.max_length = ChatDraft.MAX_LEN
 	edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	edit.add_theme_font_override("font", DeepFieldTheme.mono_font())
-	edit.add_theme_font_size_override("font_size", 15)
+	edit.add_theme_font_size_override("font_size", DeepFieldTheme.FS_BODY)
 	edit.text_submitted.connect(func(_t): send())
 	edit.text_changed.connect(func(_t): _update_count())
 	edit.gui_input.connect(_on_edit_input)
@@ -60,21 +60,21 @@ func _init() -> void:
 	row.add_child(edit)
 	_count = Label.new()
 	_count.theme_type_variation = "MonoLabel"
-	_count.add_theme_font_size_override("font_size", 11)
+	_count.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	_count.add_theme_color_override("font_color", DeepFieldTheme.DIM)
 	_count.custom_minimum_size = Vector2(52, 0)
 	_count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(_count)
 	note = Label.new()
 	note.theme_type_variation = "MonoLabel"
-	note.add_theme_font_size_override("font_size", 11)
+	note.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	note.add_theme_color_override("font_color", DeepFieldTheme.MUTED)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.custom_minimum_size = Vector2(WIDTH - 24, 0)
 	col.add_child(note)
 	status = Label.new()
 	status.theme_type_variation = "MonoLabel"
-	status.add_theme_font_size_override("font_size", 12)
+	status.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	status.add_theme_color_override("font_color", Color("#ffd27a"))
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status.custom_minimum_size = Vector2(WIDTH - 24, 0)
@@ -87,8 +87,10 @@ func _init() -> void:
 	col.add_child(join_btn)
 	hint = Label.new()
 	hint.theme_type_variation = "MutedLabel"
-	hint.add_theme_font_size_override("font_size", 11)
-	hint.add_theme_color_override("font_color", DeepFieldTheme.DIM)
+	hint.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
+	hint.add_theme_color_override("font_color", DeepFieldTheme.MUTED)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.custom_minimum_size = Vector2(WIDTH - 28, 0)
 	col.add_child(hint)
 
 

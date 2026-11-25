@@ -67,7 +67,7 @@ func run() -> void:
 	for s in steps:
 		var l := Label.new()
 		l.theme_type_variation = "MonoLabel"
-		l.add_theme_font_size_override("font_size", 13)
+		l.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.custom_minimum_size = Vector2(600, 0)
 		l.text = WalletDiagnosis.lines([s])[0]

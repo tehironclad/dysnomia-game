@@ -217,3 +217,57 @@ static func glow_for(count: int) -> float:
 
 static func count_text(stats: Dictionary) -> String:
 	return "%d%s" % [int(stats["count"]), "+" if stats.get("floor", false) else ""]
+
+
+# --- The dock: faces, mentions, ages (personal UI) -------------------------------------
+
+## A speaker's colour in the UI: the same name (and Soul) always gets the same
+## hue, light enough to read on black glass.
+static func speaker_color(l: Dictionary) -> Color:
+	var k := "%s|%s" % [String(l.get("name", "")).to_lower(), String(l.get("soul", ""))]
+	if String(l.get("source", "chain")) == "say" and String(l.get("wallet", "")) != "":
+		k = String(l["wallet"]).to_lower()
+	var h := float(hash(k) & 0xffff) / 65536.0
+	return Color.from_hsv(h, 0.42, 1.0)
+
+
+## Whether `text` names `who` (your Username): case-insensitive, as a whole
+## word or after an @. Names shorter than 2 letters never match.
+static func mentions(text: String, who: String) -> bool:
+	var n := who.strip_edges().to_lower()
+	if n.length() < 2:
+		return false
+	var t := text.to_lower()
+	var from := 0
+	while true:
+		var i := t.find(n, from)
+		if i < 0:
+			return false
+		var before := t.substr(i - 1, 1) if i > 0 else ""
+		var after := t.substr(i + n.length(), 1) if i + n.length() < t.length() else ""
+		if not _wordy(before) and not _wordy(after):
+			return true
+		from = i + 1
+	return false
+
+
+static func _wordy(ch: String) -> bool:
+	if ch == "":
+		return false
+	var c := ch.unicode_at(0)
+	return (c >= 48 and c <= 57) or (c >= 97 and c <= 122) or c == 95
+
+
+## Roughly how long ago a block was, from the block count (DAY_BLOCKS ≈ 24 h):
+## "now", "12 min", "5 h", "40 d". "—" when either block is unknown.
+static func age_text(block: int, head: int) -> String:
+	if block <= 0 or head <= 0:
+		return "—"
+	var s := float(maxi(0, head - block)) * 86400.0 / float(DAY_BLOCKS)
+	if s < 90.0:
+		return "now"
+	if s < 3600.0:
+		return "%d min" % int(round(s / 60.0))
+	if s < 86400.0 * 1.5:
+		return "%d h" % int(round(s / 3600.0))
+	return "%d d" % int(round(s / 86400.0))

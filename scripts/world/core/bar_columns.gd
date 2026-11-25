@@ -97,10 +97,10 @@ func update_board(board: Array, block: int, me: String = "") -> void:
 		if grew:
 			c["flash"] = 1.0
 		var lab: Label3D = c["label"]
-		lab.text = "#%d %s\n%s Hypobar · %d floor%s%s" % [i + 1, short(w), TokenFormat.group(BigInt.to_decimal(hb)),
-			floors_for(hb), "" if floors_for(hb) == 1 else "s", "\nYOU" if me != "" and w == me else ""]
+		lab.text = tower_label(i, w, hb, me != "" and w == me)
 		lab.position.y = h + 2.4
-		_declutter.track(lab, i)  # rank = priority: the tallest names win the space
+		# rank = priority (the tallest names win the space); yours is always next after #1
+		_declutter.track(lab, i if not (me != "" and w == me) else mini(i, 1))
 		var crown: Node3D = c["crown"]
 		crown.visible = i == 0
 		crown.position.y = h + 0.6
@@ -111,6 +111,17 @@ func update_board(board: Array, block: int, me: String = "") -> void:
 		if not keep.has(w):
 			(_cols[w]["root"] as Node).queue_free()
 			_cols.erase(w)
+
+
+## Pure: a tower's name tag. The podium (#1–#3) and your own tower say their
+## Hypobar and floors; the rest just their rank and name (the board, the
+## Inspector and the tracker carry the numbers), so the skyline reads at a glance.
+static func tower_label(i: int, w: String, hb: PackedInt64Array, mine: bool) -> String:
+	var head := "#%d %s" % [i + 1, short(w)]
+	if i >= 3 and not mine:
+		return head
+	var f := floors_for(hb)
+	return "%s\n%s Hypobar · %d floor%s%s" % [head, TokenFormat.group(BigInt.to_decimal(hb)), f, "" if f == 1 else "s", "\nYOU" if mine else ""]
 
 
 ## A player's tower here: {root, height, width} (its root stands on the ground,

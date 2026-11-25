@@ -143,7 +143,7 @@ func _build_card() -> void:
 	_stage = Label.new()
 	_stage.text = "First visit: building this territory's ground from its Entropy…"
 	_stage.add_theme_color_override("font_color", DeepFieldTheme.INK)
-	_stage.add_theme_font_size_override("font_size", 16)
+	_stage.add_theme_font_size_override("font_size", DeepFieldTheme.FS_BODY)
 	_stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(_stage)
 	_pct = Label.new()
@@ -168,13 +168,13 @@ func _build_card() -> void:
 	_tip = Label.new()
 	_tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_tip.add_theme_color_override("font_color", DeepFieldTheme.MUTED)
-	_tip.add_theme_font_size_override("font_size", 15)
+	_tip.add_theme_font_size_override("font_size", DeepFieldTheme.FS_SMALL)
 	_tip.custom_minimum_size = Vector2(600, 44)
 	box.add_child(_tip)
 	var note := Label.new()
 	note.text = "Computed once on this computer, then cached: later visits load at once."
 	note.add_theme_color_override("font_color", DeepFieldTheme.DIM)
-	note.add_theme_font_size_override("font_size", 12)
+	note.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	box.add_child(note)
 
 

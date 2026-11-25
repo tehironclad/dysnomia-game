@@ -32,11 +32,11 @@ func _init() -> void:
 	add_child(col)
 	_title = Label.new()
 	_title.theme_type_variation = "DisplayLabel"
-	_title.add_theme_font_size_override("font_size", 18)
+	_title.add_theme_font_size_override("font_size", DeepFieldTheme.FS_LEAD)
 	col.add_child(_title)
 	_body = Label.new()
 	_body.theme_type_variation = "MonoLabel"
-	_body.add_theme_font_size_override("font_size", 13)
+	_body.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_body.custom_minimum_size = Vector2(520, 0)
 	col.add_child(_body)

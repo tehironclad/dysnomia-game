@@ -40,7 +40,7 @@ func _init() -> void:
 	_status = Label.new()
 	_status.theme_type_variation = "MonoLabel"
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_status.add_theme_font_size_override("font_size", 12)
+	_status.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	col.add_child(_status)
 
 
@@ -88,7 +88,7 @@ func _fill(laus: Array, status: String) -> void:
 		row.add_child(name)
 		var addr := Label.new()
 		addr.theme_type_variation = "MonoLabel"
-		addr.add_theme_font_size_override("font_size", 12)
+		addr.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 		addr.add_theme_color_override("font_color", DeepFieldTheme.MUTED)
 		addr.text = ArcadeScores.short(String(l["address"]))
 		row.add_child(addr)

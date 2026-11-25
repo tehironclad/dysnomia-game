@@ -51,22 +51,30 @@ func setup_hud(title: String) -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.theme = DeepFieldTheme.get_theme()
 	hud_layer.add_child(root)
+	# Where you are, top-left (HudLayout's corner), in the place's own panel.
+	var where := PanelContainer.new()
+	where.name = "Where"
+	where.position = Vector2(HudLayout.MARGIN, HudLayout.MARGIN)
+	where.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	where.add_theme_stylebox_override("panel", DeepFieldTheme.accent_style(place_tint(), 0.72))
+	root.add_child(where)
 	var box := VBoxContainer.new()
-	box.position = Vector2(20, 18)
-	root.add_child(box)
+	box.add_theme_constant_override("separation", 4)
+	where.add_child(box)
 	title_label = Label.new()
 	title_label.theme_type_variation = "DisplayLabel"
-	title_label.add_theme_font_size_override("font_size", 20)
+	title_label.add_theme_font_size_override("font_size", DeepFieldTheme.FS_BODY)
+	title_label.add_theme_color_override("font_color", place_tint().lerp(Color.WHITE, 0.35))
 	title_label.text = title
 	box.add_child(title_label)
 	info_label = Label.new()
 	info_label.theme_type_variation = "MutedLabel"
 	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	info_label.custom_minimum_size = Vector2(520, 0)
+	info_label.custom_minimum_size = Vector2(560, 0)
 	box.add_child(info_label)
 	prompt_label = Label.new()
 	prompt_label.theme_type_variation = "MonoLabel"
-	prompt_label.add_theme_font_size_override("font_size", 16)
+	prompt_label.add_theme_font_size_override("font_size", DeepFieldTheme.FS_BODY)
 	prompt_label.add_theme_color_override("font_color", DeepFieldTheme.ICE)
 	prompt_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	prompt_label.position = Vector2(-400, -110)
@@ -75,19 +83,39 @@ func setup_hud(title: String) -> void:
 	prompt_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	prompt_label.add_theme_constant_override("outline_size", 6)
 	root.add_child(prompt_label)
-	var hint := Label.new()
-	hint.theme_type_variation = "MutedLabel"
-	hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	hint.position = Vector2(20, -36)
-	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))  # readable over the floor rings
-	hint.add_theme_constant_override("outline_size", 6)
-	hint.text = "%s  speak   ·   %s  at the exit: leave   ·   %s  controls" % [
-		ControlsHelp.key_of("chat"), ControlsHelp.key_of("interact"), ControlsHelp.key_of("controls_help")]
+	# The keys, bottom-right (HudLayout's corner), as chips.
+	var hint := HBoxContainer.new()
+	hint.name = "Keys"
+	hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	hint.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	hint.offset_left = -HudLayout.MARGIN
+	hint.offset_right = -HudLayout.MARGIN
+	hint.offset_top = -HudLayout.MARGIN
+	hint.offset_bottom = -HudLayout.MARGIN
+	hint.alignment = BoxContainer.ALIGNMENT_END
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hint.add_theme_constant_override("separation", 6)
 	root.add_child(hint)
+	var keys := [[ControlsHelp.key_of("chat"), "speak"], [ControlsHelp.key_of("interact"), "at the exit: leave"], [ControlsHelp.key_of("controls_help"), "controls"]]
+	for i in keys.size():
+		hint.add_child(DeepFieldTheme.key_chip(String(keys[i][0])))
+		var kl := Label.new()
+		kl.theme_type_variation = "MutedLabel"
+		kl.text = String(keys[i][1]) + ("" if i == keys.size() - 1 else "   ")
+		kl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))  # readable over the floor rings
+		kl.add_theme_constant_override("outline_size", 6)
+		hint.add_child(kl)
 	help = ControlsHelp.new()
 	help.position = Vector2(20, 130)
 	root.add_child(help)
 	add_child(NotificationPanel.new())  # invites, stakes, wagers: above a seated table too
+
+
+## The place's colour on its HUD: the QING's own hue when the place belongs to one.
+func place_tint() -> Color:
+	var q = get("territory")
+	return ChatFeedPanel.room_tint(q) if q is Dictionary else DeepFieldTheme.ICE
 
 
 func setup_chat(mode: String, q: Dictionary, history: int = 80) -> void:

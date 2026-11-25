@@ -25,7 +25,7 @@ func _init() -> void:
 	col.add_child(top)
 	var title := Label.new()
 	title.theme_type_variation = "DisplayLabel"
-	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_font_size_override("font_size", DeepFieldTheme.FS_LEAD)
 	title.text = "OPPORTUNITIES"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(title)
@@ -77,13 +77,13 @@ func refresh() -> void:
 func _section(title: String, note: String) -> void:
 	var l := Label.new()
 	l.theme_type_variation = "DisplayLabel"
-	l.add_theme_font_size_override("font_size", 14)
+	l.add_theme_font_size_override("font_size", DeepFieldTheme.FS_SMALL)
 	l.text = title
 	_body.add_child(l)
 	if note != "":
 		var n := Label.new()
 		n.theme_type_variation = "MutedLabel"
-		n.add_theme_font_size_override("font_size", 11)
+		n.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 		n.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		n.custom_minimum_size = Vector2(580, 0)
 		n.text = note
@@ -95,7 +95,7 @@ func _row(text: String, address: String) -> void:
 	_body.add_child(r)
 	var l := Label.new()
 	l.theme_type_variation = "MonoLabel"
-	l.add_theme_font_size_override("font_size", 12)
+	l.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.text = text

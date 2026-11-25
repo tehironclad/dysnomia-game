@@ -74,7 +74,7 @@ func _init() -> void:
 		var code := Label.new()
 		code.theme_type_variation = "MonoLabel"
 		code.add_theme_color_override("font_color", DeepFieldTheme.ICE)
-		code.add_theme_font_size_override("font_size", 11)
+		code.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 		code.text = s["code"]
 		row.add_child(code)
 		var plain := Label.new()

@@ -10,6 +10,8 @@ var _rarity: Label
 var _entropy: FactLabel
 var _coords: FactLabel
 var _address := ""
+var _detail_rows: Array = []  # the ENTROPY and MAP rows (hidden when compact)
+var compact := false
 
 
 func _init() -> void:
@@ -28,7 +30,7 @@ func _init() -> void:
 	row.add_child(col)
 	_name = Label.new()
 	_name.theme_type_variation = "DisplayLabel"
-	_name.add_theme_font_size_override("font_size", 15)
+	_name.add_theme_font_size_override("font_size", DeepFieldTheme.FS_SMALL)
 	_name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_name)
 	_rarity = Label.new()
@@ -41,15 +43,25 @@ func _init() -> void:
 func _fact_row(parent: Container, label: String) -> FactLabel:
 	var l := Label.new()
 	l.theme_type_variation = "MutedLabel"
-	l.add_theme_font_size_override("font_size", 10)
+	l.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	l.text = label
 	parent.add_child(l)
 	var f := FactLabel.new()
 	f.theme_type_variation = "MonoLabel"
-	f.add_theme_font_size_override("font_size", 11)
+	f.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	f.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
 	parent.add_child(f)
+	_detail_rows.append_array([l, f])
 	return f
+
+
+## The HUD's card: the picture, name and rarity only; the Entropy and map rows
+## (still read, still sourced) live in the Inspector (H) and the Field.
+func set_compact(c: bool) -> void:
+	compact = c
+	for n in _detail_rows:
+		(n as Control).visible = not c
+	emblem.custom_minimum_size = Vector2(88, 88) if c else Vector2(112, 112)
 
 
 ## Shows a territory from the Registry. Returns false if it isn't known yet.
@@ -78,5 +90,6 @@ func show_territory(address: String) -> bool:
 	else:
 		_coords.set_fact(Fact.unavailable("HECKE.Compliment(Waat)", "not resolved yet"))
 	Inspector.register(self, "Territory card · %s" % q.get("name", _address),
-		"Picture: %s\nRarity from Entropy against the site's cut-offs (lib/rarity.js)." % why)
+		"Picture: %s\nRarity from Entropy against the site's cut-offs (lib/rarity.js).\nEntropy: %s (QING.Entropy(), fixed at founding; registry, founded block %d)\nMap: %s (HECKE.Compliment(Waat), projected; display only)" % [
+			why, String(q["entropy"]), int(q["block"]), _coords.text])
 	return true

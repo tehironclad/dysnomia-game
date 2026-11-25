@@ -871,6 +871,17 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   crown glow is at rest and no tower carries a top-speaker marker; both follow the lines when they come.
 - **Free chat**: say lines go through the presence server (`Net.send_chat`) when it exists; they are tagged "say",
   carry no block and add nothing to the territory. Only room lines are chain truth.
+- **The dock and the HUD grid (2026-11-25, owner: "QING chats need more priority… cluttered… more organization and
+  character")**: the room's chat is docked bottom-left (`ChatFeedPanel`): the newest 5 lines stay (older ones fade
+  to 0.55, never vanish), each with the speaker's face (`HeadIcons`: each AvatarHeads kind rendered once; others'
+  kind from their logged Username, as their echo), their colour (`ChatLines.speaker_color`) and age from the block
+  (`age_text`, ≈ 8,400 blocks a day). A line naming your Username (`ChatLines.mentions`) is gold with the "mention"
+  cue. U folds the dock (unread count). Arriving greets you with the room's last words; loading / unavailable /
+  empty / quiet are four different lines. `HudLayout` gives each corner one job: top-left where you are, top-right
+  who you are (face, name, `NotifySlot` for a notification bell, clock) and what to do here (ActTracker), bottom-left
+  the room, bottom-right the keys; ticker top-centre. Type: `DeepFieldTheme.FS_*`, floor `FS_MIN` 19 design px
+  (≈ 13 px at 720p, the canvas scales from 1920x1080). The Room's door says THE ROOM · N LINES TODAY / QUIET 42 D
+  (its own lines), the Steward speaks of the Room first, and skyline tags carry numbers only on #1–#3 and yours.
 
 ## 18. Online play: the free game server (2026-11-24)
 

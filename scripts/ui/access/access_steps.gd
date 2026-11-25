@@ -88,12 +88,12 @@ func _init() -> void:
 	var kicker := Label.new()
 	kicker.theme_type_variation = "MutedLabel"
 	kicker.text = "HOW TO GET ACCESS"
-	kicker.add_theme_font_size_override("font_size", 11)
+	kicker.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	kicker.add_theme_color_override("font_color", DeepFieldTheme.ICE)
 	col.add_child(kicker)
 	_title = Label.new()
 	_title.theme_type_variation = "DisplayLabel"
-	_title.add_theme_font_size_override("font_size", 18)
+	_title.add_theme_font_size_override("font_size", DeepFieldTheme.FS_LEAD)
 	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_title)
 	_sub = Label.new()
@@ -488,7 +488,7 @@ func _rebuild_rows() -> void:
 		var mark := Label.new()
 		mark.text = String(s["mark"])
 		mark.custom_minimum_size = Vector2(22, 0)
-		mark.add_theme_font_size_override("font_size", 18)
+		mark.add_theme_font_size_override("font_size", DeepFieldTheme.FS_LEAD)
 		mark.add_theme_color_override("font_color", _mark_color(s))
 		mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		row.add_child(mark)
@@ -505,7 +505,7 @@ func _rebuild_rows() -> void:
 		text.add_child(t)
 		var d := Label.new()
 		d.theme_type_variation = "MonoLabel"
-		d.add_theme_font_size_override("font_size", 12)
+		d.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		d.text = String(s["detail"])
 		d.visible = d.text != ""
@@ -514,7 +514,7 @@ func _rebuild_rows() -> void:
 		if s["status"] != "done" and String(s["explain"]) != "" and (s["current"] or not compact):
 			var e := Label.new()
 			e.theme_type_variation = "MutedLabel"
-			e.add_theme_font_size_override("font_size", 12)
+			e.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 			e.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			e.text = String(s["explain"])
 			e.visible = s["current"] or not compact
