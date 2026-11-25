@@ -44,9 +44,18 @@ func _frames(n: int) -> void:
 		await process_frame
 
 
+## Game seconds, counted in physics frames: under lavapipe a frame takes seconds and
+## Godot slows game time to match (at most 8 physics steps a frame), so wall time lies.
 func _seconds(s: float) -> void:
-	var t0 := Time.get_ticks_msec()
-	while Time.get_ticks_msec() - t0 < int(s * 1000.0):
+	for i in int(ceil(s * Engine.physics_ticks_per_second)):
+		await physics_frame
+
+
+## Waits until `cond` holds or `limit` game seconds pass.
+func _until(cond: Callable, limit: float) -> void:
+	var n := int(ceil(limit * Engine.physics_ticks_per_second))
+	while not cond.call() and n > 0:
+		n -= 1
 		await physics_frame
 
 
@@ -156,15 +165,22 @@ func _pub_round() -> void:
 	await _run_line(Vector3(room.stools[1].x - 1.5, 0, row_z), Vector3(room.stools[4].x + 0.6, 0, row_z), RUN, 0.0)
 	_check(kw.knocks > knocks0, "pub: running along the bar knocks stools (%d knocks)" % (kw.knocks - knocks0))
 	_check(_player().is_staggering() or kw.knocks - knocks0 > 0, "pub: the player feels it")
-	await _seconds(0.9)
-	await _shot("pub_stools", Vector3(room.stools[2].x + 1.0, 1.6, row_z + 3.2), Vector3(room.stools[2].x + 1.2, 0.3, row_z))
-	await _seconds(2.5)
+	await _seconds(3.4)
+	var mid := Vector3.ZERO
+	var n_down := 0
+	for k in stools:
+		if k.lying or k.body:
+			mid += k.get_xf().origin
+			n_down += 1
+	mid = mid / maxf(n_down, 1) if n_down > 0 else Vector3(room.stools[3].x, 0, row_z)
+	await _shot("pub_stools", mid + Vector3(-1.2, 2.2, 3.4), mid + Vector3(0, 0.2, 0))
 	var toppled := 0
 	for k in stools:
 		if k.lying or k.body:
 			if _tilt(k) > 45.0 or _moved(k) > 0.3:
 				toppled += 1
 	_check(toppled >= 2, "pub: stools went over (%d)" % toppled)
+	await _until(func(): return kw.active_count() <= 3, kw.ACTIVE_MAX_S)
 	_check(kw.active_count() <= 3, "pub: once still, the bodies go (%d moving)" % kw.active_count())
 	# A high-top: it goes with its glass and candle.
 	var ht: Vector3 = room.hightops[1]
@@ -191,10 +207,11 @@ func _pub_round() -> void:
 		_check(levels.has(3), "pub: running into a regular knocks them over (levels %s)" % [levels])
 		_check(st.busy(), "pub: they are down")
 		_check(_player().is_staggering(), "pub: the player staggers a little")
+		_check(st._bubble != null and st._bubble.text != "", "pub: they say so (%s)" % (st._bubble.text if st._bubble else "—"))
 		await _seconds(0.45)
-		await _shot("pub_npc_fall", fp + Vector3(1.8, 1.4, 2.6), fp + Vector3(0, 0.6, 0))
-		await _seconds(4.5)
-		_check(not st.busy() and st.level == 0, "pub: they got up and carried on")
+		await _shot("pub_npc_fall", fp + Vector3(2.4, 1.7, 3.4), fp + Vector3(0, 1.0, 0))
+		await _until(func(): return not st.busy() and st.level == 0, 8.0)
+		_check(not st.busy() and st.level == 0, "pub: they got up and carried on (level %d, phase %d, t %.2f)" % [st.level, st._phase, st.t])
 	# Walking gently into the robot regular: a nudge, nobody falls.
 	var robot: Node3D = life.patrons[5]
 	var rs = robot.get_node_or_null("Stumble")
@@ -269,9 +286,9 @@ func _fair_round() -> void:
 			for i in 12:
 				await _seconds(0.25)
 				print("     bin at %s %s" % [b.get_xf().origin, ("v %s" % b.body.linear_velocity) if b.body else "lying"])
-		await _seconds(1.0)
-		await _shot("fair_bin", c + Vector3(-2.0, 1.6, 2.6), c + Vector3(0.8, 0.2, 0))
-		await _seconds(2.0)
+		await _seconds(3.0)
+		var lie: Vector3 = b.get_xf().origin
+		await _shot("fair_bin", lie + Vector3(-1.2, 1.2, 1.7), lie + Vector3(0, 0.2, 0))
 		_check(_tilt(b) > 45.0 or _moved(b) > 0.4, "fair: the bin went over (tilt %.0f°, %.2f m)" % [_tilt(b), _moved(b)])
 	if not crates.is_empty():
 		var cr = crates[crates.size() - 1]
@@ -302,6 +319,6 @@ func _fair_round() -> void:
 		await _seconds(0.1)
 		_check(npc.global_position.distance_to(at) < 0.05, "fair: while down they don't walk on")
 		await _seconds(0.35)
-		await _shot("fair_npc_fall", np + Vector3(0.5, 1.3, 2.8), np + Vector3(0, 0.5, 0))
-		await _seconds(4.5)
-		_check(not st.busy(), "fair: the visitor got up")
+		await _shot("fair_npc_fall", np + Vector3(0.8, 1.7, 3.6), np + Vector3(0, 1.0, 0))
+		await _until(func(): return not st.busy(), 8.0)
+		_check(not st.busy(), "fair: the visitor got up (level %d, phase %d, t %.2f)" % [st.level, st._phase, st.t])
