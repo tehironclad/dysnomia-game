@@ -59,6 +59,8 @@ static func pick_desk(desks: Array, kind: String, need: PackedInt64Array) -> Dic
 	var key := "stock_qing" if kind == "hong" else "stock_asset"
 	var best := {}
 	for d in desks:
+		if d.get("verified", true) == false:
+			continue  # not CHAN.Yan(wallet): never a desk to approve or pay
 		var s = d.get(key)
 		if s == null or BigInt.cmp(s, need) < 0 or BigInt.is_zero(s):
 			continue
@@ -104,7 +106,22 @@ static func read_desk(qing: String, asset_hint: String, wallet: String = "", own
 	var up: Dictionary = Registry.get_territory(asset) if Registry.has_method("get_territory") else {}
 	if not up.is_empty() and String(up.get("asset", "")) != "":
 		assets.append(String(up["asset"]).to_lower())  # the hierarchy: the asset is itself a QING
-	var yues := known_yues(own_yue, wallet)
+	# Every YUE here must be CHAN.Yan(its wallet) on chain: the list comes from the bundled
+	# snapshot and the site accelerator, and a desk is a contract the player approves
+	# tokens to and calls. A YUE the chain doesn't confirm is never a desk.
+	var listed := known_yues(own_yue, wallet)
+	var yan_calls: Array = []
+	for y in listed:
+		yan_calls.append(Multicall.make_call(Contracts.CHAN, "Yan(address)", [y["wallet"]]) if String(y["wallet"]).length() == 42
+			else Multicall.make_call(Contracts.CHAN, "Yan(address)", ["0x0000000000000000000000000000000000000000"]))
+	var yan_r: Array = await mc.run(yan_calls, "", head) if not yan_calls.is_empty() else []
+	if not listed.is_empty() and (yan_r.is_empty() or yan_r[0].has("chunk_error")):
+		return {"ok": false, "block": head, "error": "CHAN.Yan (which YUE is whose) did not read at block %d" % head}
+	var yan: Array = []
+	for x in yan_r:
+		var yv = Multicall.value(x, ["address"])
+		yan.append(String(yv[0]) if yv != null else "")
+	var yues := verified_yues(listed, yan)
 	var probe: String = yues[0]["yue"] if not yues.is_empty() else ""
 	var calls: Array = []
 	for a in assets:
@@ -143,7 +160,7 @@ static func read_desk(qing: String, asset_hint: String, wallet: String = "", own
 		var sq = Multicall.value(r[i], ["uint256"])
 		var sa = Multicall.value(r[i + 1], ["uint256"])
 		i += 2
-		desks.append({"yue": y["yue"], "wallet": y["wallet"], "own": y["own"],
+		desks.append({"yue": y["yue"], "wallet": y["wallet"], "own": y["own"], "verified": true,
 			"stock_qing": BigInt.coerce(sq[0]) if sq != null else null, "stock_asset": BigInt.coerce(sa[0]) if sa != null else null})
 	var wb := {"qing": null, "asset": null}
 	if wallet != "":
@@ -152,7 +169,21 @@ static func read_desk(qing: String, asset_hint: String, wallet: String = "", own
 		wb = {"qing": BigInt.coerce(bq[0]) if bq != null else null, "asset": BigInt.coerce(ba[0]) if ba != null else null}
 	var qs = PulseX._str(r0[1])
 	return {"ok": true, "block": head, "qing": qing, "asset": asset, "qing_symbol": qs if qs != null else "", "pairs": pairs,
-		"desks": desks, "wallet": wb, "probe_yue": probe}
+		"desks": desks, "wallet": wb, "probe_yue": probe, "unverified": listed.size() - yues.size()}
+
+
+## Pure: the listed YUEs ({yue, wallet, own}) whose CHAN.Yan(wallet) read (`yan`, same
+## order; "" when unread) is that YUE, each marked verified. The rest are dropped.
+static func verified_yues(listed: Array, yan: Array) -> Array:
+	var out: Array = []
+	for i in listed.size():
+		var y: Dictionary = listed[i]
+		var got := String(yan[i]).to_lower() if i < yan.size() else ""
+		if got != "" and got == String(y["yue"]).to_lower() and String(y["wallet"]).length() == 42:
+			var v := y.duplicate()
+			v["verified"] = true
+			out.append(v)
+	return out
 
 
 ## Every known QING with a market rate for its own asset (QING.GetMarketRate(Asset)),

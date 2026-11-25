@@ -7,6 +7,11 @@ extends Node
 ##
 ## Any count or board built from this list is a FLOOR: players outside the list
 ## are not seen. Say so (Fact.floor_of).
+##
+## The site is an accelerator, not an authority: it can add players, never change the
+## YUE of one already known (the bundled snapshot or this session's own CHAN read), and
+## nothing here is trusted as a contract to pay: the YUE exchange keeps a desk only when
+## CHAN.Yan(wallet) on chain confirms it (YueExchange.verified_yues).
 
 signal updated(count: int)
 
@@ -29,10 +34,10 @@ func _load(path: String) -> void:
 	updated.emit(count())
 
 
-func add_player(wallet: String, yue: String) -> void:
-	wallet = wallet.to_lower()
-	yue = yue.to_lower()
-	if wallet.length() == 42 and yue.length() == 42:
+func add_player(wallet: String, yue: String, overwrite: bool = true) -> void:
+	wallet = NetProto.clean_wallet(wallet)
+	yue = NetProto.clean_wallet(yue)
+	if wallet != "" and yue != "" and (overwrite or not _by_wallet.has(wallet)):
 		_by_wallet[wallet] = {"wallet": wallet, "yue": yue}
 
 
@@ -56,7 +61,8 @@ func refresh_from_site() -> bool:
 	var before := count()
 	snapshot_block = maxi(snapshot_block, int(r["data"].get("block", 0)))
 	for p in r["data"]["players"]:
-		add_player(String(p.get("wallet", "")), String(p.get("yue", "")))
+		if p is Dictionary:
+			add_player(String(p.get("wallet", "")), String(p.get("yue", "")), false)
 	if count() != before:
 		updated.emit(count())
 	return true

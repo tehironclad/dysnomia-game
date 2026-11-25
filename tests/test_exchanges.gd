@@ -93,6 +93,23 @@ func test_yue_cost() -> void:
 	eq(BigInt.to_decimal(l["get"]), "10000000")
 
 
+func test_only_chain_confirmed_yues_are_desks() -> void:
+	# The list comes from a snapshot and the site: a YUE is a desk only when
+	# CHAN.Yan(wallet) on chain says it is that wallet's YUE.
+	var listed := [{"yue": "0x" + "a1".repeat(20), "wallet": "0x" + "01".repeat(20), "own": true},
+		{"yue": "0x" + "b2".repeat(20), "wallet": "0x" + "02".repeat(20), "own": false},
+		{"yue": "0x" + "c3".repeat(20), "wallet": "0x" + "03".repeat(20), "own": false},
+		{"yue": "0x" + "d4".repeat(20), "wallet": "", "own": false}]
+	var yan := ["0x" + "A1".repeat(20), "0x" + "ee".repeat(20), "", "0x" + "d4".repeat(20)]
+	var v: Array = YueExchange.verified_yues(listed, yan)
+	eq(v.size(), 1, "a planted YUE (CHAN says another), an unread one and one without a wallet are dropped")
+	eq(v[0]["yue"], "0x" + "a1".repeat(20))
+	check(v[0]["verified"])
+	var desks := [{"yue": "0xe", "own": false, "verified": false, "stock_qing": BigInt.from_int(99), "stock_asset": BigInt.zero()},
+		{"yue": "0xf", "own": false, "verified": true, "stock_qing": BigInt.from_int(5), "stock_asset": BigInt.zero()}]
+	eq(YueExchange.pick_desk(desks, "hong", BigInt.from_int(3))["yue"], "0xf", "an unverified desk is never picked, whatever it holds")
+
+
 func test_pick_desk() -> void:
 	var desks := [{"yue": "0xa", "own": false, "stock_qing": BigInt.from_int(5), "stock_asset": BigInt.zero()},
 		{"yue": "0xb", "own": true, "stock_qing": BigInt.from_int(5), "stock_asset": BigInt.from_int(1)},
