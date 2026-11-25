@@ -95,6 +95,8 @@ static func size_ok(msg: PackedByteArray) -> bool:
 	if msg.is_empty() or msg.size() > MAX_MESSAGE:
 		return false
 	var t: int = msg[0]
+	if NetBump.SIZES.has(t):
+		return NetBump.size_ok(msg)  # bumps: their own section (net_bump.gd)
 	return MAX_SIZE.has(t) and msg.size() <= int(MAX_SIZE[t])
 
 
