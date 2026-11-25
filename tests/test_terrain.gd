@@ -7,6 +7,7 @@ const ILLINOIS := "0xd127839b83cbf537c29b7d268c135f745a0da2e8"
 func test_mesh_and_collider_share_heights() -> void:
 	var t := DeepFieldTerrain.new()
 	t.build(Registry.get_territory(ILLINOIS))
+	t.finish_mesh()  # the ground mesh is computed on a worker thread
 	var hf := t.heightfield
 	eq(hf.n, DeepFieldTerrain.SAMPLES)
 	var body: StaticBody3D = t.get_node("GroundBody")
