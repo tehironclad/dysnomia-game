@@ -134,6 +134,12 @@
 - Collision: `scripts/world/solid.gd` (`Solid.box/cylinder/wrap`). Solid: the Core's room walls (doorway
   open), pylons, skyline towers (resized with them), the monolith, the World plinth, development props.
   Walk-through on purpose: the Heart, beacon/spire (sky), well basins, landing pads, floor lamps.
+- Bumps (`scripts/world/physics/`, LEARNINGS §21): `Knockable.add(node, kg, sound)` / `add_slots(mmi, …, {xforms})`
+  makes a loose prop knockable (no collider; a RigidBody3D only while it moves, then bodiless where it fell, home
+  after `BumpMath.RESET_MIN_S` out of view). Never on buildings, rides, stalls or anything `Solid`. `KnockWorld`
+  (one per scene) reads the bumpers (group `player`, group `knock_bumper` + meta `bump_mass/radius/height`).
+  `Stumble.attach(avatar)` makes a HumanAvatar character nudge/stumble/fall (`HumanAvatar.react`/`overlay`);
+  owners that walk NPCs check `busy()`. Net: `NetBump` (C_BUMP 40 / S_BUMP 104). Check: `tools/probe_bump.gd`.
 - Borders (`scripts/world/border/`): `Neighbours` picks the nearest QING in each quarter of the raw HECKE
   plane (BigInt, LEARNINGS §6); `BorderRing` draws force fields (`border_field.gdshader`), the neighbours'
   ground at 181² and their names, and runs the crossing (Admitted(LAU) read back; Join if not admitted).
