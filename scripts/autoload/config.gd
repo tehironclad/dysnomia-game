@@ -134,6 +134,7 @@ var gpu_ms_now := 0.0    ## smoothed GPU time (0 where the renderer doesn't time
 var _last_us := 0
 var _cal_level := -1     ## the level a calibration is measuring (-1: none)
 var _calibration: CalibrationRun
+var _calibrated_this_launch := false  # calibration_due() is false after one run per launch
 var _dyn_ok := false     ## the dynamic range is configured for the current level/window
 var _scale_now := 1.0
 
@@ -487,7 +488,10 @@ func apply_camera(cam: Camera3D) -> void:
 ## True when the next territory arrival should measure this computer (first launch,
 ## a new calibration version, a renderer trial, or Recalibrate). Interactive runs only.
 func calibration_due() -> bool:
-	return _interactive() and auto_quality and not _explicit_quality and calibrated < CALIB_VERSION
+	# At most once per launch: a weak-GPU result marks the *next* launch (the other renderer)
+	# for measuring, which must not re-trigger this one (it looped on an Intel HD 630).
+	return _interactive() and auto_quality and not _explicit_quality and calibrated < CALIB_VERSION \
+		and not _calibrated_this_launch
 
 
 ## Starts measuring in the current scene (the warp's card covers it; from F2 the world shows).
@@ -518,6 +522,7 @@ func calibration_level(lv: int) -> void:
 func _on_calibrated(lv: int, fps: int, results: Dictionary) -> void:
 	_cal_level = -1
 	_calibration = null
+	_calibrated_this_launch = true
 	graphics_quality = lv
 	target_fps_auto = fps
 	auto_top = 4 if lv >= 4 else AUTO_TOP
@@ -533,7 +538,8 @@ func _on_calibrated(lv: int, fps: int, results: Dictionary) -> void:
 	if better != "" and better != method and not _explicit_renderer:
 		renderer_pref = better  # the other renderer measured better here: the next launch uses it
 		msg += " The next launch uses %s (it measured better here)." % renderer_label(better)
-	elif better == "" and lv == 0 and fps <= 30 and not _explicit_renderer:
+	elif better == "" and lv == 0 and fps <= 30 and not _explicit_renderer \
+			and not calib_records.has("forward_plus" if method == "gl_compatibility" else "gl_compatibility"):
 		# A very weak GPU: the other renderer gets one measured try (the next launch), the faster one stays.
 		var other := "forward_plus" if method == "gl_compatibility" else "gl_compatibility"
 		renderer_pref = other
@@ -549,6 +555,7 @@ func _on_calibrated(lv: int, fps: int, results: Dictionary) -> void:
 ## F2 "Recalibrate": measure again now (or on the next arrival if no scene is up).
 func recalibrate() -> CalibrationRun:
 	calibrated = 0
+	_calibrated_this_launch = false
 	auto_quality = true
 	save_settings()
 	if is_instance_valid(_environment) and _interactive():

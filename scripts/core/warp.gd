@@ -65,6 +65,7 @@ var _scene_res: PackedScene  ## the territory scene, loaded on a thread during t
 var _scene: Node             ## the territory being built
 var _built := false
 var _calibrating := false
+var _calibrated_here := false  # calibration ran once on this arrival: never loop
 var _settle_dts: Array = []  ## recent frame times while warming (ms)
 var _last_us := 0
 var _plain: ColorRect        ## a flat backdrop for the calibration (the dive's shader would skew it)
@@ -245,7 +246,8 @@ func _process(delta: float) -> void:
 		if _hold_t < 0.0:
 			if not _settled(delta):
 				return
-			if Config.calibration_due():
+			if Config.calibration_due() and not _calibrated_here:
+				_calibrated_here = true  # one run per arrival, whatever it decides
 				_start_calibration()
 				if _calibrating:
 					return
