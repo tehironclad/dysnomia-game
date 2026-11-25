@@ -236,9 +236,17 @@ func _build_room(tint: Color) -> void:
 	door.position = Vector3(0.0, 1.4, ROOM_RADIUS * cos(door_half))
 	room.add_child(door)
 	var sign := _label(String(territory.get("name", "")).to_upper(), 56)
+	sign.name = "RoomSign"
 	sign.position = Vector3(0.0, 5.3, ROOM_RADIUS + 0.4)
 	sign.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	room.add_child(sign)
+	# Over the name: what the building is, and how it is talking (ChatLife keeps it).
+	var tag := _label("THE ROOM", 30)
+	tag.name = "RoomTag"
+	tag.modulate = tint.lerp(DeepFieldTheme.ICE, 0.5)
+	tag.position = Vector3(0.0, 5.95, ROOM_RADIUS + 0.42)
+	tag.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	room.add_child(tag)
 
 
 ## Door state from the room's admission rules (WP 5.3): closed when a cover applies.

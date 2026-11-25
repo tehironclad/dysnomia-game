@@ -255,6 +255,11 @@ func steward_text() -> String:
 	lines.append("\"%s computes itself from its numbers. This is what it asks of you%s.\"" % [name,
 		(", read at block %d" % state.block) if state and state.block > 0 else ""])
 	lines.append("")
+	var feed: RoomFeed = ChatFeed.current if ChatFeed.current and ChatFeed.current.qing == qing else null
+	if feed:
+		for r in room_words(feed.is_loaded(), feed.history_ok, feed.lines, maxi(feed.head_seen, Chain.head_block)):
+			lines.append(r)
+		lines.append("")
 	for a in acts:
 		lines.append("◆ %s" % String(a["title"]).to_upper())
 		lines.append("   %s" % a.get("lore", ""))
@@ -271,6 +276,30 @@ func steward_text() -> String:
 	for g in goals:
 		lines.append("   %s   [%s]" % [g["text"], g["source"]])
 	return "\n".join(lines)
+
+
+## Pure: the Steward's first words, about the Room, the heart of the land: who
+## spoke last and when (from the room's own logs), or that nobody has, or that
+## the lines are still being read. Never a line the chain did not log.
+static func room_words(loaded: bool, history_ok: bool, ls: Array, head: int) -> PackedStringArray:
+	var out: PackedStringArray = ["◆ THE ROOM, THE HEART OF THIS LAND",
+		"   Every QING is a room. A line spoken there is written on the chain, and it moves your bars here."]
+	var last: Dictionary = {}
+	for i in range(ls.size() - 1, -1, -1):
+		if ChatLines.is_chain_shaped(ls[i]):
+			last = ls[i]
+			break
+	if not loaded and ls.is_empty():
+		out.append("   The room's lines are still being read from the chain…")
+	elif last.is_empty():
+		out.append("   %s" % ("No line in the history read: the first word is still yours to say." if history_ok else "Its history could not be read: —"))
+	else:
+		var age := ChatLines.age_text(int(last["block"]), head)
+		out.append("   Last word %s (block %s), %s: \"%s\"" % ["just now" if age == "now" else "≈ %s ago" % age, TokenFormat.group(str(int(last["block"]))),
+			ChatLines.speaker(last), ChatLines.clean_text(String(last.get("text", "")), 80)])
+	out.append("   Walk in by the door under the crown ring, or read it from anywhere: %s history, %s to speak." % [
+		ControlsHelp.key_of("chat_history"), ControlsHelp.key_of("chat")])
+	return out
 
 
 func open_steward() -> void:

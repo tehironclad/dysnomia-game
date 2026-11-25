@@ -190,22 +190,50 @@ func _build_board() -> void:
 	head.font_size = 64
 	head.pixel_size = 0.01
 	head.position = Vector3(0, 5.25, -HALF + 0.8)
-	head.modulate = DeepFieldTheme.INK
+	head.modulate = ChatFeedPanel.room_tint(territory).lerp(Color.WHITE, 0.35)
 	add_child(head)
+	var sub := Label3D.new()
+	sub.text = "EVERY LINE HERE IS WRITTEN ON THE CHAIN · %s TO SPEAK" % ControlsHelp.key_of("chat")
+	sub.font = DeepFieldTheme.mono_font()
+	sub.font_size = 28
+	sub.pixel_size = 0.01
+	sub.position = Vector3(0, 4.72, -HALF + 0.8)
+	sub.modulate = DeepFieldTheme.MUTED
+	add_child(sub)
 
 
 func on_lines(lines: Array, _fresh: Array) -> void:
-	var t := ""
+	var f: RoomFeed = chat_ctl.feed if chat_ctl else null
+	var head := maxi(f.head_seen if f else -1, Chain.head_block)
+	_board_text.text = board_bbcode(lines, f != null and f.is_loaded(), f == null or f.history_ok, head,
+		Session.player.username if Session.player != null else "")
+
+
+## Pure: the board's text: the newest lines, each speaker in their colour (the
+## same as in the HUD's dock), the line, then how long ago and its block; a
+## line naming you in gold. Loading, unavailable and empty each say so.
+static func board_bbcode(lines: Array, loaded: bool, history_ok: bool, head: int, me: String = "") -> String:
 	if lines.is_empty():
-		t = "[color=#5d6578]No lines in this room yet. Be the first: press T.[/color]"
-	for l in lines.slice(maxi(0, lines.size() - 9)):
+		if not loaded:
+			return "[color=#5d6578]Reading this room's lines from its own logs…[/color]"
+		if not history_ok:
+			return "[color=#5d6578]This room's history could not be read: —[/color]"
+		return "[color=#8e97a9]No lines in this room yet. Every QING is a room: say the first word (%s).[/color]" % ControlsHelp.key_of("chat")
+	var t := ""
+	for l in lines.slice(maxi(0, lines.size() - 8)):
 		var badge := ""
 		if l.get("badge", "") == "og":
 			badge = " [color=#64e3a8]✓[/color]"
 		elif l.get("badge", "") == "imposter":
 			badge = " [color=#ff8fa0]⚠[/color]"
-		t += "[color=#5d6578]%d[/color]  [color=#a8e6ff]%s[/color]%s  %s\n" % [l["block"], ChatPanel._esc(String(l["name"]) if l["name"] != "" else "?"), badge, ChatPanel._esc(String(l["text"]).left(110))]
-	_board_text.text = t
+		var col := ChatLines.speaker_color(l).to_html(false)
+		var text := ChatPanel._esc(ChatLines.clean_text(String(l.get("text", "")), 96))
+		if me != "" and ChatLines.mentions(String(l.get("text", "")), me):
+			text = "[color=#ffd27a]%s[/color]" % text
+		var when := "say" if String(l.get("source", "")) == "say" else "%s · %s" % [ChatLines.age_text(int(l.get("block", -1)), head), TokenFormat.group(str(int(l.get("block", -1))))]
+		t += "[color=#%s]%s[/color]%s  %s  [color=#5d6578][font_size=24]%s[/font_size][/color]\n" % [
+			col, ChatPanel._esc(ChatLines.speaker(l)), badge, text, when]
+	return t
 
 
 ## The territory's own Julia set, inlaid at the centre of the floor.
