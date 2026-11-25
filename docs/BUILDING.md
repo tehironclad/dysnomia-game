@@ -234,3 +234,9 @@ Avatars in outfits (2026-11-24, `perf.gd`, lavapipe): Sunny's Pub `--view=room` 
 0.37 M primitives; the full fair at `--qing=0xe416…400b --view=fair` (24 visitors + staff) 874 draw calls,
 2,135 objects (over the 1,500 budget: most are the creature heads' primitive meshes, ~15 per avatar; the
 outfit itself is one mesh of 3–4 surfaces with merged LODs), 0.94 M primitives.
+
+The rave arcade (2026-11-25, `perf.gd --scene=res://scenes/places/arcade_place.tscn --quality=3`, lavapipe, 60
+frames, Illinois): player camera 533 draw calls, 936 objects, 0.35 M primitives (before: 1,749 / 2,153 / 0.97 M,
+over budget: ~1,400 of the draws were sun-shadow passes of the 13 cabinets); `--view=rave --rave-bar=5` (the whole
+hall in the drop, 16 cabinets, DJ + 10 dancers, lasers) 484 / 920 / 0.29 M. Script cost of `RaveHall` ≈ 0.08 ms a
+frame headless; the music is a worker-thread render (~0.5 s, once) and a buffer push per frame.

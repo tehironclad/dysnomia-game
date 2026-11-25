@@ -67,8 +67,8 @@ func _build() -> void:
 	add_mesh(band, neon_mat(accent.lerp(Color.WHITE, 0.3), 2.4), _qing).position.y = 0.6
 	var nm := label3d("QING · " + String(ctx.get("territory", {}).get("name", "")).to_upper(), 72, Color(accent, 0.9), false)
 	nm.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	nm.pixel_size = 0.005
-	nm.position = Vector3(0, 3.9, 0)
+	nm.pixel_size = 0.003
+	nm.position = Vector3(0, 3.5, 0)
 	var omni := OmniLight3D.new()
 	omni.light_color = accent
 	omni.light_energy = 2.0
