@@ -10,7 +10,7 @@ extends SceneTree
 ##       dive into that cabinet; the attract demo plays, nothing is paid)
 ##       [--seat=pool|cards --seat-phase=aim|roll|overhead|seated|enter] (an arcade place or the pub:
 ##       sit at that table in first person, practice mode; nothing is posted or signed)
-##       [--near=<arcade catalog id>] (stand in front of that cabinet: its floating title shows)
+##       [--near=<arcade catalog id> --near-back=<m>] (stand in front of that cabinet: its floating title shows)
 ##       [--fair=<midway game id>|rocket --fair-phase=aim|play|result|board|buy|strip] (a territory: play that fair game
 ##       in first person, a scripted practice round held mid-play or on its result screen; rocket: the
 ##       rocket's 7-light board, with --fair-codes=1,2,3 lit as a preview; buy: the stall's ticket choice;
@@ -43,6 +43,7 @@ var _classic := false
 var _seat := ""
 var _seat_phase := "aim"
 var _near := ""
+var _near_back := 2.2  ## --near-back=<m>: how far in front of the cabinet to stand
 var _fair := ""
 var _fair_phase := "play"
 var _fair_codes: Array = []
@@ -86,6 +87,8 @@ func _initialize() -> void:
 				_fair_codes.append(int(c))
 		elif a.begins_with("--near="):
 			_near = a.substr(7)
+		elif a.begins_with("--near-back="):
+			_near_back = float(a.substr(12))
 		elif a.begins_with("--chat="):
 			_chat = a.substr(7)
 		elif a.begins_with("--chat-text="):
@@ -183,7 +186,7 @@ func _run() -> void:
 		for i in 20:
 			await process_frame
 		if current_scene and current_scene.has_method("preview_near"):
-			current_scene.preview_near(_near)
+			current_scene.preview_near(_near, _near_back)
 	if _seat != "":
 		for i in 20:
 			await process_frame

@@ -13,8 +13,9 @@ var cabinets: Array = []
 var pool_table: PoolTable3D
 var card_table: CardTable3D
 var accent := DeepFieldTheme.ICE
-var _spots: Array = []  # {at: Vector3, r: float, prompt: Callable, act: Callable}
+var _spots: Array = []  # {at: Vector3, r: float, prompt: Callable, act: Callable, [cab: ArcadeCabinet], [walk: true]}
 var _near_spot := -1
+var _walk_up: Dictionary = {}  ## Use pressed at a distance: {to: Vector3, act: Callable, t: float} while the player walks up
 var _ui_layer: CanvasLayer
 var _pool_panel: TablePanel
 var _cards_panel: TablePanel
@@ -89,7 +90,9 @@ func add_cabinet(entry: Dictionary, xf: Transform3D) -> ArcadeCabinet:
 	c.setup(entry, accent)
 	cabinets.append(c)
 	var title := String(entry.get("title", "?"))
-	_spots.append({"at": c.play_spot(), "r": 1.1,
+	# One prompt (2026-11-25): the HUD prompt, the floating title and Use all start at REACH from
+	# the play spot; Use from there walks you up to the controls, then dives in.
+	_spots.append({"at": c.play_spot(), "r": ArcadeCabinet.REACH, "cab": c, "walk": true,
 		"prompt": func(): return _cabinet_prompt(c, title),
 		"act": func(): _open_cabinet(c)})
 	return c
@@ -279,38 +282,101 @@ func _any_open() -> bool:
 	return (chat_ctl and chat_ctl.is_open()) or (_pool_panel and _pool_panel.is_open()) or (_cards_panel and _cards_panel.is_open()) or (dive and dive.is_active()) or (seat and seat.is_active()) or DoorSequence.active_in(self)
 
 
-func _process(delta: float) -> void:
-	super._process(delta)
-	if player == null or _any_open():
-		return
-	var near_cab: ArcadeCabinet = null
-	var near_d := ArcadeCabinet.TITLE_NEAR
-	for c in cabinets:
-		(c as ArcadeCabinet).set_awake(c.global_position.distance_to(player.global_position) < ArcadeCabinet.NEAR)
-		var f: Vector3 = c.play_spot() - player.global_position
-		var d := Vector2(f.x, f.z).length()
-		if d < near_d:
-			near_d = d
-			near_cab = c
-	if near_cab != _near_cab:
-		if _near_cab:
-			_near_cab.set_near(false)
-		_near_cab = near_cab
-		if _near_cab:
-			_near_cab.set_near(true)
-	if _near_exit:
-		_near_spot = -1
-		return
+## The spot Use acts on from `pos` (the nearest whose reach covers it), or -1. The HUD prompt, the
+## floating cabinet title and Use all read this one choice, so a prompt you can see always works.
+static func pick_spot(spots: Array, pos: Vector3) -> int:
 	var best := -1
 	var best_d := 1e9
-	for i in _spots.size():
-		var s: Dictionary = _spots[i]
-		var d := Vector2(player.global_position.x - s["at"].x, player.global_position.z - s["at"].z).length()
-		if d < s["r"] and d < best_d:
+	for i in spots.size():
+		var s: Dictionary = spots[i]
+		var d := Vector2(pos.x - s["at"].x, pos.z - s["at"].z).length()
+		if d < float(s["r"]) and d < best_d:
 			best = i
 			best_d = d
+	return best
+
+
+## The cabinet whose floating title shows for spot `i` (null for a table or the bar).
+func spot_cabinet(i: int) -> ArcadeCabinet:
+	if i < 0 or i >= _spots.size():
+		return null
+	return _spots[i].get("cab", null)
+
+
+func _process(delta: float) -> void:
+	super._process(delta)
+	if not _walk_up.is_empty():
+		_walk_up_step(delta)
+		return
+	if player == null or _any_open():
+		return
+	for c in cabinets:
+		(c as ArcadeCabinet).set_awake(c.global_position.distance_to(player.global_position) < ArcadeCabinet.NEAR)
+	if _near_exit:
+		_near_spot = -1
+		_show_cabinet_title(null)
+		return
+	var best := pick_spot(_spots, player.global_position)
 	_near_spot = best
+	_show_cabinet_title(spot_cabinet(best))
 	PromptFade.set_text(prompt_label, ("%s  %s" % [ControlsHelp.key_of("interact"), String(_spots[best]["prompt"].call())]) if best >= 0 else "")
+
+
+func _show_cabinet_title(near_cab: ArcadeCabinet) -> void:
+	if near_cab == _near_cab:
+		return
+	if _near_cab:
+		_near_cab.set_near(false)
+	_near_cab = near_cab
+	if _near_cab:
+		_near_cab.set_near(true)
+
+
+## Use on spot `i`: at once when you stand at it, else walk up to it first (cabinets).
+func use_spot(i: int) -> void:
+	if i < 0 or i >= _spots.size():
+		return
+	var s: Dictionary = _spots[i]
+	var at: Vector3 = s["at"]
+	var flat := Vector2(player.global_position.x - at.x, player.global_position.z - at.z).length()
+	if not bool(s.get("walk", false)) or flat <= WALK_DONE_M:
+		s["act"].call()
+		return
+	walk_up_to(at, s["act"])
+
+
+const WALK_DONE_M := 0.3
+const WALK_SPEED := 2.6
+const WALK_MAX_S := 2.6
+
+
+## Walks the player to `to` (any key but Esc keeps going; Esc stops), then calls `act`.
+func walk_up_to(to: Vector3, act: Callable) -> void:
+	prompt_label.text = ""
+	_walk_up = {"to": to, "act": act, "t": 0.0}
+	if player.has_method("auto_walk_to"):
+		player.auto_walk_to(Vector3(to.x, player.global_position.y, to.z), WALK_SPEED)
+
+
+func is_walking_up() -> bool:
+	return not _walk_up.is_empty()
+
+
+func _walk_up_step(delta: float) -> void:
+	_walk_up["t"] = float(_walk_up["t"]) + delta
+	var to: Vector3 = _walk_up["to"]
+	var flat := Vector2(player.global_position.x - to.x, player.global_position.z - to.z).length()
+	if flat <= WALK_DONE_M or float(_walk_up["t"]) >= WALK_MAX_S:
+		var act: Callable = _walk_up["act"]
+		_end_walk_up()
+		act.call()
+
+
+func _end_walk_up() -> void:
+	_walk_up = {}
+	if player and player.has_method("auto_walk_stop"):
+		player.auto_walk_stop()
+		player.velocity = Vector3.ZERO
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -340,12 +406,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			_start_run()
 		return
+	if not _walk_up.is_empty():
+		if event.is_action_pressed("ui_cancel"):
+			get_viewport().set_input_as_handled()
+			_end_walk_up()
+		return
 	if _any_open():
 		return
 	if event.is_action_pressed("interact") and _near_spot >= 0 and not _near_exit:
 		get_viewport().set_input_as_handled()
 		prompt_label.text = ""
-		_spots[_near_spot]["act"].call()
+		use_spot(_near_spot)
 		return
 	super._unhandled_input(event)
 

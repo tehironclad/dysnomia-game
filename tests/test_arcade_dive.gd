@@ -143,3 +143,20 @@ func test_worlds_follow_their_games() -> void:
 		eq(g.input_remap, {}, e["id"] + " unbind hands the keys back")
 		w.free()
 		g.free()
+
+
+## One prompt (2026-11-25): the floating cabinet title and the Use prompt share one reach, and the
+## spot Use acts on is the one the prompt names (the nearest whose reach covers you).
+## tools/probe_prompts.gd checks the same in the real arcade and pub, pressing Use from each edge.
+func test_one_prompt_reach() -> void:
+	eq(ArcadeCabinet.TITLE_NEAR, ArcadeCabinet.REACH, "the floating title shows exactly where Use works")
+	var c := ArcadeCabinet.new()
+	check(not c.near_text().contains("press"), "the floating title names no key: the HUD prompt does")
+	c.free()
+	var spots := [{"at": Vector3(0, 0, 0), "r": 3.4}, {"at": Vector3(1.25, 0, 0), "r": 3.4}, {"at": Vector3(6, 0, 0), "r": 1.3}]
+	eq(GamesPlace.pick_spot(spots, Vector3(0.2, 0, 3.0)), 0, "nearest wins")
+	eq(GamesPlace.pick_spot(spots, Vector3(1.0, 0, 3.0)), 1)
+	eq(GamesPlace.pick_spot(spots, Vector3(0.0, 5.0, 3.3)), 0, "height doesn't count")
+	eq(GamesPlace.pick_spot(spots, Vector3(-3.5, 0, 0)), -1, "out of every reach")
+	eq(GamesPlace.pick_spot(spots, Vector3(6, 0, 1.2)), 2)
+	eq(GamesPlace.pick_spot(spots, Vector3(6, 0, 1.4)), -1, "a table seat keeps its own short reach")

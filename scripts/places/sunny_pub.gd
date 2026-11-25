@@ -485,12 +485,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			bar_menu.close()
 		return
-	if event.is_action_pressed("bar_menu") and not _any_open():
+	if event.is_action_pressed("bar_menu") and not _any_open() and not is_walking_up():
 		get_viewport().set_input_as_handled()
 		if _at_bar():
 			_open_menu()
-		else:
+		elif player.global_position.z < FRONT:  # inside: the key works from anywhere, you walk up
 			say_line("come_closer")
+			walk_up_to(PubRoom.order_spot(), func(): _open_menu())
 		return
 	super._unhandled_input(event)
 

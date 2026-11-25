@@ -7,7 +7,10 @@ extends Node3D
 ## screen and you land in the game's 3D world, or this screen full-size.
 
 const NEAR := 9.0
-const TITLE_NEAR := 3.4  ## the floating title shows within this distance
+## The Use reach, from the play spot: the HUD prompt, this floating title and Use all start here
+## (Use from further than the controls walks you up first). One prompt, never a dead one.
+const REACH := 3.4
+const TITLE_NEAR := REACH
 const MARQUEE := Vector2(1.16, 0.66)  # the backlit marquee topper (m), wider than the body
 const MARQUEE_TEXT := Vector2(1.08, 0.56)  # the area its letters may fill
 const MARQUEE_Y := 2.1
@@ -240,12 +243,11 @@ func _build_near_label(accent: Color) -> void:
 	add_child(near_sub)
 
 
-## The line under the floating title: the price and the key.
+## The line under the floating title: the price (the key is the HUD prompt's, shown with it).
 func near_text() -> String:
-	var key := ControlsHelp.key_of("interact")
 	if not playable():
-		return "free to watch · press %s" % key
-	return "%s a play · press %s" % [ArcadePay.fee_text(), key]
+		return "free to watch"
+	return Prices.menu_line()
 
 
 ## Shows the floating title (fades in/out). GamesPlace calls it for the nearest cabinet.

@@ -226,6 +226,7 @@ func test_cabinet_near_label_text() -> void:
 	var c := ArcadeCabinet.new()
 	c.entry = {"id": "cart_x", "title": "Odometer", "kind": "cartridge"}
 	var t := c.near_text()
-	check(t.contains(ControlsHelp.key_of("interact")), "names the key: " + t)
+	# One prompt (2026-11-25): the key is the HUD prompt's, shown with the title from the same reach.
+	check(not t.contains("press"), "names no key of its own: " + t)
 	check(t.contains("free"), "a cartridge is free: " + t)
 	c.free()
