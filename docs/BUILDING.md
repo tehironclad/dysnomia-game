@@ -66,6 +66,166 @@ VK_ICD_FILENAMES=/opt/lavapipe/lvp_icd.json xvfb-run -a -s "-screen 0 1280x720x2
   `menu` adds the cabinet menu; `--classic` shows the cabinet's own screen. Nothing is paid. Use
   `--frames=260` or so: the transition and the demo need time on lavapipe.
 
+## Graphics levels and automatic scaling (2026-11-25)
+
+Measured, not guessed. `Config.recommend()` (the GPU's name and type, cores, RAM) is only the **first guess**;
+the first territory arrival **calibrates** (behind the warp's card), and in play **dynamic resolution** holds the
+frame-rate target before any level changes. Levels change detail only: every level shows the same world.
+
+### What each level does (`Config.QUALITY_PRESETS`)
+
+| | Potato | Low | Medium | High | Ultra |
+|---|---|---|---|---|---|
+| 3D render scale: nominal (dynamic range) | 0.5 (0.4–0.67) | 0.67 (0.5–0.85) | 0.8 (0.6–1.0) | 1.0 (0.7–1.0) | 1.0 (0.85–1.0) |
+| render budget on big windows | 0.55 MP | 1.0 MP | 2.1 MP | 3.7 MP | 8.3 MP |
+| MSAA | off | off | off | 2× | 4× |
+| sun shadows | off (atlas 1024) | off (atlas 1024) | 90 m, 2 splits | 120 m, 4 splits | 320 m, 4 splits, atlas 8192, soft high |
+| SSAO / SSIL | off | off | off | on (medium, half size) | on (high, full size) |
+| glow / volumetric fog | off / off | on / off | on / off | on / off | on / on |
+| view distance | 800 m, depth fog over its last half | 1000 m, depth fog | the setting (1300 m) | the setting | ≥ 1800 m |
+| ground mesh (collider stays 1 m) | 4 m (182²), no shadow proxy | 4 m, no shadow proxy | 2 m (363²) + proxy | 2 m + proxy | 2 m + proxy |
+| neighbours' ground mesh | 8 m (91²) | 8 m | 4 m (181²) | 4 m | 4 m |
+| fractal iterations (ground / dive) | 24 / 40 | 40 / 70 | 64 / 110 | 96 / 160 | 128 / 200 |
+| sky | stars, Eris, sun | full | full | full | full |
+| visitors, dancers, particles (`Config.crowd/particles`) | 35 % (rave: 4) | 50 % (rave: 6) | 75 % | 100 % | 100 % |
+| DetailCull K (props end at ≈ K × size) | 70 | 100 | 170 | 240 | 400 |
+
+- MSAA is off in `project.godot` now (it was 2× globally); High sets its 2× itself, so High looks the same:
+  before/after screenshots at High differ in 0.12 % of pixels (moving NPCs), `--view=ground`.
+- **Render scale is relative to the window's pixels**: `DynamicScale.for_window(nominal, budget_mp, window)` caps the
+  rendered megapixels, so a 4K or Retina window renders about the same work as 1080p at that level (High at 4K:
+  0.65; Medium on a 2880×1800 MacBook: 0.65) and FSR/bilinear brings it up to the window. The UI (canvas) is
+  never scaled by it.
+- Upscaling: **FSR 1** on real GPUs (Forward+, Mobile), **bilinear** on Compatibility and on software rendering
+  (FSR's two full-window passes cost lavapipe ~40 ms a frame: Potato 223 → 183 ms with bilinear).
+- Read the level in code with `Config.level()` (performance mode caps it at Low; a calibration measuring sets it).
+
+### Calibration (`CalibrationRun`, decisions in the pure `GraphicsCalibration`)
+
+On the first territory arrival (and from F2 → Recalibrate), the warp's card says "Tuning the graphics for this
+computer…" over a flat backdrop (the dive's fractal shader would be measured too), V-Sync goes off and each step
+renders the arrived scene at one level, at that level's nominal render scale for this window: 0.7 s to settle
+(pipelines compile), then ≥ 1.2 s / 8 frames measured; the cost is the median frame time.
+- over the 60 fps budget (> 17.5 ms): one level down (unless that level already measured fine); Potato is the floor;
+- lots of headroom (< 60 % of the budget): one level up, to High; **Ultra only if High costs < 40 %**;
+- otherwise that level is it. At most 5 measurements, ~3–8 s in all.
+- If even Potato can't hold 60, the target becomes **30 fps** and the **other renderer gets one measured try** on the
+  next launch (Compatibility ↔ Forward+); the one that measured better (higher level, then cheaper frame) is kept
+  (`Config.calib_records`). F2 → "Try Forward+/Compatibility…" does the same at once (a relaunch).
+- `tools/calibrate.gd` runs it in a `-s` session under xvfb and then follows in play, printing the status line.
+
+### Dynamic resolution and the level follow (`DynamicScale`, `Config.decide`)
+
+Every frame: with GPU timing (Forward+/Mobile) the cost is the GPU's own time and the scale moves
+proportionally (pixels ∝ scale², at most 0.1 a step, once a second, 0.05 quanta); a CPU-bound frame (slow frame,
+idle GPU) never lowers it. Without GPU timing (Compatibility) the cost is the frame time, and raising is a slow
+probe (6 s at the target, then +0.05; a drop within 6 s makes that scale a ceiling for 30 s). Only when the scale is
+pinned at its floor and the frame rate is under ¾ of the target (or under half, at any scale) does a 10 s window
+step the level down; up only at full scale with the GPU and CPU each under a third/two-fifths of the frame, never
+past `auto_top` (High, Ultra only if calibrated there). Performance mode: Low at most; resolution drops first.
+
+### What the player sees
+
+- **F2**: the GPU in use (name, type, vendor, renderer and API version), on Windows a hint if the PC also has a
+  dedicated GPU the game isn't on; a live line `Medium · render 80% (FSR, dynamic) · 58 fps · 16.1 ms · GPU 9.3 ms ·
+  target 60`; the last calibration (`Low at 60 fps (measured: Potato 9.8 ms, Low 14.1 ms, Medium 22.0 ms) ·
+  Forward+`), per renderer when both were measured; **Recalibrate**, **Try the other renderer…**, **Performance
+  mode**, **Dynamic resolution**, **Frame-rate target** (Automatic / 30 / 60 / 120), and the level picker.
+- **F3** (`toggle_debug`): the same status line alone; again for the graphs; again off.
+
+### Hardware classes: starting guess, and what to expect
+
+The guess only picks where calibration starts; unknown hardware still lands on a measured level.
+
+| Class | Examples | Guess: renderer, level | Expected after calibration |
+|---|---|---|---|
+| Software rendering | llvmpipe/lavapipe, SwiftShader, Microsoft Basic Render | Compatibility, Potato | Potato at 30 fps (lavapipe here: ~5–7 fps; not a target) |
+| Intel Gen9 iGPU laptops | HD 520/620/630, UHD 620/630 (Linux: "Mesa Intel(R) UHD…") | Compatibility, Potato | Potato or Low; 30 fps target if Potato misses 60; Forward+ gets one measured try, the faster stays |
+| Newer Intel iGPU | Iris Plus, Iris Xe, Arc iGPU | Forward+, Low | Low–Medium |
+| AMD Vega APUs | Vega 8/11, "AMD Radeon(TM) Graphics" | Forward+, Low | Low–Medium |
+| AMD RDNA2/3 APUs | Radeon 680M/780M/890M | Forward+, Medium | Medium |
+| Old/entry NVIDIA and AMD | GT 1030, GTX 6xx/7xx, MX, Quadro K/M/P mobile (M1200), R5/R7 | Forward+, Low | Low–Medium |
+| Mid discrete | GTX 900/1000, RTX 2050/3050/4050, RX 400/500/5000, Arc A3/A5 | Forward+, Medium | Medium–High |
+| Strong discrete | RTX 2060+/3060+/4060+/50x0, RX 6700+/7600+/9000, Arc A7 | Forward+, High | High; Ultra if High costs < 40 % |
+| Hybrid laptops | Intel iGPU + NVIDIA/AMD | Godot asks for the dedicated GPU (below); F2 shows which is in use | as its dedicated GPU |
+| Intel Macs | Iris/Iris Plus (Forward+, Low), UHD 630 (Compatibility, Potato), Radeon Pro 5xxx (Forward+, Medium) | as listed | Forward+ runs on Vulkan through MoltenVK there; the renderer trial compares it with Compatibility (OpenGL) on weak iGPUs |
+| Apple Silicon | M1–M4 (Medium), Pro/Max/Ultra (High) | Forward+ (Metal) | Medium–High, raised by calibration |
+| Linux with Mesa | same names with "Mesa" (RADV/ANV/radeonsi) | by name, as above | as its class |
+
+- **Hybrid GPUs (Windows)**: Godot 4.6's Windows build exports `NvOptimusEnablement = 1` and
+  `AmdPowerXpressRequestHighPerformance = 1` unconditionally (`platform/windows/os_windows.cpp`), so NVIDIA Optimus
+  and AMD switchable graphics give the game the dedicated GPU for every renderer, and Vulkan's device pick prefers
+  a discrete GPU. Windows' own per-app setting wins: if the player set Dysnomia to "Power saving"
+  (`HKCU\SOFTWARE\Microsoft\DirectX\UserGpuPreferences`, `GpuPreference=1`), Godot follows it. F2 shows the GPU in
+  use, and on Windows `Config` lists the display adapters (PowerShell, `Win32_VideoController`, on a thread) and,
+  when it runs on an iGPU while a dedicated one exists, says where to switch it (Settings › System › Display ›
+  Graphics). An iGPU-only laptop (the HD 630 ZBook) gets no hint.
+- **Retina / 4K**: see the render budget above; the UI scale is unchanged (`canvas_items` stretch).
+- **Laptops on battery**: nothing extra; holding the target (V-Sync on, dynamic resolution) is the saving.
+- SDFGI is not used at any level: it changes the look and is expensive across a 724 m open world.
+
+### Loading a territory
+
+`LoadProfile` times each build stage (one `[Load] …` line per load); `tools/load_time.gd [-- --staged --cold
+--no-preload --qing=0x…]` prints `load {…}`: `block_ms` (the frame the scene change runs in), `longest_freeze_ms`
+(the longest single frame of the whole load), `settle_ms`, the build total and the threaded preload time.
+
+What changed:
+- The warp loads the territory scene **on a thread during the dive** (`ResourceLoader.load_threaded_request`,
+  ~1.2–1.4 s that used to freeze the scene change), and holds the loaded scene so the change reuses it.
+- The territory **builds in stages** (`territory_v2.gd`: `_step` after each builder yields a frame once 40 ms of
+  work has run; `build_progress(fraction, text)`, `built`, `is_built`). The card names each stage ("Building
+  RatKing QING · The Affection Fair…"). No 3D is drawn until it's built (`Viewport.disable_3d`); the player is
+  frozen until then; chain reads that land mid-build are applied at the end. The grand fair (2.4 s alone) is
+  paced inside `Funfair.initialize` the same way (the builders' order, so the RNG and the fair, is unchanged).
+  With no warp (back from the Field, out of a door) a plain `LoadingCover` hides the build. Tools build in one go
+  unless `--staged` (or `TerritoryV2.force_staged`); `boot_territory.gd` builds staged (`--sync` for one go).
+- The ground mesh's arrays are computed on a **worker thread** (`DeepFieldTerrain.grid_arrays`, ~150–200 ms of
+  GDScript at 363²); a level change rebuilds it (4 m/2 m, with/without the shadow proxy) in the background.
+- **Roads are cached on disk** (`user://cache/roads/v<VERSION>_<address>_<hash>.bin`, keyed by the territory, the
+  road and heightfield versions and the places/gates; bump `TerritoryRoads.VERSION` when the routing changes):
+  130–230 ms → 1–2 ms.
+- The neighbours' grounds attach one per frame; the overlay holds until the frame time settles (shaders compiled,
+  ≤ 4 s), then, on a first launch, calibrates.
+
+Measured 2026-11-25 (`37a0f9c` + timing marks → `perf-scaling`). Headless, 2 cores (`taskset -c 2,3`), warm caches,
+two runs each (the CPU side: what a machine with a fast GPU sees):
+
+| Territory | before: freeze at the scene change | after: longest freeze | build total (before → after) |
+|---|---|---|---|
+| Illinois (Outpost) | 4.05–4.13 s (one frame) | 0.49–0.50 s | 2.0 s → 2.0 s, spread over ~20 frames |
+| RatKing (grand fair) | 6.19–6.85 s (one frame) | 0.59–0.63 s | 4.4–4.7 s → 4.8–5.1 s, spread over ~40 frames |
+
+Under lavapipe (CPU Vulkan/GL) and 2 cores (`taskset -c 0,1`), 1280×720, Illinois, warm; the first 3D frame
+compiles every pipeline, which on a CPU rasteriser is seconds (on real GPUs Godot 4.4+ compiles specialised
+pipelines in the background):
+
+| Renderer, level | before: block / longest freeze / settled | after: block / longest freeze / settled |
+|---|---|---|
+| Forward+, Potato | 17.1 s / 17.1 s / 29 s | 1.3 s / 5.9 s / 33 s |
+| Forward+, Low | 15.6 s / 15.6 s / 28 s | 0.9 s / 7.2 s / 17 s |
+| Forward+, High | 20.7 s / 20.7 s / 29 s | 1.1 s / 12.2 s / 21 s |
+| Compatibility, Potato | 19.5 s / 19.5 s / 42 s | 0.4 s / 14.3 s / 52 s |
+| Compatibility, Low | 5.7 s / 5.7 s / 9.5 s | 0.4 s / 2.2 s / 5.5 s |
+| Compatibility, High | 20.3 s / 20.3 s / 68 s | 0.3 s / 3.3 s / 6.1 s |
+
+Frame cost by level, same setup (`perf.gd`, player camera, 60 frames; ms a frame / draw calls / primitives):
+
+| Renderer, level | before | after |
+|---|---|---|
+| Forward+, Potato | 225 ms / 284 / 0.54 M | 166 ms / 284 / 0.19 M |
+| Forward+, Low | 367 ms / 349 / 0.55 M | 280 ms / 289 / 0.20 M |
+| Forward+, Medium | 392 ms / 284 / 0.54 M | 357 ms / 296 / 0.54 M |
+| Forward+, High | 748 ms / 285 / 0.54 M | 737 ms / 284 / 0.54 M |
+| Compatibility, Potato | 198 ms / 447 / 0.57 M | 146 ms / 354 / 0.19 M |
+| Compatibility, Low | 226 ms / 453 / 0.56 M | 203 ms / 353 / 0.19 M |
+| Compatibility, High | ~920 ms / 357 / 0.55 M | 911 ms / 365 / 0.54 M |
+
+Lavapipe's frame barely depends on resolution (Potato at 640×360: 166 ms; with the world hidden it still costs
+~100 ms), so its absolute fps says little about an iGPU; what transfers is the work removed: Potato/Low now draw
+a third of the triangles (0.19–0.20 M, was 0.54–0.57 M), no MSAA, fewer pixels, a shorter view, fewer visitors.
+High is unchanged by design.
+
 ## Performance (WP 7.5)
 
 `tools/perf.gd` samples the territory scene. Run it under Xvfb for render counts, or headless for script

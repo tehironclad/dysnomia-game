@@ -47,7 +47,7 @@ var view_mode := ""  # su | room | beat | void | ""
 signal build_progress(fraction: float, text: String)
 signal built
 static var force_staged := false
-const BUILD_STAGES := 16
+const BUILD_STAGES := 18
 const FRAME_BUDGET_US := 40000  ## build work per frame before yielding one
 var is_built := false
 var _staged := false
@@ -178,7 +178,7 @@ func _ready() -> void:
 	chat_life.name = "ChatLife"
 	core.add_child(chat_life)
 	chat_life.setup(core, columns, state, player, DeepField.to_color(terrain.params["color"]))
-	_apply_development_snapshot()
+	await _apply_development_snapshot()
 	await _step("development", "Panels and the score…")
 	lattice = WorldLattice.new()
 	lattice.name = "WorldLattice"
@@ -301,7 +301,7 @@ func _ready() -> void:
 func _step(stage: String, next_text: String) -> void:
 	LoadProfile.mark(stage)
 	_stage_i += 1
-	build_progress.emit(float(_stage_i) / float(BUILD_STAGES), next_text)
+	build_progress.emit(minf(1.0, float(_stage_i) / float(BUILD_STAGES)), next_text)
 	if not _staged:
 		return
 	var fade := get_tree().root.get_node_or_null("ScreenFade")
@@ -452,7 +452,7 @@ func _apply_development_snapshot() -> void:
 	dev_source = "measured at block %d, live read pending" % d["block"]
 	print("[Development] %s · tier %d (%s) from block %d (%s)" % [territory.get("name", ""), d["tier"],
 		Development.tier_name(d["tier"]), d["block"], rec.get("source", "")])
-	_set_development(d["tier"], d["hypo"], d["energy"], [], d["block"])
+	await _set_development(d["tier"], d["hypo"], d["energy"], [], d["block"])
 
 
 func _set_development(tier: int, hypo: PackedInt64Array, energy: float, board: Array, block: int) -> void:
@@ -460,11 +460,18 @@ func _set_development(tier: int, hypo: PackedInt64Array, energy: float, board: A
 	columns.set_energy(energy)
 	development.set_tier(dev_tier, energy)
 	core.set_development(dev_tier, energy)  # the Heart's rings (HeartOrrery)
+	var staging := _staged and not is_built  # the build's development stage: the grand fair alone was ~2.4 s
 	if fair:
 		fair.dev_facts = {"tier": tier, "total": TokenFormat.group(BigInt.to_decimal(hypo)), "block": block}
-		fair.set_dev_tier(dev_tier)
+		fair.pace_budget_us = FRAME_BUDGET_US if staging else 0
+		await fair.set_dev_tier(dev_tier)
+		fair.pace_budget_us = 0
+	if staging:
+		await _step("dev fair", "The skyline at this development…")
 	if landmark:
 		landmark.set_development(dev_tier, hypo, energy, board, block)
+	if staging:
+		await _step("dev landmark", "Development…")
 	if exchanges:
 		exchanges.set_development(dev_tier)
 	terrain.set_development(dev_tier, energy)

@@ -114,9 +114,14 @@ func setup(qing: String, hud: Node, player: CharacterBody3D, height_fn: Callable
 	_build_terrace(position.y - float(site.get("low", position.y)) + 1.5, tint)
 
 
+## Staged builds: Funfair.initialize yields a frame per this much work (us; 0 = in one go).
+var pace_budget_us := 0
+var _building := false
+
+
 func set_dev_tier(dev_tier: int) -> void:
 	var t := fair_tier(dev_tier)
-	if t == _tier or _riding != null:
+	if t == _tier or _riding != null or _building:
 		return
 	_tier = t
 	if _fair:
@@ -126,7 +131,10 @@ func set_dev_tier(dev_tier: int) -> void:
 	_fair = Funfair.new()
 	_fair.name = "Funfair"
 	add_child(_fair)
-	_fair.initialize(_qing.hex_to_int() if _qing.length() < 16 else _qing.right(12).hex_to_int(), t)
+	_fair.pace_budget_us = pace_budget_us
+	_building = true
+	await _fair.initialize(_qing.hex_to_int() if _qing.length() < 16 else _qing.right(12).hex_to_int(), t)
+	_building = false
 	if t == 0 and _fair.has_method("set_unlock_hint"):
 		_fair.set_unlock_hint("Opens at Settlement development · grow this QING's Hypobar")
 	if t > 0 and _hud:
@@ -166,7 +174,7 @@ static func _compass(v: Vector2) -> String:
 ## itself) or midway game in reach. Checked by distance every frame, so it works
 ## however the player arrived (walking, landing, set down by a ride).
 func _process(_delta: float) -> void:
-	if _fair == null or _player == null or _riding != null or _paying or _game != null:
+	if _building or _fair == null or _player == null or _riding != null or _paying or _game != null:
 		return
 	# Another wallet connected (or none now): its own progress, read from the chain
 	if not _preview and not _progress_busy and Wallet.address.to_lower() != String(_progress.get("wallet", "")):
@@ -222,6 +230,8 @@ func _process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _building:
+		return
 	if _focus_key == "lot" and event.is_action_pressed("interact"):
 		get_viewport().set_input_as_handled()
 		show_tier_steps()

@@ -45,34 +45,66 @@ var _seat_spots: Array = []     # [pos, facing] chairs / bleacher seats
 var _bench_spots: Array = []
 
 
+## Staged builds (a territory loading behind its card): initialize() yields a frame once this
+## much build work (us) has run since the last one; 0 = in one go (the default, and in play).
+## The order of the builders (and so the RNG sequence and the fair itself) is the same either way.
+var pace_budget_us := 0
+var _pace_t0 := 0
+
+
+func _pace() -> void:
+	if pace_budget_us > 0 and Time.get_ticks_usec() - _pace_t0 > pace_budget_us:
+		await get_tree().process_frame
+		_pace_t0 = Time.get_ticks_usec()
+
+
 func initialize(seed_value: int, tier: int = 3) -> void:
 	_rng.seed = seed_value
+	_pace_t0 = Time.get_ticks_usec()
 	_tier = clampi(tier, 0, 3)
 	_batch.knock = {"Barrel_01": [40.0, "wood"], "Barrel_02": [40.0, "wood"]}  # barrels topple (KnockWorld)
 	# visitors (fewer on light graphics levels: Config.crowd); vendors and the band come on top
 	_npc_cap = Config.crowd([0, 6, 12, 24][_tier], 2 if _tier > 0 else 0)
 	if _tier == 0:
 		_build_survey_lot()
+		await _pace()
 	else:
 		_build_ground()
+		await _pace()
 		_build_rides(seed_value)
+		await _pace()
 		_build_arch()
+		await _pace()
 		_build_midway_stalls()
+		await _pace()
 		_build_plaza_dressing()
+		await _pace()
 		_build_food_court()
+		await _pace()
 		if _tier >= 2:
 			_build_bandstand()
+			await _pace()
 			_build_side_lanes()
+			await _pace()
 			_build_reactor_yard()
+			await _pace()
 			_build_service_area()
+			await _pace()
 			_build_paths_and_garden()
+			await _pace()
 		if _tier >= 3:
 			_build_bleachers()
+			await _pace()
 			_build_launch_support()
+			await _pace()
 			_build_headliner()
+			await _pace()
 		_build_perimeter()
+		await _pace()
 	_batch.flush(self)
+	await _pace()
 	_build_far_proxies()
+	await _pace()
 	_spawn_visitors(seed_value)
 	for n in find_children("*", "Light3D", true, false):
 		if n.has_meta("base_energy"):
