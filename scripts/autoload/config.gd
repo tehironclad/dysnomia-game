@@ -94,10 +94,10 @@ const QUALITY_NAMES := ["Potato (no GPU)", "Low", "Medium", "High", "Ultra"]
 const QUALITY_PRESETS: Array[Dictionary] = [
 	{"ssao": false, "ssil": false, "glow": false, "volumetric_fog": false, "shadow_distance": 60.0, "shadow_splits": 2, "msaa": Viewport.MSAA_DISABLED,
 		"scale": 0.5, "scale_min": 0.4, "scale_max": 0.67, "budget_mp": 0.55, "iter": 24, "shadows": false, "simple_sky": true, "detail": 0.0, "warp_iter": 40,
-		"far": 800.0, "fog_far": true, "crowd": 0.35, "particles": 0.35, "mesh_step": 4, "nb_step": 2},
+		"far": 800.0, "fog_far": true, "crowd": 0.35, "particles": 0.35, "mesh_step": 4, "nb_step": 2, "shadow_atlas": 1024},
 	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 90.0, "shadow_splits": 2, "msaa": Viewport.MSAA_DISABLED,
 		"scale": 0.67, "scale_min": 0.5, "scale_max": 0.85, "budget_mp": 1.0, "iter": 40, "shadows": false, "simple_sky": false, "detail": 0.6, "warp_iter": 70,
-		"far": 1000.0, "fog_far": true, "crowd": 0.5, "particles": 0.5, "mesh_step": 4, "nb_step": 2},
+		"far": 1000.0, "fog_far": true, "crowd": 0.5, "particles": 0.5, "mesh_step": 4, "nb_step": 2, "shadow_atlas": 1024},
 	{"ssao": false, "ssil": false, "glow": true, "volumetric_fog": false, "shadow_distance": 90.0, "shadow_splits": 2, "msaa": Viewport.MSAA_DISABLED,
 		"scale": 0.8, "scale_min": 0.6, "scale_max": 1.0, "budget_mp": 2.1, "iter": 64, "shadows": true, "simple_sky": false, "detail": 1.0, "warp_iter": 110,
 		"far": 0.0, "fog_far": false, "crowd": 0.75, "particles": 0.75, "mesh_step": 2, "nb_step": 1},
@@ -106,7 +106,7 @@ const QUALITY_PRESETS: Array[Dictionary] = [
 		"far": 0.0, "fog_far": false, "crowd": 1.0, "particles": 1.0, "mesh_step": 2, "nb_step": 1},
 	{"ssao": true, "ssil": true, "glow": true, "volumetric_fog": true, "shadow_distance": 320.0, "shadow_splits": 4, "msaa": Viewport.MSAA_4X,
 		"scale": 1.0, "scale_min": 0.85, "scale_max": 1.0, "budget_mp": 8.3, "iter": 128, "shadows": true, "simple_sky": false, "detail": 1.0, "warp_iter": 200,
-		"far": 0.0, "fog_far": false, "crowd": 1.0, "particles": 1.0, "mesh_step": 2, "nb_step": 1, "far_min": 1800.0, "shadow_atlas": 8192},
+		"far": 0.0, "fog_far": false, "crowd": 1.0, "particles": 1.0, "mesh_step": 2, "nb_step": 1, "far_min": 1800.0, "shadow_atlas": 8192, "ultra_fx": true},
 ]
 
 ## Frame-rate follow: a 10 s window, after a 12 s settle on every new scene.
@@ -115,6 +115,8 @@ const SETTLE_S := 12.0
 const MAX_CHANGES := 4
 const AUTO_TOP := 3  # auto never goes past High unless calibration measured lots of headroom (auto_top)
 const PERFORMANCE_TOP := 1  # performance mode: Low at most
+## A relaunch by the automatic graphics marks itself, so its --rendering-method isn't taken for the player's choice.
+const AUTO_RENDERER_ARG := "--auto-renderer"
 
 var _mon_time := 0.0
 var _mon_frames := 0
@@ -155,7 +157,8 @@ func _ready() -> void:
 			_explicit_quality = true
 			save_settings()
 	var args := OS.get_cmdline_args()
-	_explicit_renderer = args.has("--rendering-method") or args.has("--rendering-driver")
+	_explicit_renderer = (args.has("--rendering-method") or args.has("--rendering-driver")) \
+		and not OS.get_cmdline_user_args().has(AUTO_RENDERER_ARG)
 	_ensure_buses()
 	if _interactive():
 		var rec := recommend(RenderingServer.get_video_adapter_type(), RenderingServer.get_video_adapter_name(),
@@ -169,7 +172,9 @@ func _ready() -> void:
 			save_settings()
 			_note("Graphics set to %s for this PC (%s); measuring on arrival. F2 to change." % [QUALITY_NAMES[graphics_quality], detected])
 		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
-		if auto_quality and not _explicit_renderer and renderer_pref != "" and renderer_pref != RenderingServer.get_current_rendering_method():
+		# (Not again from a relaunch of ours: if the renderer still differs, it couldn't start; carry on.)
+		if auto_quality and not _explicit_renderer and renderer_pref != "" and renderer_pref != RenderingServer.get_current_rendering_method() \
+				and not OS.get_cmdline_user_args().has(AUTO_RENDERER_ARG):
 			_relaunch.call_deferred(renderer_pref)
 			return
 		get_viewport().size_changed.connect(func(): _dyn_ok = false; apply())
@@ -198,9 +203,10 @@ func _relaunch(method: String) -> void:
 	# from the project folder (the editor binary) passes it.
 	var args: Array = relaunch_args(method, OS.has_feature("template"), ProjectSettings.globalize_path("res://"))
 	var user := OS.get_cmdline_user_args()
-	if not user.is_empty():
-		args.append("--")
-		args.append_array(user)
+	if not user.has(AUTO_RENDERER_ARG):
+		user.append(AUTO_RENDERER_ARG)  # the new process knows its --rendering-method was ours, not the player's
+	args.append("--")
+	args.append_array(user)
 	if OS.create_process(OS.get_executable_path(), PackedStringArray(args)) > 0:
 		get_tree().quit()
 	else:
@@ -664,7 +670,14 @@ func apply() -> void:
 		_sun.shadow_enabled = p["shadows"]
 		_sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if int(p.get("shadow_splits", 4)) >= 4 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	if DisplayServer.get_name() != "headless":
+		# The sun's shadow atlas: 4096 (Godot's default) at Medium/High; 1024 where nothing casts (Potato, Low:
+		# 16 MB of VRAM instead of 64 on a 1 GB shared iGPU); 8192 with soft high filtering and full-size
+		# SSAO/SSIL at the High preset of each (project: medium, half size) on Ultra.
 		RenderingServer.directional_shadow_atlas_set_size(int(p.get("shadow_atlas", 4096)), true)
+		var ultra := bool(p.get("ultra_fx", false))
+		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH if ultra else RenderingServer.SHADOW_QUALITY_SOFT_LOW)
+		RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_HIGH if ultra else RenderingServer.ENV_SSAO_QUALITY_MEDIUM, not ultra, 0.5, 2, 50.0, 300.0)
+		RenderingServer.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_HIGH if ultra else RenderingServer.ENV_SSIL_QUALITY_MEDIUM, not ultra, 0.5, 4, 50.0, 300.0)
 	if is_instance_valid(_terrain_material):
 		_terrain_material.set_shader_parameter("max_iter", int(p["iter"]))
 		_terrain_material.set_shader_parameter("detail_strength", float(p["detail"]))

@@ -698,13 +698,14 @@ func _toggle_settings() -> void:
 		player.process_mode = Node.PROCESS_MODE_DISABLED
 
 
-## F3: the performance overlay (FPS, process time, draw calls, memory…).
+## F3: the performance overlay. First the status line (level, render scale, fps, frame and
+## GPU time), again for the graphs (FPS, process time, draw calls, memory…), again to hide.
 func _toggle_monitor() -> void:
 	if _monitor == null:
 		_monitor = VBoxContainer.new()
 		_monitor.set_script(load("res://scripts/debug/monitor_overlay.gd"))
 		_monitor.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 		_monitor.position = Vector2(-300, -420)
+		_monitor.visible = false
 		hud.add_child(_monitor)
-		return
-	_monitor.visible = not _monitor.visible
+	_monitor.cycle()

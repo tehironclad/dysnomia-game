@@ -99,6 +99,27 @@ func _create_graph(monitor: int, monitor_name: String, unit: String = "") -> voi
 	_graphs.push_back(graph)
 
 
+## F3 cycles: the status line alone (small) → with the graphs → hidden.
+func cycle() -> void:
+	if not visible:
+		visible = true
+		_set_compact(true)
+	elif _compact:
+		_set_compact(false)
+	else:
+		visible = false
+
+
+var _compact := false
+
+
+func _set_compact(on: bool) -> void:
+	_compact = on
+	for item in _graphs:
+		if item is Control and item != _status:
+			(item as Control).visible = not on
+
+
 func _process(delta: float) -> void:
 	if not visible:
 		return

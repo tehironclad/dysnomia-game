@@ -168,11 +168,25 @@
 - Size and layout: a territory is 724 m square (`JuliaHeightfield.SIZE_M`; LEARNINGS §11 "Size"). Place
   new buildings with `LandmarkPlan.find_site` inside `TerritoryLayout.BORDER_KEEP_M`, clear of the sites
   already placed, and add them to `territory_v2._road_places()` so a road (`scripts/world/roads/`) reaches them.
-- Automatic graphics (`Config.recommend/decide`): on first launch the GPU (name and type), cores and RAM pick
-  the level and renderer; a software or old Intel GPU relaunches the game itself with
-  `--rendering-method gl_compatibility` (an explicit `--rendering-method`/`--quality=` on the command line is
-  respected). In play, 10 s frame-rate windows step the level down (<24 fps) or up (headroom; never past
-  High). F2 has the "Adjust graphics automatically" box. Tools run with `-s` and headless runs skip all of this.
+- Automatic graphics (`Config`, docs/BUILDING.md "Graphics levels"): measured, not guessed. `recommend()` (GPU name/type,
+  cores, RAM) is only the first guess of level + renderer (old Intel HD/UHD and software → `gl_compatibility`, a
+  relaunch; `Config.relaunch_args`: exported builds never pass `--path`). On the first territory arrival the warp's
+  card runs a calibration (`CalibrationRun` measures, pure `GraphicsCalibration.next` decides: V-Sync off, median
+  frame time per level, down if over 60 fps's budget, up with headroom; Ultra only if High costs < 40 %; Potato
+  that can't hold 60 → target 30 and one measured trial of the other renderer on the next launch). In play,
+  dynamic resolution (pure `DynamicScale`: GPU-timed where the renderer times it, FSR 1 on real GPUs, bilinear on
+  Compatibility/software) holds the target inside the level's scale range, and only when it is pinned do 10 s
+  windows step the level (`decide`; up only at full scale, never past `auto_top`). Render scale is relative to
+  the window's pixels (`budget_mp`: 4K/Retina render ≈ 1080p of work; the UI is never scaled). Levels change
+  detail only (`QUALITY_PRESETS`: scale range, MSAA only from High, view distance + depth fog, ground mesh
+  step, neighbour ground step, crowd/particle shares via `Config.crowd()`/`particles()`, DetailCull K); read the
+  level with `Config.level()` (performance mode caps it at Low). F2 shows the GPU in use, renderer, level, render
+  scale, live fps/frame/GPU time, the last calibration, Recalibrate, Try other renderer, Performance mode, Dynamic
+  resolution and the target; F3's overlay has the same status line. Tools run with `-s` and headless runs skip all
+  of this (`tools/calibrate.gd` runs it under xvfb). Loading: `Warp` loads the territory scene on a thread during
+  the dive; `territory_v2` builds in stages (`build_progress`/`built`/`is_built`; tools build in one go unless
+  `--staged`/`force_staged`), drawing no 3D until built; the ground mesh is computed on a thread; roads are cached
+  in `user://cache/roads` (bump `TerritoryRoads.VERSION`). `tools/load_time.gd [-- --staged --cold]` times a load.
 - QING chat anywhere (LEARNINGS §17): autoload `ChatFeed` keeps one live `RoomFeed` per room (shared by the HUD,
   the hall, the tables and Phenomena; it survives scene changes) and owns the overlay `ChatHud`: the bar
   (`ChatBar`, T; Enter posts, Esc keeps the text, Up recalls, 1–4 quick lines, Tab say/post when an autoload
