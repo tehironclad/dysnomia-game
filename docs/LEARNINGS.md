@@ -21,7 +21,7 @@ attach that repo read-only.
 | WORLD, WAR, VITUS, H2O, GWAT | **Not deployed.** The Dysnomia deployer `0x0474606332105A1dA6FC8EF7De2470551D389Cb9` is still at nonce **712**, same as 2026-10-15. | [live] |
 | Territories (QINGs) | **942** `NewQing` events on MAP (first block 22,813,947, newest 28,100,833). The site's snapshot (2026-11-17) has 940. The game ships **263**. | [live] |
 | The game's backend `https://entropy-dysnomia.vercel.app` | **Gone**: `DEPLOYMENT_NOT_FOUND` on every route. | [live] |
-| The site, now | **`https://systm0.vercel.app`** is healthy: `"store":"none: every API reads the chain"`, `redis:false`. | [live] |
+| The site, now | **`https://enterdysnomia.com`** (since 2026-11-25; `systm0.vercel.app` answers 307 to it). Its API relays to the pulse node on the box, and falls back to reading the chain itself. The game's default (`Contracts.DEFAULT_SITE_API`); a saved retired default is moved to it on load, a typed address is kept. | [live] |
 | The game's Supabase project | Host does not resolve (NXDOMAIN). Realtime multiplayer and voice are dead. | [live] |
 | Players | ~**55** YUE players (`data/players.json`, block 28,122,418); 28 "onboarded roster" players in Oct. | [src] |
 | Identities | **21,255** LAUs, only ~1,650 distinct usernames (KEK ×9,424, "." ×4,720 …). | [src] |

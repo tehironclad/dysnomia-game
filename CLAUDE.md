@@ -19,8 +19,8 @@
 - **No JSON-RPC batches** (the public node serialises them). Use Multicall3
   `0xca11bde05977b3631167028862be2a173976ca11`.
 - **WORLD/WAR/GWAT/VITUS/H2O are not deployed.** Never hardcode guessed addresses.
-- **Site API** (an optional accelerator only): `https://systm0.vercel.app`.
-  `entropy-dysnomia.vercel.app` and the Supabase project are gone.
+- **Site API** (an optional accelerator only): `https://enterdysnomia.com` (`Contracts.DEFAULT_SITE_API`;
+  `systm0.vercel.app` redirects there). `entropy-dysnomia.vercel.app` and the Supabase project are gone.
 - **Territory visuals depend only on territory state**, never on the viewer.
 
 **Verify:**

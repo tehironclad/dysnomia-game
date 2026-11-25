@@ -37,7 +37,7 @@ var vsync: bool = true
 # Chain
 var rpc_url: String = "https://rpc.pulsechain.com"
 ## Optional accelerator (chain-backed site endpoints). The game works without it.
-var site_api_base: String = "https://systm0.vercel.app"
+var site_api_base: String = Contracts.DEFAULT_SITE_API
 var site_api_enabled: bool = true
 
 # Wallet relay (local HTTP + WebSocket)
@@ -367,7 +367,7 @@ func load_settings() -> void:
 	fullscreen = bool(c.get_value("display", "fullscreen", fullscreen))
 	vsync = bool(c.get_value("display", "vsync", vsync))
 	rpc_url = String(c.get_value("chain", "rpc_url", rpc_url))
-	site_api_base = String(c.get_value("chain", "site_api_base", site_api_base))
+	site_api_base = Contracts.site_api_for_saved(String(c.get_value("chain", "site_api_base", site_api_base)))
 	site_api_enabled = bool(c.get_value("chain", "site_api_enabled", site_api_enabled))
 	wallet_bridge_port = int(c.get_value("wallet", "bridge_port", wallet_bridge_port))
 	wallet_browser = String(c.get_value("wallet", "browser", wallet_browser))

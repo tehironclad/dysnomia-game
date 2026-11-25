@@ -55,3 +55,12 @@ func test_arg_types() -> void:
 	eq(Contracts.arg_types("Start(address,string,string)"), ["address", "string", "string"])
 	eq(Contracts.arg_types("Pi()"), [])
 	eq(Contracts.arg_types("aggregate3((address,bool,bytes)[])"), ["(address,bool,bytes)[]"])
+
+
+func test_saved_site_api_follows_a_retired_default_only() -> void:
+	eq(Contracts.DEFAULT_SITE_API, "https://enterdysnomia.com")
+	for old in ["https://systm0.vercel.app", "https://systm0.vercel.app/", "HTTPS://Systm0.vercel.app",
+			"https://entropy-dysnomia.vercel.app"]:
+		eq(Contracts.site_api_for_saved(old), Contracts.DEFAULT_SITE_API, old)
+	for own in ["https://pulse.enterdysnomia.com", "http://127.0.0.1:8788", "https://enterdysnomia.com", ""]:
+		eq(Contracts.site_api_for_saved(own), own, own)

@@ -116,7 +116,7 @@ WebSockets pass through both tunnels with no extra settings.
 ## 3. Tell the game where the server is
 
 Either:
-- **for everyone:** the site's `https://systm0.vercel.app/api/game-server` returns `{"url": "wss://…"}`.
+- **for everyone:** the site's `https://enterdysnomia.com/api/game-server` returns `{"url": "wss://…"}`.
   The game asks it when a player arrives in a territory. Set it to your tunnel address.
 - **per player:** **F2 → Online & voice… → Game server**: paste `wss://…` and click Apply. Leave it blank
   to use the site's address.

@@ -12,7 +12,12 @@ extends RefCounted
 
 const CHAIN_ID := 369
 const DEFAULT_RPC := "https://rpc.pulsechain.com"
-const DEFAULT_SITE_API := "https://systm0.vercel.app"
+## The Entropy site (an optional accelerator). enterdysnomia.com since 2026-11-25;
+## systm0.vercel.app now redirects there.
+const DEFAULT_SITE_API := "https://enterdysnomia.com"
+## Earlier defaults. A settings file that still holds one of these follows the
+## default (site_api_for_saved); an address the player typed is kept.
+const RETIRED_SITE_APIS := ["https://systm0.vercel.app", "https://entropy-dysnomia.vercel.app"]
 
 const MOTZKIN_PRIME := 953467954114363
 
@@ -261,3 +266,14 @@ static func split_types(inner: String) -> Array:
 
 static func is_world_deployed() -> bool:
 	return not String(WORLD_ADDRESSES["WORLD"]).is_empty()
+
+
+## The site API to use for a saved setting: a retired default (any case,
+## trailing slash or not) becomes today's default; anything else is the
+## player's own choice and stays. Empty stays empty.
+static func site_api_for_saved(saved: String) -> String:
+	var norm := saved.strip_edges().trim_suffix("/").to_lower()
+	for old in RETIRED_SITE_APIS:
+		if norm == String(old):
+			return DEFAULT_SITE_API
+	return saved

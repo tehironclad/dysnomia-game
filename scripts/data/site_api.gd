@@ -1,7 +1,7 @@
 class_name SiteApi
 extends Node
 ## Optional accelerator: the Entropy site's chain-backed endpoints
-## (default https://systm0.vercel.app). Every feature must also work without
+## (default https://enterdysnomia.com, Contracts.DEFAULT_SITE_API). Every feature must also work without
 ## it. Never use it for XP/levels/achievements (those endpoints are Redis-backed
 ## and empty in production). See docs/LEARNINGS.md §8.
 ##
