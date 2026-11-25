@@ -49,6 +49,9 @@ var hightops: Array[Vector3] = [Vector3(-5.9, 0, -1.7), Vector3(1.9, 0, -1.9)]
 var barrel_table := Vector3(7.0, 0, -6.0)
 var dart_pos := Vector3(IN_X - 0.02, 1.73, -3.3)
 var chandelier_at := Vector3(ORDER_X, H - 0.85, -2.7)
+## Knockable (KnockWorld) per stool, in `stools` order, then the barrel table's.
+var stool_knocks: Array = []
+var cue_stand_at := Vector3(8.95, 0, 3.6)
 
 var _root: Node3D
 var _b: PubKit.Batch
@@ -60,6 +63,7 @@ var _chrome: StandardMaterial3D
 var _dark: StandardMaterial3D
 var _brass: StandardMaterial3D
 var _brick: StandardMaterial3D
+var _stool_xfs: Array = []  # every stool, drawn as one MultiMesh (knockable slots)
 
 
 static func order_spot() -> Vector3:
@@ -85,6 +89,7 @@ func build(root: Node3D, menu_lines: Array) -> void:
 	_decor()
 	_lights()
 	_b.commit(_root, "PubBatch")
+	_commit_stools()
 	for l in lights:
 		light_base.append(l.light_energy)
 
@@ -206,9 +211,22 @@ func _bar() -> void:
 		var hm := PubKit.mesh_instance(PubKit.cyl(0.018, 0.026, 0.2, 10), Vector3(0, 0.1, 0), PubKit.neon(handle_cols[i], 1.6), pivot)
 		tap_handles.append(hm)
 	# Glasses drying upside down on a mat beside the taps.
-	var gmat := PubKit.drinkware()
+	var gx: Array = []
 	for i in 10:
-		_b.add_mesh(PubKit.cyl(0.035, 0.03, 0.14, 10), Transform3D(Basis(), Vector3(tx + 0.65 + float(i % 5) * 0.1, top_y + 0.07, tz + float(i / 5) * 0.1)), gmat)
+		gx.append(Transform3D(Basis(), Vector3(tx + 0.65 + float(i % 5) * 0.1, top_y + 0.072, tz + float(i / 5) * 0.1)))
+	var gmm := MultiMesh.new()
+	gmm.transform_format = MultiMesh.TRANSFORM_3D
+	gmm.mesh = PubKit.cyl(0.035, 0.03, 0.14, 10)
+	gmm.instance_count = gx.size()
+	for i in gx.size():
+		gmm.set_instance_transform(i, gx[i])
+	var gmi := MultiMeshInstance3D.new()
+	gmi.name = "DryingGlasses"
+	gmi.multimesh = gmm
+	gmi.material_override = PubKit.drinkware()
+	gmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_root.add_child(gmi)
+	Knockable.add_slots(gmi, 0.3, "glass", {"cyl": true, "shrink": 1.0, "xforms": gx})  # jump on the bar and they go
 	_b.box_at(Vector3(0.55, 0.01, 0.25), Vector3(tx + 0.85, top_y + 0.005, tz + 0.05), _dark)
 	# The register at the far end, a succulent at the near end.
 	PubKit.place(_root, "CashRegister_01", Vector3(x1 - 0.55, top_y, cz - 0.05), 180.0, 0.85)
@@ -232,22 +250,50 @@ func _bar() -> void:
 	_collider(Vector3(0.75, 1.0, 0.75), barrel_table + Vector3(0, 0.5, 0))
 
 
-## A bar stool, batched: leather seat on a wooden rim, steel column, brass foot ring.
+## A bar stool: leather seat on a wooden rim, steel column, brass foot ring.
+## Every stool is one instance of a MultiMesh (_commit_stools), each knockable.
 func _stool(at: Vector3) -> void:
-	var seat := PubKit.flat(Color(0.42, 0.12, 0.08), 0.55)
-	_b.add_mesh(PubKit.cyl(0.2, 0.19, 0.07, 16), Transform3D(Basis(), at + Vector3(0, 0.745, 0)), seat)
-	_b.add_mesh(PubKit.cyl(0.205, 0.205, 0.035, 16), Transform3D(Basis(), at + Vector3(0, 0.7, 0)), _top)
-	_b.add_mesh(PubKit.cyl(0.026, 0.026, 0.68, 8), Transform3D(Basis(), at + Vector3(0, 0.35, 0)), _steel)
-	_b.add_mesh(PubKit.cyl(0.2, 0.22, 0.03, 16), Transform3D(Basis(), at + Vector3(0, 0.015, 0)), _steel)
+	_stool_xfs.append(Transform3D(Basis(Vector3.UP, _rng.randf_range(-PI, PI)), at))
+
+
+## The stool, modelled once: one surface per material.
+func _stool_mesh() -> ArrayMesh:
+	var sb := PubKit.Batch.new()
+	sb.add_mesh(PubKit.cyl(0.2, 0.19, 0.07, 16), Transform3D(Basis(), Vector3(0, 0.745, 0)), PubKit.flat(Color(0.42, 0.12, 0.08), 0.55))
+	sb.add_mesh(PubKit.cyl(0.205, 0.205, 0.035, 16), Transform3D(Basis(), Vector3(0, 0.7, 0)), PubKit.flat(Color(0.4, 0.26, 0.16), 0.5))
+	sb.add_mesh(PubKit.cyl(0.026, 0.026, 0.68, 8), Transform3D(Basis(), Vector3(0, 0.35, 0)), _steel)
+	sb.add_mesh(PubKit.cyl(0.2, 0.22, 0.03, 16), Transform3D(Basis(), Vector3(0, 0.015, 0)), _steel)
 	var ring := TorusMesh.new()
 	ring.inner_radius = 0.15
 	ring.outer_radius = 0.17
 	ring.rings = 16
 	ring.ring_segments = 6
-	_b.add_mesh(ring, Transform3D(Basis(), at + Vector3(0, 0.3, 0)), _brass)
+	sb.add_mesh(ring, Transform3D(Basis(), Vector3(0, 0.3, 0)), _brass)
 	for k in 3:
 		var a := TAU * k / 3.0
-		_b.box_at(Vector3(0.15, 0.015, 0.015), at + Vector3(cos(a) * 0.08, 0.3, sin(a) * 0.08), _brass, Vector3(0, -a, 0))
+		sb.box_at(Vector3(0.15, 0.015, 0.015), Vector3(cos(a) * 0.08, 0.3, sin(a) * 0.08), _brass, Vector3(0, -a, 0))
+	return sb.to_mesh()
+
+
+func _commit_stools() -> void:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = _stool_mesh()
+	mm.instance_count = _stool_xfs.size()
+	for i in _stool_xfs.size():
+		mm.set_instance_transform(i, _stool_xfs[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = "Stools"
+	mmi.multimesh = mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_root.add_child(mmi)
+	stool_knocks = Knockable.add_slots(mmi, 7.0, "metal", {"cyl": true, "shrink": 0.95, "xforms": _stool_xfs})
+
+
+## A seated regular's stool stays put (PubLife): nobody pulls a stool from under someone.
+func hold_stool(i: int) -> void:
+	if i >= 0 and i < stool_knocks.size() and is_instance_valid(stool_knocks[i]):
+		(stool_knocks[i] as Node).queue_free()
 
 
 func _back_bar() -> void:
@@ -421,10 +467,11 @@ func _seating() -> void:
 		PubKit.place(_root, "sofa_02", c + Vector3(0, 0, -1.1), 0.0, 1.0)
 		for sz in [1.1, -1.1]:
 			_collider(Vector3(1.85, 0.75, 0.85), c + Vector3(0, 0.37, sz))
-		PubKit.place(_root, "round_wooden_table_01", c, 15.0 + i * 50.0, Vector3(0.5, 0.48, 0.5))
-		_drink(c + Vector3(0.1, 0.48, 0.08))
-		_drink(c + Vector3(-0.12, 0.48, -0.06))
-		_candle(c + Vector3(0.0, 0.48, -0.12))
+		var lt := PubKit.place(_root, "round_wooden_table_01", c, 15.0 + i * 50.0, Vector3(0.5, 0.48, 0.5))
+		Knockable.add(lt, 12.0, "wood", {"cyl": true})
+		_loose_drink(c + Vector3(0.1, 0.48, 0.08))
+		_loose_drink(c + Vector3(-0.12, 0.48, -0.06))
+		_loose_candle(c + Vector3(0.0, 0.48, -0.12))
 		_rug(Vector3(c.x, 0.004, c.z - 0.05), Vector2(2.8, 3.3), i == 1)
 	# The booth row on the left wall: high-backed benches back to back.
 	var upholstery := PubKit.flat(Color(0.42, 0.07, 0.08), 0.5)
@@ -451,11 +498,13 @@ func _seating() -> void:
 		_drink(Vector3(bx + 0.05, 0.77, zc - 0.2))
 		_collider(Vector3(depth, 1.2, 2.1), Vector3(bx, 0.6, zc))
 	# High-tops with a candle lantern and a drink or two.
+	# Knockable (no collider): run into one and it goes over with its glass and candle.
 	for p in hightops:
-		PubKit.place(_root, "round_wooden_table_01", p, _rng.randf_range(0, 360), Vector3(0.7, 1.0, 0.7))
-		_candle(p + Vector3(0, 1.0, 0))
-		_drink(p + Vector3(0.22, 1.0, 0.1))
-		_collider(Vector3(0.8, 1.0, 0.8), p + Vector3(0, 0.5, 0))
+		var ht := PubKit.place(_root, "round_wooden_table_01", p, _rng.randf_range(0, 360), Vector3(0.7, 1.0, 0.7))
+		Knockable.add(ht, 18.0, "wood", {"cyl": true})
+		_loose_candle(p + Vector3(0, 1.0, 0))
+		_loose_drink(p + Vector3(0.22, 1.0, 0.1))
+	_cue_stand(cue_stand_at)
 
 
 # --- Decor --------------------------------------------------------------------------
@@ -511,6 +560,56 @@ func _drink(pos: Vector3) -> void:
 	var h := _rng.randf_range(0.11, 0.17)
 	_b.add_mesh(PubKit.cyl(0.04, 0.034, h, 12), Transform3D(Basis(), pos + Vector3(0, h * 0.5, 0)), PubKit.drinkware())
 	_b.add_mesh(PubKit.cyl(0.034, 0.03, h * 0.7, 12), Transform3D(Basis(), pos + Vector3(0, h * 0.36, 0)), PubKit.glass(Color(c.r, c.g, c.b, 0.85), c, 0.6))
+
+
+## A drink you can knock over: its own little node (the glass and what's in it).
+func _loose_drink(pos: Vector3) -> void:
+	var cols := [Color(1.0, 0.7, 0.2), Color(0.95, 0.3, 0.5), Color(0.3, 0.9, 0.5), Color(0.45, 0.6, 1.0)]
+	var c: Color = cols[_rng.randi() % cols.size()]
+	var h := _rng.randf_range(0.11, 0.17)
+	var n := Node3D.new()
+	n.name = "Drink"
+	n.position = pos
+	_root.add_child(n)
+	PubKit.mesh_instance(PubKit.cyl(0.04, 0.034, h, 12), Vector3(0, h * 0.5, 0), PubKit.drinkware(), n)
+	PubKit.mesh_instance(PubKit.cyl(0.034, 0.03, h * 0.7, 12), Vector3(0, h * 0.36, 0), PubKit.glass(Color(c.r, c.g, c.b, 0.85), c, 0.6), n)
+	Knockable.add(n, 0.4, "glass", {"cyl": true, "shrink": 1.0})
+
+
+func _loose_candle(pos: Vector3) -> void:
+	var n := Node3D.new()
+	n.name = "Candle"
+	n.position = pos
+	_root.add_child(n)
+	PubKit.mesh_instance(PubKit.cyl(0.045, 0.05, 0.12, 10), Vector3(0, 0.06, 0), PubKit.glass(Color(1.0, 0.6, 0.3, 0.7), Color(1.0, 0.55, 0.2), 3.0), n)
+	Knockable.add(n, 0.5, "glass", {"cyl": true, "shrink": 1.0})
+
+
+## A floor stand of pool cues by the game room: knock it and the lot goes.
+func _cue_stand(at: Vector3) -> void:
+	var n := Node3D.new()
+	n.name = "CueStand"
+	n.position = at
+	_root.add_child(n)
+	var cb := PubKit.Batch.new()
+	cb.add_mesh(PubKit.cyl(0.2, 0.22, 0.05, 14), Transform3D(Basis(), Vector3(0, 0.025, 0)), _wood)
+	cb.add_mesh(PubKit.cyl(0.018, 0.018, 0.9, 8), Transform3D(Basis(), Vector3(0, 0.45, 0)), _wood)
+	cb.add_mesh(PubKit.cyl(0.17, 0.17, 0.03, 14), Transform3D(Basis(), Vector3(0, 0.88, 0)), _wood)
+	var tip := PubKit.flat(Color(0.12, 0.3, 0.75), 0.6)
+	var butt := PubKit.flat(Color(0.18, 0.08, 0.04), 0.4)
+	var shaft := PubKit.flat(Color(0.86, 0.72, 0.5), 0.45)
+	for k in 5:
+		var a := TAU * k / 5.0
+		var foot := Vector3(cos(a) * 0.12, 0.05, sin(a) * 0.12)
+		var top := Vector3(cos(a) * 0.15, 1.45, sin(a) * 0.15)
+		var up := (top - foot).normalized()
+		var basis := Basis(Quaternion(Vector3.UP, up))
+		var len := foot.distance_to(top)
+		cb.add_mesh(PubKit.cyl(0.011, 0.016, len * 0.55, 8), Transform3D(basis, foot + up * len * 0.275), butt)
+		cb.add_mesh(PubKit.cyl(0.007, 0.011, len * 0.45, 8), Transform3D(basis, foot + up * len * 0.775), shaft)
+		cb.add_mesh(PubKit.cyl(0.0075, 0.0075, 0.02, 6), Transform3D(basis, top), tip)
+	cb.commit(n, "Cues")
+	Knockable.add(n, 6.0, "wood", {"cyl": true, "shrink": 1.0})
 
 
 func _candle(pos: Vector3) -> void:

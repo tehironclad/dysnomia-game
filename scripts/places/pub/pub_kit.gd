@@ -261,6 +261,17 @@ class Batch:
 			_tools[mat] = st
 		(_tools[mat] as SurfaceTool).append_from(mesh, 0, xf)
 
+	## Everything collected as ONE mesh, a surface per material (a prop drawn
+	## many times, e.g. as a MultiMesh).
+	func to_mesh() -> ArrayMesh:
+		var mesh := ArrayMesh.new()
+		for mat in _tools:
+			var st: SurfaceTool = _tools[mat]
+			st.set_material(mat)
+			st.commit(mesh)
+		_tools.clear()
+		return mesh
+
 	func commit(parent: Node3D, name_prefix: String = "Batch") -> void:
 		var i := 0
 		for mat in _tools:
