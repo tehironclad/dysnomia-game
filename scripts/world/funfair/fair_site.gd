@@ -382,8 +382,10 @@ func _build_plaques() -> void:
 	_plaques.clear()
 	for g in _fair.game_spots:
 		var face: Vector3 = g.get("face", Vector3.BACK)
-		var at: Vector3 = g["pos"] - face.normalized() * 1.2 + Vector3.UP * 0.66
-		var l := FairKit.label(_fair, "", at, 30, Color(1.0, 0.86, 0.55) * 1.5, atan2(face.x, face.z), Color(0.02, 0.01, 0.03), 0.0034)
+		# On the counter's front, off to one side (a stall's centre post stands in front of the middle)
+		var side: Vector3 = Vector3.UP.cross(face).normalized()
+		var at: Vector3 = g["pos"] - face.normalized() * 1.2 + Vector3.UP * 0.62 + side * 0.78
+		var l := FairKit.label(_fair, "", at, 28, Color(1.0, 0.86, 0.55) * 1.5, atan2(face.x, face.z), Color(0.02, 0.01, 0.03), 0.0032)
 		l.name = "Price_" + String(g["id"])
 		_plaques[String(g["id"])] = l
 	_update_plaques()
@@ -394,12 +396,12 @@ func _update_plaques(preview_left: int = -1) -> void:
 		var l: Label3D = _plaques[id]
 		if not is_instance_valid(l):
 			continue
-		var t := Prices.menu_line().to_upper()
+		var t := "%s A PLAY\nSTRIP OF %d: %s" % [Prices.play_text(), Prices.STRIP_PLAYS, Prices.strip_text()]
 		var n := plays_left(id) if preview_left < 0 else preview_left
 		if n > 0:
-			t += "\nYOUR STRIP: %d PLAY%s LEFT%s" % [n, "" if n == 1 else "S", " (PREVIEW)" if preview_left >= 0 else ""]
+			t += "\nYOUR STRIP: %d PLAY%s LEFT%s" % [n, "" if n == 1 else "S", "\n(PREVIEW)" if preview_left >= 0 else ""]
 		elif Wallet.address == "" and preview_left < 0:
-			t += "\nPRACTICE FREE · NO WALLET"
+			t += "\nPRACTICE FREE (NO WALLET)"
 		if l.text != t:
 			l.text = t
 

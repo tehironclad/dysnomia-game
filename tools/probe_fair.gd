@@ -202,7 +202,7 @@ func _probe_strips(fair, player) -> void:
 	var prompt: String = fair._hud.prompt.text
 	_check(prompt.contains(PR.menu_line()), "a stall's prompt shows the prices: %s" % prompt)
 	var plaque: Label3D = fair._plaques.get(game)
-	_check(plaque != null and plaque.text.begins_with(PR.menu_line().to_upper()), "its counter plaque: %s" % (plaque.text.replace("\n", " | ") if plaque else "—"))
+	_check(plaque != null and plaque.text.contains("STRIP OF %d: %s" % [PR.STRIP_PLAYS, PR.strip_text()]), "its counter plaque: %s" % (plaque.text.replace("\n", " | ") if plaque else "—"))
 	await _press("interact")
 	var choice = TCH.current()
 	var texts: Array = choice.buttons.map(func(b): return String(b.text)) if choice else []
