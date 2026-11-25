@@ -9,6 +9,15 @@ extends Node
 ##   top(board, n) -> {ok, rows} | {ok: false, error: "—"}
 ##   submit(board, entry) -> {ok, rank, row} | {ok: false, error}
 ##   is_online(), can_talk(), mute(wallet), unmute(wallet), is_muted(wallet)
+##   sign_in(), sign_in_state(), can_sign_in(), announce_place(place, qing), claim(kind, qing)
+##   names: LauNames (the chain's names for wallets), activity: NetActivity (the feed)
+##
+## Sign-in: once a wallet is connected and the server answers, the game signs in
+## by itself: a saved session token for that server and wallet if there is one
+## (no signature), else one line first (AUTO_PROMPT) and then the free personal_sign
+## of the text the client builds (NetProto.login_message). Declined: stays a guest,
+## never asked again for that wallet until the player clicks Sign in (F2 · Online,
+## or the notification panel). A new wallet signs in again (a new connection).
 ##
 ## The server URL comes from Settings (F2 · Online) or, if blank, from the
 ## site: GET <site>/api/game-server → {"url": "wss://…"}. Autoloads do no
@@ -26,6 +35,9 @@ const SERVER_SCENE := "res://scenes/net/game_server.tscn"
 const RETRY_FIRST_S := 5.0
 const RETRY_MIN_S := 20.0
 const RETRY_MAX_S := 300.0
+const AUTO_PROMPT := "Sign in to the game server so others see your name: one free signature, not a transaction."
+const AUTO_DELAY_S := 2.5        ## the prompt shows this long before the wallet asks
+const TOKEN_MARGIN_S := 600      ## a saved token is not used in its last 10 minutes
 
 # settings (user://net.cfg)
 var online_enabled := true
@@ -50,6 +62,12 @@ var _pending_chat: Array = []
 var _signing := false
 var _logged_offline := false
 var _url_override := ""
+var names: LauNames
+var activity: NetActivity
+var declined := {}            # wallet → true: said no to the sign-in (asked again only by a click)
+var _auto_key := ""           # the url|wallet|connection the automatic sign-in already ran for
+var _auto_waiting := false    # the prompt is showing; the wallet asks next
+var _last_sign_stage := ""    # the last Wallet.sign_message failure stage ("sign" = refused in the wallet)
 
 
 func _ready() -> void:
@@ -71,11 +89,14 @@ func _ready() -> void:
 			return  # a sign-in is offered instead (send_chat)
 		notice.emit(text))
 	client.auth_changed.connect(_on_auth)
-	client.auth_failed.connect(func(reason):
-		_signing = false
-		_pending_chat.clear()
-		notice.emit("Sign-in failed: %s. You can still see everyone." % reason))
+	client.auth_failed.connect(_on_auth_failed)
 	client.signer = _wallet_signer
+	names = LauNames.new()
+	names.name = "Names"
+	add_child(names)
+	activity = NetActivity.new()
+	activity.name = "Activity"
+	add_child(activity)
 	_retry_timer = Timer.new()
 	_retry_timer.one_shot = true
 	_retry_timer.timeout.connect(_connect)
@@ -83,8 +104,9 @@ func _ready() -> void:
 	mic = load("res://scripts/net/net_mic.gd").new()
 	mic.name = "Mic"
 	add_child(mic)
-	Wallet.connected.connect(func(_a): client.signer_wallet = Wallet.address)
+	Wallet.connected.connect(_on_wallet_connected)
 	Wallet.disconnected.connect(func(): client.signer_wallet = "")
+	Session.changed.connect(refresh_profile)  # a LAU switch or a fresh read: others see the new name and head
 
 
 # ── connection ─────────────────────────────────────────────────────────────
@@ -129,7 +151,7 @@ func status_text() -> String:
 		return "Online play is off"
 	match client.status:
 		"online":
-			var who := ("signed in as " + NetProto.short_wallet(client.wallet)) if client.wallet != "" else "guest (sign in to talk)"
+			var who := ("signed in as " + NetNames.tag(client.wallet, false, names.record(client.wallet))) if client.wallet != "" else "guest (sign in so others see your name)"
 			return "Online · %s · %d here · %s%s" % [client.server_name, client.peers.size() + 1, who,
 				(" · %d ms" % client.rtt_ms) if client.rtt_ms >= 0 else ""]
 		"connecting":
@@ -150,6 +172,9 @@ func _connect() -> void:
 		return
 	resolved_url = url
 	client.signer_wallet = Wallet.address
+	var saved := saved_token(url, Wallet.address)
+	if saved != "":
+		client.use_token(url, saved)  # sent with the welcome: no signature on this launch
 	client.connect_to(url)
 
 
@@ -203,8 +228,11 @@ func _on_status(s: String) -> void:
 		print("[Net] online: %s" % resolved_url)
 		if _room != "":
 			client.join(_room, profile())
+		_auto_key = ""
+		_auto_check_soon()
 	elif s == "offline":
 		_signing = false
+		_auto_waiting = false
 		if _started and _retry_timer.is_stopped() and not _connecting:
 			_offline("no answer from " + resolved_url if resolved_url != "" else "offline")
 	status_changed.emit(s)
@@ -214,6 +242,8 @@ func _on_status(s: String) -> void:
 
 func enter_room(qing: String) -> void:
 	_room = NetProto.clean_room(qing)
+	if activity and _room != "":
+		activity.here = _room.get_slice("/", 0)
 	if client and client.is_online() and _room != "":
 		client.join(_room, profile())
 
@@ -270,13 +300,18 @@ func send_chat(text: String) -> bool:
 
 
 ## One free personal_sign in the browser wallet (then a session token: no more prompts).
-func sign_in() -> void:
+## `auto`: the automatic sign-in (a click clears a decline and asks again).
+func sign_in(auto: bool = false) -> void:
+	if not auto and declined.has(Wallet.address):
+		declined.erase(Wallet.address)
+		save_settings()
 	if not is_online() or client.wallet != "" or _signing:
 		return
 	if Wallet.address == "":
 		notice.emit("Connect your wallet first (the wallet button on the front door).")
 		return
 	_signing = true
+	_auto_waiting = false
 	client.signer_wallet = Wallet.address
 	notice.emit("Sign-in: approve the free signature in your wallet window (not a transaction).")
 	client.sign_in()
@@ -284,19 +319,159 @@ func sign_in() -> void:
 
 func _wallet_signer(message: String) -> String:
 	var r: Dictionary = await Wallet.sign_message(message)
+	_last_sign_stage = "" if r.get("ok", false) else String(r.get("stage", ""))
 	return String(r.get("signature", "")) if r.get("ok", false) else ""
 
 
 func _on_auth(w: String) -> void:
 	_signing = false
+	_auto_waiting = false
 	if w != "":
-		notice.emit("Signed in as %s · you can talk now" % NetProto.short_wallet(w))
+		notice.emit("Signed in as %s · others see your name; you can talk now" % NetProto.short_wallet(w))
 		for t in _pending_chat:
 			client.send_chat(t)
+		if client.token != "":
+			save_token(client.url, w, client.token)
+		refresh_profile()  # the name and head again, now as a signed-in player
 	_pending_chat.clear()
 
 
+func _on_auth_failed(reason: String) -> void:
+	var was_signing := _signing
+	_signing = false
+	_auto_waiting = false
+	_pending_chat.clear()
+	if reason == "token expired":
+		forget_token(client.url, Wallet.address)
+		_auto_key = ""
+		_auto_check_soon()  # sign the new text instead (the prompt first)
+		return
+	if was_signing and reason == "the signature was refused" and _last_sign_stage == "sign" and Wallet.address != "":
+		declined[Wallet.address] = true
+		save_settings()
+		notice.emit("Staying a guest: others see you as 'guest'. Sign in any time: F2 · Online, or the bell (%s)." % ControlsHelp.key_of("notifications"))
+		return
+	notice.emit("Sign-in failed: %s. You can still see everyone." % reason)
+
+
+## "" | "prompt" (the line is showing; the wallet asks next) | "signing" | "declined" | "signed"
+func sign_in_state() -> String:
+	if client == null:
+		return ""
+	if client.wallet != "":
+		return "signed"
+	if _signing or client.is_signing() or client.token_pending:
+		return "signing"
+	if _auto_waiting:
+		return "prompt"
+	if declined.has(Wallet.address):
+		return "declined"
+	return ""
+
+
+## Can the player sign in now (online, a wallet, not signed in)? For the Sign in buttons.
+func can_sign_in() -> bool:
+	return is_online() and client.wallet == "" and Wallet.address != "" and sign_in_state() in ["", "declined"]
+
+
+func _auto_check_soon() -> void:
+	if not is_inside_tree():
+		return
+	await get_tree().create_timer(0.8).timeout
+	_auto_check()
+
+
+## The automatic sign-in (see the top): once per connection and wallet.
+func _auto_check() -> void:
+	if client == null or not is_online() or client.wallet != "" or _signing or client.is_signing() or client.token_pending or _auto_waiting:
+		return
+	var w := Wallet.address
+	if w == "" or declined.has(w) or (not client.features.has("invites") and not client.features.has("events")):
+		return  # no wallet, said no, or a server too old to say who anyone is
+	var key := "%s|%s|%d" % [client.url, w, client.my_id]
+	if _auto_key == key:
+		return
+	_auto_key = key
+	var saved := saved_token(client.url, w)
+	if saved != "" and saved != client.token:
+		client.use_token(client.url, saved)
+		return
+	if not Wallet.is_linked():
+		return
+	_auto_waiting = true
+	notice.emit(AUTO_PROMPT)
+	await get_tree().create_timer(AUTO_DELAY_S).timeout
+	if not _auto_waiting or not is_online() or client.wallet != "" or Wallet.address != w:
+		_auto_waiting = false
+		return
+	client.signer_wallet = w
+	sign_in(true)
+
+
+## A wallet was connected (or another one): sign in as it.
+func _on_wallet_connected(_a: String) -> void:
+	client.signer_wallet = Wallet.address
+	if client.wallet != "" and client.wallet != Wallet.address:
+		notice.emit("Another wallet: signing in to the game server again as %s." % NetProto.short_wallet(Wallet.address))
+		client.token = ""
+		restart()
+		return
+	_auto_key = ""
+	_auto_check_soon()
+
+
+# ── session tokens (24 h, per server URL and wallet; only ever sent to that URL) ──
+
+func saved_token(url: String, w: String) -> String:
+	if url == "" or w == "":
+		return ""
+	var c := ConfigFile.new()
+	if c.load(SETTINGS_PATH) != OK:
+		return ""
+	var v = c.get_value("sessions", "%s|%s" % [url, w.to_lower()], {})
+	if not (v is Dictionary) or int(v.get("exp", 0)) < int(Time.get_unix_time_from_system()) + TOKEN_MARGIN_S:
+		return ""
+	return String(v.get("token", ""))
+
+
+func save_token(url: String, w: String, tok: String) -> void:
+	var c := ConfigFile.new()
+	c.load(SETTINGS_PATH)
+	var k := "%s|%s" % [url, w.to_lower()]
+	var old = c.get_value("sessions", k, {})
+	if old is Dictionary and String(old.get("token", "")) == tok:
+		return  # the same session (a token sign-in): its expiry stays
+	c.set_value("sessions", k, {"token": tok, "exp": int(Time.get_unix_time_from_system()) + GameServer.TOKEN_TTL_S})
+	c.save(SETTINGS_PATH)
+
+
+func forget_token(url: String, w: String) -> void:
+	var c := ConfigFile.new()
+	if c.load(SETTINGS_PATH) != OK:
+		return
+	var k := "%s|%s" % [url, w.to_lower()]
+	if c.has_section_key("sessions", k):
+		c.erase_section_key("sessions", k)
+		c.save(SETTINGS_PATH)
+
+
+# ── the activity feed ───────────────────────────────────────────────────────
+
+## This player walked into a place (NetEvents.PLACES) of QING `qing`: players there see it.
+func announce_place(place: String, qing: String) -> void:
+	if client and is_online():
+		client.send_place(place, qing)
+
+
+## A claim others check on the chain before they show it (NetEvents.CLAIMS).
+func claim(kind: String, qing: String) -> void:
+	if client and is_online():
+		client.send_claim(kind, qing)
+
+
 func _on_chat(_id: int, w: String, nm: String, text: String, pos: Vector3) -> void:
+	if w != "":
+		nm = names.display(w)  # the chain's name for the verified wallet, never the claimed one
 	if w != "" and w != client.wallet:
 		heard[w] = nm
 	if is_muted(w):
@@ -370,6 +545,8 @@ func _load_settings() -> void:
 	mute_others = bool(c.get_value("voice", "mute_others", mute_others))
 	for w in c.get_value("net", "muted", []):
 		muted[String(w)] = true
+	for w in c.get_value("net", "signin_declined", []):
+		declined[String(w)] = true
 
 
 func save_settings() -> void:
@@ -378,6 +555,7 @@ func save_settings() -> void:
 	c.set_value("net", "online", online_enabled)
 	c.set_value("net", "server_url", server_url)
 	c.set_value("net", "muted", muted.keys())
+	c.set_value("net", "signin_declined", declined.keys())
 	c.set_value("voice", "mic", mic_enabled)
 	c.set_value("voice", "device", mic_device)
 	c.set_value("voice", "volume", voice_volume)

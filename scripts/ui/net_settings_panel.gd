@@ -59,7 +59,7 @@ func _ready() -> void:
 	note.theme_type_variation = "MutedLabel"
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.custom_minimum_size = Vector2(520, 0)
-	note.text = "Guests see everyone. To talk, sign in once with your wallet: a free signature, not a transaction. Chat (the chat bar, %s, Tab: say) and voice here are not on chain. Mutes stay on this computer." % ControlsHelp.key_of("chat")
+	note.text = "Guests see everyone. With a wallet connected the game signs in by itself (once: a free signature, not a transaction), so others see your LAU name and you can talk. Chat (the chat bar, %s, Tab: say) and voice here are not on chain. Mutes stay on this computer." % ControlsHelp.key_of("chat")
 	col.add_child(note)
 	_people = VBoxContainer.new()
 	col.add_child(_people)
@@ -67,7 +67,8 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 10)
 	col.add_child(row)
 	_sign = Button.new()
-	_sign.text = "Sign in with wallet"
+	_sign.text = "Sign in (one free signature)"
+	_sign.tooltip_text = "So others see your LAU name instead of \"guest\". Not a transaction. The game signs in by itself once a wallet is connected, unless you said no."
 	_sign.pressed.connect(func(): Net.sign_in())
 	row.add_child(_sign)
 	var apply_btn := Button.new()
@@ -107,7 +108,7 @@ func _load() -> void:
 
 func _refresh() -> void:
 	_status.text = Net.status_text()
-	_sign.disabled = not Net.is_online() or Net.can_talk()
+	_sign.disabled = not Net.can_sign_in()
 	for c in _people.get_children():
 		c.queue_free()
 	var shown := {}
@@ -161,4 +162,4 @@ func _process(delta: float) -> void:
 	if visible and _t > 1.0:
 		_t = 0.0
 		_status.text = Net.status_text()
-		_sign.disabled = not Net.is_online() or Net.can_talk()
+		_sign.disabled = not Net.can_sign_in()

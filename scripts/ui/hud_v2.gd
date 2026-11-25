@@ -12,6 +12,7 @@ var prompt: Label          # the prompt's text (the key, if any, sits in prompt_
 var prompt_key: Label
 var prompt_box: PanelContainer
 var tracker: ActTracker    # the acts here and your goals (ActLoop fills it)
+var activity: ActivityFeed  # online players' actions (Net.activity), under the territory card
 var you_name: Label
 var you_sub: Label
 var you_face: HeadBadge
@@ -39,6 +40,9 @@ func _ready() -> void:
 	_root.theme = DeepFieldTheme.get_theme()
 	add_child(_root)
 	_build_where()
+	activity = ActivityFeed.new()  # online players' actions, under the territory card (HudLayout "activity")
+	_root.add_child(activity)
+	activity.follow(where_box)
 	_build_who()
 	_build_middle()
 	_build_keys()

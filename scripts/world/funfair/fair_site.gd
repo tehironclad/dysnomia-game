@@ -528,6 +528,11 @@ func refresh_progress() -> void:
 	_sync_strips(w, r.get("strips", []))
 	print("[Fair] rocket progress %s@%s: %s (%s, block %d)" % [w, _qing, str(r["codes"]), _progress["state"], int(r["block"])])
 	_show_progress()
+	if r["ok"] and FairProgress.unlocked(played) and not _preview:
+		# Online: the activity feed says so to others, each of whom checks it on the chain first.
+		var net := get_node_or_null("/root/Net")
+		if net:
+			net.claim("rocket", _qing)
 
 
 func _show_progress() -> void:

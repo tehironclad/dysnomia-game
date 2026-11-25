@@ -20,10 +20,14 @@ func setup(p_qing: String, p_player: Node3D, p_hud: CanvasLayer) -> void:
 	hud = p_hud
 	if hud:
 		feed = NetChatFeed.new()
-		feed.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-		feed.position = Vector2(20, -330)
-		feed.grow_vertical = Control.GROW_DIRECTION_BEGIN
-		hud.add_child(feed)
+		var af = hud.get("activity")
+		if af is ActivityFeed:
+			(af as ActivityFeed).slot.add_child(feed)  # the online notices under the activity feed's header
+		else:
+			feed.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+			feed.position = Vector2(20, -330)
+			feed.grow_vertical = Control.GROW_DIRECTION_BEGIN
+			hud.add_child(feed)
 	var c := Net.client
 	if c == null:
 		return
@@ -39,9 +43,34 @@ func setup(p_qing: String, p_player: Node3D, p_hud: CanvasLayer) -> void:
 
 
 var _frames := 0
+var _state: TerritoryState
+
+
+## The activity feed's chain facts in this territory (Net.activity): each read of the
+## territory (a player's Hypobar rising between two reads) and each fresh room line
+## (a 🎪 fair score, once its ticket's receipt and its replay check out).
+func watch_chain(st: TerritoryState) -> void:
+	_state = st
+	if st:
+		st.changed.connect(_on_state_read)
+	if not ChatFeed.bubble.is_connected(_on_room_line):
+		ChatFeed.bubble.connect(_on_room_line)
+	Invites.arrived_in(qing)  # a "Join me" accepted on the way here: through its door now
+
+
+func _on_state_read() -> void:
+	if Net.activity and _state:
+		Net.activity.on_territory_read(_state)
+
+
+func _on_room_line(l: Dictionary) -> void:
+	if Net.activity:
+		Net.activity.on_room_line(l, qing)
 
 
 func _exit_tree() -> void:
+	if ChatFeed.bubble.is_connected(_on_room_line):
+		ChatFeed.bubble.disconnect(_on_room_line)
 	if Net.client:
 		Net.leave_room()
 

@@ -69,24 +69,40 @@ func _label(px: int, col: Color) -> Label3D:
 	return l
 
 
-## Name, wallet and look from the server's peer record.
+var _info := {}
+var _claimed := ""  # the profile this player's game last sent (name|head): a change re-reads their LAU
+
+
+## Name, wallet and look from the server's peer record (also when a peer signs in
+## or changes LAU mid-session: the server sends S_PEER again). The name shown is
+## the chain's name for the server-verified wallet (NetNames, read by Net.names),
+## never the name the player's game claims; the short wallet is always on the tag.
 func apply_info(info: Dictionary) -> void:
+	_info = info
 	var w := String(info.get("wallet", ""))
+	var net := get_node_or_null("/root/Net")
+	var names: LauNames = net.names if net else null
 	if w != wallet:
 		var chat_feed := get_node_or_null("/root/ChatFeed")
 		if chat_feed and wallet != "":
 			chat_feed.unregister_speaker(wallet)
 		if chat_feed and w != "":
 			chat_feed.register_speaker(w, self)
+		if names and not names.resolved.is_connected(_on_name):
+			names.resolved.connect(_on_name)
+	var claimed := "%s|%s" % [info.get("name", ""), info.get("head", "")]
+	if names and w != "" and w == wallet and claimed != _claimed:
+		names.refresh(w)  # they switched LAU or picked another head: read their name again
+	_claimed = claimed
 	wallet = w
 	var guest: bool = info.get("guest", true) or wallet == ""
-	display_name = String(info.get("name", ""))
-	var shown := display_name if display_name != "" else ("guest" if guest else NetProto.short_wallet(wallet))
-	_tag_text = shown + ("" if guest or shown == NetProto.short_wallet(wallet) else " · " + NetProto.short_wallet(wallet))
+	var rec: Dictionary = names.record(wallet) if names and not guest else {}
+	display_name = NetNames.shown(wallet, rec) if not guest else ""
+	_tag_text = NetNames.tag(wallet, guest, rec)
 	_tag_col = Color(0.7, 0.74, 0.8) if guest else Color(0.86, 0.93, 1.0)
 	_speaking = not _speaking  # force a refresh
 	_show_speaking(not _speaking)
-	var head := String(info.get("head", "bear"))
+	var head := NetNames.head(String(info.get("head", "")), rec, func(k): return AvatarHeads.KINDS.has(k))
 	var acc: Array = info.get("acc", []) if info.get("acc") is Array else []
 	var key := head + "|" + ",".join(acc) + "|" + String(info.get("body", "male"))
 	if key != _head and avatar.is_inside_tree():
@@ -101,6 +117,17 @@ func apply_info(info: Dictionary) -> void:
 		var o := Outfits.for_identity(wallet)
 		var synced := String(info.get("outfit", ""))
 		avatar.set_outfit(synced if Outfits.DESIGNS.has(synced) else String(o["kind"]), int(o["seed"]))
+
+
+## Net.names read a wallet: if it is this player's, the tag (and head) follow.
+func _on_name(w: String) -> void:
+	if w == wallet and wallet != "" and is_inside_tree():
+		apply_info(_info)
+
+
+## The tag's text (tests and tools).
+func tag_text() -> String:
+	return _tag_text
 
 
 ## A pose from NetInterp.sample().

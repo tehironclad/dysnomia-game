@@ -30,6 +30,7 @@ signal match_move(match_id: String, move: Dictionary)  # S_MOVE: one new move {s
 signal refused(what: String, error: String)       # S_REFUSED: an invite, answer or move the server refused
 
 signal bump_received(from_id: int, target_id: int, yaw: float, level: int)  # NetBump
+signal event(ev: Dictionary)                      # NetEvents.S_EVENT, cleaned (the activity feed)
 
 const STATE_INTERVAL_MS := 100   # 10 Hz
 const STATE_HEARTBEAT_MS := 1000 # resend unchanged state once a second
@@ -41,6 +42,7 @@ var status := "offline"
 var my_id := -1
 var wallet := ""        # verified by the server; "" = guest
 var token := ""         # session token from the server (no new signature on reconnect)
+var token_pending := false  # a token sign-in was sent and its S_AUTH hasn't come back yet
 var server_name := ""
 var nonce := ""
 var issued := 0         # the server's unix time for this nonce (the sign-in expires LOGIN_TTL_S later)
@@ -102,6 +104,7 @@ func close() -> void:
 func _reset() -> void:
 	my_id = -1
 	wallet = ""
+	token_pending = false
 	room = ""
 	for id in peers.keys():
 		peers.erase(id)
@@ -192,12 +195,27 @@ func send_voice(seq: int, codec: int, data: PackedByteArray) -> bool:
 	return false
 
 
+## A saved session token for the server at `p_url` (Net keeps them between launches,
+## per URL and wallet). It is only ever sent to that URL (connect_to drops it otherwise).
+func use_token(p_url: String, p_token: String) -> void:
+	token = p_token.left(128)
+	_token_url = p_url
+	if is_online() and url == p_url and wallet == "" and token != "" and not token_pending:
+		token_pending = true
+		_send(NetProto.json_msg(NetProto.C_AUTH, {"token": token}))
+
+
+func is_signing() -> bool:
+	return _signing
+
+
 ## Signs the server's login message with `signer` and sends it. Returns at
 ## once if already signed in or a signature is in progress.
 func sign_in() -> void:
 	if not is_online() or wallet != "" or _signing:
 		return
 	if token != "":
+		token_pending = true
 		_send(NetProto.json_msg(NetProto.C_AUTH, {"token": token}))
 		return
 	if not signer.is_valid() or signer_wallet == "":
@@ -350,11 +368,13 @@ func _handle(m: PackedByteArray) -> void:
 			_set_status("online")
 			welcomed.emit(my_id)
 			if token != "":
+				token_pending = true
 				_send(NetProto.json_msg(NetProto.C_AUTH, {"token": token}))
 			if room != "":
 				join(room)
 		NetProto.S_AUTH:
 			var b := NetProto.json_body(m)
+			token_pending = false
 			if bool(b.get("ok", false)):
 				wallet = NetProto.clean_wallet(String(b.get("wallet", "")))
 				token = String(b.get("token", token)).left(128)
@@ -405,6 +425,10 @@ func _handle(m: PackedByteArray) -> void:
 			var req := int(b.get("req", 0))
 			if _lb_waiting.has(req):
 				_lb_waiting[req] = b
+		NetEvents.S_EVENT:
+			var ev := NetEvents.clean_event(NetProto.json_body(m).get("ev"))
+			if not ev.is_empty():
+				event.emit(ev)
 		NetBump.S_BUMP:
 			var d := NetBump.unpack_relay(m)
 			if not d.is_empty():
@@ -448,3 +472,28 @@ func send_bump(target_id: int, yaw: float, level: int) -> bool:
 		return false
 	_bump_sent[target_id] = now
 	return _send(NetBump.bump_msg(target_id, yaw, level))
+
+
+# ── the activity feed (NetEvents) ───────────────────────────────────────────
+
+var _place_sent := {}     ## "place|room" → ms of the last one sent
+
+
+## Tells the server this player walked into `place` (NetEvents.PLACES) of QING `p_room`,
+## so players there see "X entered the arcade". Only to a server with "events".
+func send_place(place: String, p_room: String) -> bool:
+	if not is_online() or wallet == "" or not features.has("events"):
+		return false
+	var key := place + "|" + p_room
+	var now := _now_ms()
+	if now - int(_place_sent.get(key, -1000000)) < int(NetEvents.PLACE_REPEAT_S * 1000.0):
+		return false
+	_place_sent[key] = now
+	return _send(NetEvents.place_msg(place, NetProto.clean_room(p_room)))
+
+
+## A claim the server relays to everyone; each receiver checks it on the chain before showing it.
+func send_claim(claim: String, p_room: String) -> bool:
+	if not is_online() or wallet == "" or not features.has("events"):
+		return false
+	return _send(NetEvents.claim_msg(claim, NetProto.clean_room(p_room)))

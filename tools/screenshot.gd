@@ -26,6 +26,9 @@ extends SceneTree
 ##       side's shot from the seat, through the server, rolling; result: accept,
 ##       confirm the stake, play to the end (this side stands), the panel over the table with the wager's
 ##       chain check. Nothing is signed on chain or paid)
+##       [--activity=N] (online play, with --net-url: wait for N activity feed lines (bots make them) and the remote
+##       players' name tags to be read from the chain; prints them. Debug builds: --net-lau-of=<test wallet>=<real wallet>
+##       shows a test bot with a real wallet's LAU name, marked "(test)")
 ## With --qing, the territory is loaded from the chain first (read-only).
 
 var _out := ""
@@ -56,6 +59,7 @@ var _field_filter: Array = []
 var _access := ""
 var _access_fee := ""
 var _invite := ""  # panel | seated | result
+var _activity := 0  # wait for this many activity feed lines (online play: --net-url + bots)
 var _update := ""  # the front door: preview the update notice for this version
 var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
@@ -103,6 +107,8 @@ func _initialize() -> void:
 			_field_filter = Array(a.substr(15).split(",", false))
 		elif a.begins_with("--access="):
 			_access = a.substr(9)
+		elif a.begins_with("--activity="):
+			_activity = int(a.substr(11))
 		elif a.begins_with("--invite="):
 			_invite = a.substr(9)
 		elif a.begins_with("--update="):
@@ -240,6 +246,8 @@ func _run() -> void:
 			await process_frame
 	if _invite != "":
 		await _invite_preview()
+	if _activity > 0:
+		await _activity_preview()
 	if _update != "":
 		for i in 10:
 			await process_frame
@@ -277,6 +285,34 @@ func _chat_preview() -> void:
 	elif _chat == "history":
 		cf.hud.feed.toggle_history()
 
+
+
+## The activity feed (Net.activity): waits for `_activity` lines from the server and the
+## chain (bots make them: tools/net_bot.gd), and for remote players' name tags to be read.
+func _activity_preview() -> void:
+	var net = root.get_node("Net")
+	var t0 := Time.get_ticks_msec()
+	while net.activity.items.size() < _activity and Time.get_ticks_msec() - t0 < 180000:
+		await process_frame
+	var t1 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t1 < 20000:
+		var reading := false
+		for p in net.client.peers.values():
+			if String(p.get("wallet", "")) != "" and String(net.names.record(String(p["wallet"])).get("state", "reading")) == "reading":
+				reading = true
+		if not reading:
+			break
+		await process_frame
+	print("[shot] activity: %d lines" % net.activity.items.size())
+	for it in net.activity.items:
+		print("[shot]   ", it["text"])
+	var pres = current_scene.find_child("NetPresence", true, false) if current_scene else null
+	if pres:
+		for r in pres.remotes.values():
+			print("[shot]   tag: ", r.tag_text())
+	var feed = current_scene.find_child("ActivityFeed", true, false) if current_scene else null
+	if feed:
+		feed.replay_recent()  # lines that arrived a minute apart, on one frame (each is a real event)
 
 
 ## Game invites over a game server (Invites): waits for the bot's invite, then

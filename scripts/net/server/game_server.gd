@@ -112,6 +112,7 @@ class Peer:
 	var b_msgs := TokenBucket.new(120.0, 240.0)  # every message: 10 states + 50 voice frames a second leave room
 	var b_bump := TokenBucket.new(NetBump.SENDER_RATE, NetBump.SENDER_BURST)  # bumps (NetBump)
 	var bumped_at := -100.0
+	var b_event := TokenBucket.new(NetEvents.SENDER_RATE, NetEvents.SENDER_BURST)  # C_PLACE / C_CLAIM (NetEvents)
 
 
 func _now() -> float:
@@ -202,6 +203,7 @@ func _process(delta: float) -> void:
 	if now - _house_at > 1.0:
 		_house_at = now
 		_housekeeping()
+		_events_housekeeping(now)
 	if now - _stats_at > 300.0:
 		_stats_at = now
 		log_line("stats: %d connected, %d rooms, %s" % [_peers.size(), _rooms.size(), JSON.stringify(stats)])
@@ -271,7 +273,7 @@ func _poll_peer(p: Peer, now: float) -> void:
 		# current clients build the text themselves from nonce + issued and their own host.
 		_send(p, NetProto.json_msg(NetProto.S_WELCOME, {"id": p.id, "nonce": p.nonce, "issued": p.issued, "server": NetProto.login_name(server_name),
 			"v": NetProto.VERSION, "login": NetProto.login_message(server_name, p.host, p.nonce, p.issued), "voice_radius": voice_radius,
-			"features": NetProto.FEATURES + NetBump.FEATURES}))
+			"features": NetProto.FEATURES + NetBump.FEATURES + NetEvents.FEATURES}))
 	var n := 0
 	while p.ws.get_available_packet_count() > 0 and n < 200:
 		n += 1
@@ -327,6 +329,8 @@ func _drop(p: Peer, why: String) -> void:
 	_peers.erase(p.id)
 	if p.opened:
 		log_line("peer %d left (%s) %s" % [p.id, p.wallet if p.wallet != "" else "guest", why])
+	if p.wallet != "" and _peers_of(p.wallet).is_empty():
+		_gone[p.wallet] = {"at": _now(), "n": p.name}  # "went offline" unless back within the grace
 	if p.ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		p.ws.close()
 
@@ -397,6 +401,10 @@ func _handle(p: Peer, msg: PackedByteArray, now: float) -> void:
 			_lb_submit(p, NetProto.json_body(msg), now)
 		NetBump.C_BUMP:
 			_bump(p, msg, now)
+		NetEvents.C_PLACE:
+			_place(p, msg, now)
+		NetEvents.C_CLAIM:
+			_claim(p, msg, now)
 		NetProto.C_INFO:
 			if not p.b_ctrl.take(now):
 				_throttled(p, now)
@@ -504,6 +512,7 @@ func _join(p: Peer, b: Dictionary) -> void:
 		_send(p, NetProto.states_msg(states))
 	_room_send(room, _peer_msg(p), p.id)
 	log_line("peer %d (%s) joined %s · %d here" % [p.id, p.wallet if p.wallet != "" else "guest", room, members.size()])
+	_announce_arrival(p, room)
 
 
 func _leave_room(p: Peer) -> void:
@@ -679,6 +688,7 @@ func _authed(p: Peer, wallet: String, tok: String) -> void:
 	_send(p, NetProto.json_msg(NetProto.S_AUTH, {"ok": true, "wallet": wallet, "token": tok}))
 	if p.room != "":
 		_room_send(p.room, _peer_msg(p), -1)
+	_announce_online(p)
 	# Back after a reconnect: this wallet's invites and games, so the panel and the table resume.
 	for inv in invites.for_wallet(wallet):
 		_send(p, NetProto.json_msg(NetProto.S_INVITE, {"invite": inv}))
@@ -736,6 +746,9 @@ func _lb_submit(p: Peer, b: Dictionary, now: float) -> void:
 	res["req"] = req
 	if res.get("ok", false):
 		log_line("score %s %s %d (%s)" % [board, p.wallet, int(res["row"]["score"]), res["row"]["check"]])
+		if int(res.get("rank", 0)) == 1 and not res.has("kept"):
+			_event({"k": "record", "w": p.wallet, "n": p.name, "board": Leaderboards.clean_board(board), "score": int(res["row"]["score"]),
+				"verified": bool(res["row"].get("verified", false))}, "signed")
 	_send(p, NetProto.json_msg(NetProto.S_LB, res))
 
 
@@ -840,7 +853,7 @@ func _answer(p: Peer, b: Dictionary) -> void:
 	var now := int(Time.get_unix_time_from_system())
 	if what == "accept":
 		var inv0: Dictionary = invites.invites.get(id, {})
-		if not inv0.is_empty() and (_live_matches_of(inv0["from"]) >= MAX_LIVE_MATCHES or _live_matches_of(inv0["to"]) >= MAX_LIVE_MATCHES):
+		if not inv0.is_empty() and String(inv0["game"]) != InviteBook.JOIN and (_live_matches_of(inv0["from"]) >= MAX_LIVE_MATCHES or _live_matches_of(inv0["to"]) >= MAX_LIVE_MATCHES):
 			_refuse(p, "answer", "One of you already has %d games going: finish or concede one first." % MAX_LIVE_MATCHES)
 			return
 	var r := invites.answer(id, p.wallet, what, now)
@@ -850,11 +863,18 @@ func _answer(p: Peer, b: Dictionary) -> void:
 			_to_wallets([r["invite"]["from"], r["invite"]["to"]], NetProto.json_msg(NetProto.S_INVITE, {"invite": r["invite"]}))
 		return
 	var inv: Dictionary = r["invite"]
-	if inv["state"] == "accepted":
+	if inv["state"] == "accepted" and String(inv["game"]) == InviteBook.JOIN:
+		# "Join me": no game, the invited player travels to the inviter (their own game does the walk)
+		_to_wallets([inv["from"], inv["to"]], NetProto.json_msg(NetProto.S_INVITE, {"invite": inv}))
+		_event({"k": "join", "w": inv["to"], "n": _name_of(inv["to"]), "w2": inv["from"], "n2": _name_of(inv["from"]),
+			"room": inv["room"], "place": InviteBook.join_place(String(inv["door"]))}, "signed")
+	elif inv["state"] == "accepted":
 		var mr := _open_match(inv)
 		inv["match"] = mr["id"]
 		_to_wallets([inv["from"], inv["to"]], NetProto.json_msg(NetProto.S_INVITE, {"invite": inv}))
 		_to_wallets(mr["players"], NetProto.json_msg(NetProto.S_MATCH, {"match": mr}))
+		_event({"k": "match", "w": inv["from"], "n": mr["names"][0], "w2": inv["to"], "n2": mr["names"][1], "game": inv["game"],
+			"stake": inv["stake"], "room": inv["room"]}, "signed")
 	else:
 		_to_wallets([inv["from"], inv["to"]], NetProto.json_msg(NetProto.S_INVITE, {"invite": inv}))
 	log_line("invite %s %s by %s" % [id, inv["state"], p.wallet])
@@ -943,6 +963,12 @@ func _result(p: Peer, b: Dictionary) -> void:
 	mr["last"] = _unix_ms()
 	log_line("match %s %s: %s" % [mr["id"], mr["status"], JSON.stringify(mr["results"])])
 	_to_wallets(mr["players"], NetProto.json_msg(NetProto.S_MATCH, {"match": mr}))
+	if agreed:  # a result both machines' replays agree on (never a disputed one)
+		var wi := int(a["winner"])
+		var pl: Array = mr["players"]
+		var w0: int = 0 if wi == 2 else wi
+		_event({"k": "result", "w": pl[w0], "n": mr["names"][w0], "w2": pl[1 - w0], "n2": mr["names"][1 - w0], "game": mr["game"],
+			"stake": mr["stake"] if wi != 2 else "", "room": mr["room"], "push": wi == 2}, "signed")
 
 
 ## Once a second: expire invites, abandon idle games, forget old ones.
@@ -985,3 +1011,125 @@ func _bump(p: Peer, msg: PackedByteArray, now: float) -> void:
 	q.bumped_at = now
 	stats["bumps"] = int(stats.get("bumps", 0)) + 1
 	_room_send(p.room, NetBump.relay(p.id, b), p.id)
+
+
+# ── the activity feed (NetEvents) ─────────────────────────────────────────────
+# Only facts this server knows itself: who signed in (the signature proved the
+# wallet) or left, who joined which QING room, where a signed-in player says they
+# walked in, games it relayed and results both machines agreed on, rows its boards
+# took. Never anything about the chain: a claim (C_CLAIM) goes out as a claim and
+# every receiver checks it on the chain before showing it.
+
+var _gone := {}             # wallet → {at, n}: its last connection closed (offline after the grace)
+var _arrived := {}          # wallet → {room, at}: the last QING room it was announced in
+var _placed := {}           # "wallet|place|room" → s
+var _claimed := {}          # "wallet|claim|room" → s
+var _ev_wallet := {}        # wallet (or "guest|room") → TokenBucket
+var _ev_server := TokenBucket.new(NetEvents.SERVER_RATE, NetEvents.SERVER_BURST)
+
+
+## Sends an event: "signed" = every signed-in connection (like S_ONLINE); "room" = the
+## connections in `room` except `except_id`. Rate-limited per subject and server-wide:
+## over the limit it is dropped (the feed is a courtesy, not a record).
+func _event(ev: Dictionary, scope: String, room: String = "", except_id: int = -1) -> bool:
+	var now := _now()
+	var subject := String(ev.get("w", "")) if String(ev.get("w", "")) != "" else "guest|" + room
+	var b: TokenBucket = _ev_wallet.get(subject)
+	if b == null:
+		b = TokenBucket.new(NetEvents.WALLET_RATE, NetEvents.WALLET_BURST)
+		_ev_wallet[subject] = b
+	# Games, results, records and joins have their own limits (invites, moves, scores): the
+	# per-subject bucket is for comings and goings, which a player could otherwise repeat.
+	var chatty := not String(ev.get("k", "")) in ["match", "result", "record", "join"]
+	if not _ev_server.take(now) or (chatty and not b.take(now)):
+		stats["events_dropped"] = int(stats.get("events_dropped", 0)) + 1
+		return false
+	ev["t"] = int(Time.get_unix_time_from_system())
+	var msg := NetEvents.event_msg(ev)
+	if scope == "room":
+		_room_send(room, msg, except_id)
+	else:
+		for q in _peers.values():
+			if q.opened and q.wallet != "":
+				_send(q, msg)
+	stats["events"] = int(stats.get("events", 0)) + 1
+	return true
+
+
+## A wallet's first connection signed in: "came online" (not after a short drop).
+func _announce_online(p: Peer) -> void:
+	if _peers_of(p.wallet).size() > 1:
+		return
+	if _gone.has(p.wallet):
+		_gone.erase(p.wallet)  # back within the grace: a reconnect, not news
+		return
+	_event({"k": "online", "w": p.wallet, "n": p.name}, "signed")
+	if p.room != "":
+		_arrived[p.wallet] = {"room": p.room, "at": _now()}
+
+
+func _announce_arrival(p: Peer, room: String) -> void:
+	if room.contains("/"):
+		return
+	if p.wallet == "":
+		_event({"k": "guest", "room": room}, "room", room, p.id)
+		return
+	var last: Dictionary = _arrived.get(p.wallet, {})
+	var now := _now()
+	if String(last.get("room", "")) == room and now - float(last.get("at", -1e9)) < NetEvents.ARRIVE_REPEAT_S:
+		return  # back from the arcade, the room or the Void: the same visit
+	_arrived[p.wallet] = {"room": room, "at": now}
+	_event({"k": "arrive", "w": p.wallet, "n": p.name, "room": room}, "signed")
+
+
+## C_PLACE: a signed-in player walked into a place of a QING; players in that QING's room are told.
+func _place(p: Peer, msg: PackedByteArray, now: float) -> void:
+	if not p.b_event.take(now):
+		stats["throttled"] += 1
+		return
+	var d := NetEvents.parse_place(msg)
+	if d.is_empty():
+		_strike(p, "bad place")
+		return
+	if p.wallet == "":
+		return
+	var key := "%s|%s|%s" % [p.wallet, d["place"], d["room"]]
+	if now - float(_placed.get(key, -1e9)) < NetEvents.PLACE_REPEAT_S:
+		return
+	_placed[key] = now
+	_event({"k": "place", "w": p.wallet, "n": p.name, "room": d["room"], "place": d["place"]}, "room", String(d["room"]), p.id)
+
+
+## C_CLAIM: relayed as a claim, once an hour per wallet, claim and QING.
+func _claim(p: Peer, msg: PackedByteArray, now: float) -> void:
+	if not p.b_event.take(now):
+		stats["throttled"] += 1
+		return
+	var d := NetEvents.parse_claim(msg)
+	if d.is_empty():
+		_strike(p, "bad claim")
+		return
+	if p.wallet == "":
+		return
+	var key := "%s|%s|%s" % [p.wallet, d["claim"], d["room"]]
+	if now - float(_claimed.get(key, -1e9)) < 3600.0:
+		return
+	_claimed[key] = now
+	_event({"k": "claim", "w": p.wallet, "n": p.name, "room": d["room"], "claim": d["claim"]}, "signed")
+
+
+func _events_housekeeping(now: float) -> void:
+	for w in _gone.keys():
+		var g: Dictionary = _gone[w]
+		if now - float(g["at"]) >= NetEvents.OFFLINE_GRACE_S:
+			_gone.erase(w)
+			if _peers_of(w).is_empty():
+				_event({"k": "offline", "w": w, "n": String(g["n"])}, "signed")
+	if _ev_wallet.size() > 2000:
+		_ev_wallet.clear()
+	for k in _placed.keys():
+		if now - float(_placed[k]) > NetEvents.PLACE_REPEAT_S:
+			_placed.erase(k)
+	for w in _arrived.keys():
+		if now - float(_arrived[w]["at"]) > NetEvents.ARRIVE_REPEAT_S and _peers_of(w).is_empty():
+			_arrived.erase(w)

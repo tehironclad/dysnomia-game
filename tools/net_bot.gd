@@ -12,6 +12,17 @@ extends SceneTree
 ##                    hits below --hit-below=15 then stands (cards read their blocks from the chain)
 ##       [--concede-after=N]  concede after N of its own game moves (0 = never)
 ## It replays each game with NetMatch, like the game, and reports its result to the server.
+## Names and the activity feed (NetEvents):
+##       [--guest]          stay a guest (no sign-in): others must see "guest"
+##       [--place=arcade]   say it walked into that place of its QING (players there see it)
+##       [--claim=rocket]   send a claim (receivers check it on the chain; a test key's claim fails that check)
+##       [--join-me=0x…]    ask that wallet to join it (at --join-door=""|room|arcade)
+##       [--accept-join]    accept a join request (reports it; a bot does not travel)
+##       [--start-delay=S]  wait S seconds before connecting (a later "came online")
+##       [--after-peer]     place / claim / join-me only once it sees another player in the room
+## It prints every event it gets ("[bot] event: …", in the feed's words) and every peer's
+## name tag as this game would draw it ("[bot] tag: …"): the chain's LAU name for the
+## verified wallet (read-only), the short wallet, or "guest".
 
 const DEFAULT_QING := "0xd127839b83cbf537c29b7d268c135f745a0da2e8"
 const DEFAULT_KEY := "0x2f6c8e1a3b5d7f9e0c2a4b6d8f1e3c5a7b9d0e2f4a6c8b1d3e5f7a9c0b2d4e6f"
@@ -46,6 +57,14 @@ func _run() -> void:
 	var stake := ""
 	var invite_delay := 0.0
 	var accept := false
+	var guest := false
+	var place := ""
+	var claim := ""
+	var join_me := ""
+	var join_door := "arcade"
+	var accept_join := false
+	var start_delay := 0.0
+	var after_peer := false
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		var v := kv[1] if kv.size() > 1 else ""
@@ -65,10 +84,20 @@ func _run() -> void:
 			"play": play = true
 			"hit-below": hit_below = int(v)
 			"concede-after": concede_after = int(v)
+			"guest": guest = true
+			"place": place = v
+			"claim": claim = v
+			"join-me": join_me = v.to_lower()
+			"join-door": join_door = v
+			"accept-join": accept_join = true
+			"start-delay": start_delay = float(v)
+			"after-peer": after_peer = true
 	c = load("res://scripts/net/net_client.gd").new()
 	root.add_child(c)
 	c.signer_wallet = EthSign.address_of_private(key)
 	c.signer = func(m: String) -> String: return EthSign.sign_personal(m, key)
+	if start_delay > 0.0:
+		await create_timer(start_delay).timeout
 	var t0 := Time.get_ticks_msec()
 	c.connect_to(url)
 	while not c.is_online() and Time.get_ticks_msec() - t0 < 10000:
@@ -77,18 +106,34 @@ func _run() -> void:
 		print("[bot] no server at ", url)
 		quit(1)
 		return
-	c.sign_in()
-	while c.wallet == "" and Time.get_ticks_msec() - t0 < 15000:
-		await process_frame
-	print("[bot] signed in as ", c.wallet)
-	c.join(qing, {"name": nm, "head": head, "acc": [], "body": "male"})
+	c.event.connect(_on_event)
+	c.peer_joined.connect(_on_peer)
+	if guest:
+		print("[bot] staying a guest (no signature)")
+	else:
+		c.sign_in()
+		while c.wallet == "" and Time.get_ticks_msec() - t0 < 15000:
+			await process_frame
+		print("[bot] signed in as ", c.wallet)
+	c.join(qing, {"name": nm if not guest else "", "head": head, "acc": [], "body": "male"})
+	if after_peer:
+		while c.peers.is_empty() and Time.get_ticks_msec() - t0 < secs * 1000.0:
+			await process_frame
+		print("[bot] a player is here: acting")
+	if place != "" or claim != "":
+		await create_timer(1.5).timeout
+		if place != "":
+			print("[bot] place %s: %s" % [place, "sent" if c.send_place(place, qing) else "not sent (guest, or a server without events)"])
+		if claim != "":
+			print("[bot] claim %s: %s" % [claim, "sent" if c.send_claim(claim, qing) else "not sent"])
 	var online := [false]
 	c.online_list.connect(func(ok, rows, _e):
 		if ok and rows.any(func(r): return r["wallet"] == invite_to):
 			online[0] = true)
 	c.invite_update.connect(func(inv):
 		print("[bot] invite %s %s: %s → %s %s stake '%s'" % [inv["id"], inv["state"], inv["from"], inv["to"], inv["game"], inv["stake"]])
-		if accept and inv["state"] == "pending" and inv["to"] == c.wallet:
+		var is_join: bool = inv["game"] == InviteBook.JOIN
+		if inv["state"] == "pending" and inv["to"] == c.wallet and ((accept and not is_join) or (accept_join and is_join)):
 			c.answer_invite(inv["id"], "accept"))
 	c.match_update.connect(_on_match)
 	c.match_move.connect(func(mid, mv):
@@ -98,6 +143,10 @@ func _run() -> void:
 			_replay(mid))
 	c.refused.connect(func(what, err): print("[bot] refused %s: %s" % [what, err]))
 	var invited := invite_to == ""
+	if join_me != "":
+		await create_timer(1.0).timeout
+		print("[bot] asking %s to join it (door '%s')" % [join_me, join_door])
+		c.invite(join_me, InviteBook.JOIN, "", qing, join_door)
 	var asked_at := -100000
 	var said := false
 	var said_at := -100000
@@ -245,3 +294,37 @@ func _act(id: String) -> void:
 		var op := "hit" if Duel21.total(d.hands[me]) < hit_below else "stand"
 		c.send_move(id, op)
 		print("[bot] %s: %s on %d" % [id, op, Duel21.total(d.hands[me])])
+
+
+
+func _names() -> Node:
+	var net := root.get_node_or_null("Net")
+	return net.names if net else null
+
+
+func _on_event(ev: Dictionary) -> void:
+	var n := _names()
+	var ctx := {"me": c.wallet}
+	if n:
+		ctx["name"] = func(w, _claimed): return n.display(w)
+	print("[bot] event: %s   %s" % [NetEvents.format(ev, ctx), JSON.stringify(ev)])
+
+
+var _tagged := {}
+
+
+## The tag this game draws over that peer: the chain's name for its verified wallet.
+func _on_peer(id: int, info: Dictionary) -> void:
+	var w := String(info.get("wallet", ""))
+	var guest: bool = info.get("guest", true) or w == ""
+	var n := _names()
+	if guest or n == null:
+		print("[bot] tag: peer %d '%s' (claimed name '%s')" % [id, NetNames.tag(w, guest, {}), info.get("name", "")])
+		return
+	n.record(w)
+	var t0 := Time.get_ticks_msec()
+	while String(n.record(w).get("state", "reading")) == "reading" and Time.get_ticks_msec() - t0 < 15000:
+		await process_frame
+	var rec: Dictionary = n.record(w)
+	print("[bot] tag: peer %d '%s' (chain read: %s, block %s; claimed name '%s')" % [id, NetNames.tag(w, false, rec), rec.get("state", "—"),
+		rec.get("block", "—"), info.get("name", "")])

@@ -140,11 +140,20 @@ Either:
 ## 5. What players get
 
 - **Presence.** Everyone in the same territory (QING) sees everyone else in real time. Name tags
-  show the LAU Username and the short wallet; guests show as "guest".
+  show the wallet's LAU Username **as each player's own game reads it from the chain** (`CHO.GetUserTokenAddress`
+  → `LAU.Username()`, else the LAU's `name()`, read-only, Multicall3, cached; `LauNames`, `NetNames`) and always
+  the short wallet the signature proved: "enteh · 0x18f6…3111". The name a player's game sends is only a
+  claim and is never shown. No LAU, or the read failed: the short wallet alone. Guests show as "guest"
+  (nobody can carry a name without signing). A LAU switch re-sends the profile; the others re-read the chain.
 - **Guests** (not signed in) can see and hear everyone, but can't chat or talk.
-- **Sign-in** happens once. The first time a player with a connected wallet chats, or clicks *Sign in
-  with wallet*, the wallet asks for a free signature of a text that names your server, the host name the
-  player connected to, a one-time code and a 10-minute expiry, and says it is not a transaction. The
+- **Sign-in** is automatic once a wallet is connected: the game first shows one line ("Sign in to the game
+  server so others see your name: one free signature, not a transaction"), then the wallet asks for a free
+  signature of a text that names your server, the host name the
+  player connected to, a one-time code and a 10-minute expiry, and says it is not a transaction. If the
+  player says no, they stay a guest and are not asked again (a *Sign in* button stays in F2 · Online and in
+  the notification panel; the activity feed's header says so). A saved session token (24 h, kept per server
+  URL and wallet in `user://net.cfg`) signs in on the next launch with no signature. Another wallet signs in
+  again on a new connection. The
   **game builds that text itself** (the server only supplies the code and its time) and signs nothing else,
   so no server can get a player's signature on another text. The server checks it with `ecrecover`, and
   only for its own host name (the WebSocket's `Host`, or `--public-host`): a signature a malicious server
@@ -168,6 +177,13 @@ Either:
   the chain, and both players' games replay them. A stake is honour-bound: the loser pays the winner with an
   AFFECTION transfer from their own wallet, and the game shows it ✓ paid only when the chain has that Transfer.
   With no server, the panel says that invites need it.
+- **"Join me"**: the same list has *Pool*, *21* and *Join me* on every name. *Join me* asks that player to
+  come to where you are (your territory, its QING room or its arcade/pub). Same book, limits and 90 s expiry
+  as game invites. Accepting opens no game: their own game takes them there through the normal ways in (a
+  warp to the QING, then that building's door; never a teleport).
+- **The activity feed** (§8c): a few fading lines under the territory card, "enteh came online", "Bob entered
+  the arcade", "enteh beat Bob at pool (2 Ⓐ stake, honour-bound)", with each player's face. Its header says who
+  is online to invite ("2 others online · 2 to invite (N)"). K folds it; the notification panel keeps the history.
 
 ## 5b. Sharing with the site: the pulse node
 
@@ -244,6 +260,8 @@ One WebSocket **binary** message is `[type u8][body]`, little-endian. The code i
     rooms: [{room, players}], boards: [{board, rows}]}`. Guests may ask. It returns counts only. The welcome lists
     `"features": ["info"]`.
   - `S_NOTICE {code, text}`
+  - The activity feed (§8c, its own message numbers like bumps; the welcome lists `"events"`): `C_PLACE` (41)
+    `{place, room}`, `C_CLAIM` (42) `{claim, room}`, and `S_EVENT` (105) `{ev: {k, w, n, …}}`.
   - Invites and head-to-head games (the welcome lists `"invites"` in `features`; §8b): `C_ONLINE {req}` →
     `S_ONLINE {req, ok, players: [{wallet, name, room, busy}]}`; `C_INVITE {to, game, stake, room, door}`;
     `C_ANSWER {id, answer: accept|decline|cancel}`; each change → `S_INVITE {invite}` to both wallets; an accept
@@ -302,6 +320,50 @@ to sit. The server needs nothing else.
 `tests/test_invites.gd`. Screenshots with a bot: `screenshot.gd -- --net-url=ws://127.0.0.1:N --net-key=<test key>
 --session=<its wallet> --invite=panel|seated|play|result`. The test key only signs the free sign-in, and
 `--net-key` works only in debug (editor) builds: a release build ignores it with a warning.
+
+## 8c. The activity feed (for developers)
+
+`scripts/net/net_events.gd` (`NetEvents`, pure: wire, cleaning, lines, the client's gate), `net_activity.gd`
+(`NetActivity`, `Net.activity`: the session's lines and history), `scripts/ui/activity_feed.gd` (`ActivityFeed`, the
+HUD's stack; HudLayout slot `"activity"`, top-left under the territory card), `lau_names.gd`/`net_names.gd` (names).
+
+**What the server sends** (only facts it knows itself; never anything about the chain):
+
+| `k` | when | to whom |
+|---|---|---|
+| `online` | a wallet's first connection signs in (not after a drop shorter than 20 s) | signed-in players |
+| `offline` | its last connection has been gone 20 s | signed-in players |
+| `arrive` | a signed-in player joins a QING room (not again for the same QING within 10 min) | signed-in players |
+| `guest` | a guest joins a QING room (no wallet named) | that room |
+| `place` | a signed-in player says they walked into `arcade`/`pub`/`hall`/`void` of a QING (`C_PLACE`, once per 2 min each) | that QING's room |
+| `match` | an invite to a game was accepted | signed-in players |
+| `join` | a "Join me" was accepted (`place` = where) | signed-in players |
+| `result` | both machines' replays agreed on a game (never a disputed one); `push` for a draw | signed-in players |
+| `record` | a board row took #1 (`verified` as the board checked it) | signed-in players |
+| `claim` | a player claims a chain fact (`rocket`: every fair game paid at that QING), once an hour | signed-in players |
+
+Fields: `w`/`n` (the player's wallet and their game's claimed name), `w2`/`n2` (the other player), `room` (a QING),
+`place`, `game`, `stake`, `board`, `score`, `verified`, `push`, `claim`, `t` (server unix time).
+**Limits:** per subject (wallet, or "guest|room") 1 event / 5 s after a burst of 4 for the comings and goings
+(games, results, records and joins have their own limits upstream); 5 / s for the whole server (burst 20); a
+connection may send `C_PLACE`/`C_CLAIM` once every 5 s (burst 4); an unknown place or claim is a strike.
+
+**What a client shows** (`NetActivity`): server events (cleaned again: the server is somebody's laptop), minus
+your own comings and goings and places/guests of other QINGs (`NetEvents.relevant`). A `claim` is shown only once
+this machine's chain read agrees (`FairProgress.refresh` + `played` for the rocket), else dropped. Plus this
+machine's own chain reads (`add_local`, this player only): a 🎪 fair score line arriving in this QING's room once its
+ticket receipt and replay check out (`FairBoard.verify`), a player's Hypobar here rising between two reads of the
+territory (both blocks), a wager's AFFECTION Transfer log (✓ paid), and your invites sent/accepted. Names are the
+chain's (`Net.names`); a line re-renders when a name is read. The gate drops a line repeated within 30 s and keeps the
+feed to about one line a second (burst 6); lines fade after 8 s, at most 5 on screen, newest on top; the last 100 stay
+for the notification panel's ONLINE ACTIVITY.
+
+**Check it:** `tools/net_selftest.gd` (the events section, the result/record/join checks, the reconnect grace),
+`tests/test_net_events.gd`, `tools/net_bot.gd -- --guest | --place=arcade | --claim=rocket | --join-me=0x… | --accept-join
+| --start-delay=S --after-peer` (prints every event in the feed's words and each peer's tag as the game draws it).
+Screenshot: a local server, bots, then `screenshot.gd -- --net-url=ws://127.0.0.1:N --net-key=<test key>
+--session=<its wallet> --activity=4` (waits for 4 lines; debug builds: `--net-lau-of=<bot wallet>=<real wallet>` draws
+a bot with a real wallet's LAU name, marked "(test)").
 
 ### Bumps (players running into each other)
 

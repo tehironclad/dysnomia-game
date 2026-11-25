@@ -32,6 +32,9 @@ var matches := {}            # id → NetMatch
 var online: Array = []       # rows from S_ONLINE
 var online_state := ""       # "" | "loading" | "ok" | an error
 var pending_seat := {}       # {match, kind, room}: sit down at this table on arrival
+var pending_join := {}       # {room, door, from}: a "Join me" accepted: through that door on arrival
+const ONLINE_POLL_S := 30.0  # who is online, asked again this often while signed in (the feed's header)
+var _online_at := -1000000
 
 var _n := 0
 var _replaying := {}
@@ -154,8 +157,13 @@ func place_name(room: String) -> String:
 	return String(t.get("name", NetMatch.short(room)))
 
 
-func _who(wallet: String, name: String) -> String:
-	return "%s (%s)" % [name, NetMatch.short(wallet)] if name != "" else NetMatch.short(wallet)
+## A wallet as the panel names it: the chain's name for it (Net.names) and the short
+## wallet. The name the server passes on (`_name`) is the player's own claim: not shown.
+func _who(wallet: String, _name: String) -> String:
+	var net := get_node_or_null("/root/Net")
+	if net and net.names and NetProto.clean_wallet(wallet) != "":
+		return NetNames.tag(wallet, false, net.names.record(wallet))
+	return NetMatch.short(wallet)
 
 
 ## For the tables: `wallet`'s name as the server knows it in any of our games.
@@ -194,6 +202,14 @@ func invite(wallet: String, game: String, stake_text: String) -> String:
 		return b
 	if not InviteBook.game_ok(game):
 		return "Unknown game."
+	if game == InviteBook.JOIN:
+		var at := join_target()
+		if at.has("error"):
+			return String(at["error"])
+		if NetProto.clean_wallet(wallet) == "" or wallet.to_lower() == me():
+			return "Pick another player."
+		_client().invite(wallet.to_lower(), game, "", String(at["room"]), String(at["door"]))
+		return ""
 	var st := InviteBook.clean_stake(stake_text)
 	if st == "!":
 		return "The stake is a number of Ⓐ, like 5 or 0.25 (or empty for none)."
@@ -204,6 +220,29 @@ func invite(wallet: String, game: String, stake_text: String) -> String:
 		return "Pick another player."
 	_client().invite(wallet.to_lower(), game, st, room, String(InviteBook.GAMES[game]["door"]))
 	return ""
+
+
+## Where a "Join me" would bring someone: {room (this QING), door ("" the territory, "room" its
+## hall, "arcade" its arcade or pub)} or {error}. Never the Void or the Field (no QING there).
+func join_target() -> Dictionary:
+	var room := String(get_node("/root/GameManager").territory_address).to_lower()
+	if NetProto.clean_room(room) == "" or room.contains("/"):
+		return {"error": "Go to a territory first: a join request brings them to the QING you are in."}
+	var cs := get_tree().current_scene if get_tree() else null
+	var path := String(cs.scene_file_path) if cs else ""
+	match path:
+		Travel.TERRITORY_SCENE: return {"room": room, "door": ""}
+		Travel.HALL_SCENE: return {"room": room, "door": "room"}
+		Travel.ARCADE_SCENE, Travel.PUB_SCENE: return {"room": room, "door": "arcade"}
+	return {"error": "Join requests work from a territory, its QING room or its arcade, not from here."}
+
+
+## Pure: where a join request leads, in words ("Zürich QING", "the arcade of Zürich QING").
+static func join_where(place: String, door: String) -> String:
+	match door:
+		"room": return "the QING room of %s" % place
+		"arcade": return "the arcade of %s" % place
+	return place
 
 
 ## accept | decline | cancel
@@ -283,8 +322,32 @@ func _on_invite(inv: Dictionary) -> void:
 	var mine := me()
 	var from_me := String(inv.get("from", "")) == mine
 	var them := _who(String(inv["to"]), String(inv.get("to_name", ""))) if from_me else _who(String(inv["from"]), String(inv.get("from_name", "")))
+	var is_join := String(inv["game"]) == InviteBook.JOIN
 	var what := "%s at %s%s" % [game_title(String(inv["game"])), place_name(String(inv["room"])),
 		(" · stake %s Ⓐ (honour-bound)" % inv["stake"]) if String(inv.get("stake", "")) != "" else ""]
+	if is_join:
+		what = "join them at " + join_where(place_name(String(inv["room"])), String(inv.get("door", "")))
+	_feed_invite(inv, state, from_me, them, what)
+	if is_join:
+		match state:
+			"pending":
+				if from_me:
+					_note("sent", "You asked %s to join you (%s)." % [them, join_where(place_name(String(inv["room"])), String(inv.get("door", "")))], id, InviteBook.JOIN, true)
+				else:
+					_note("invite", "%s asks you to %s." % [them, what], id, InviteBook.JOIN, false)
+			"accepted":
+				if from_me:
+					_note("accepted", "%s accepted: on the way to you." % them, id, InviteBook.JOIN, false)
+				else:
+					_note("accepted", "You accepted: on the way to %s." % them, id, InviteBook.JOIN, true)
+					go_join(inv)
+			"declined":
+				_note("declined", ("%s declined to join you." % them) if from_me else ("You declined %s's request." % them), id, InviteBook.JOIN, not from_me)
+			"cancelled":
+				_note("cancelled", ("You withdrew your request to %s." % them) if from_me else ("%s withdrew their request." % them), id, InviteBook.JOIN, from_me)
+			"expired":
+				_note("expired", ("Your request to %s expired unanswered." % them) if from_me else ("%s's request expired." % them), id, InviteBook.JOIN, false)
+		return
 	match state:
 		"pending":
 			if from_me:
@@ -299,6 +362,67 @@ func _on_invite(inv: Dictionary) -> void:
 			_note("cancelled", ("You cancelled your invite to %s." % them) if from_me else ("%s cancelled their invite to %s." % [them, what]), id, String(inv["game"]), from_me)
 		"expired":
 			_note("expired", ("Your invite to %s expired unanswered." % them) if from_me else ("%s's invite to %s expired." % [them, what]), id, String(inv["game"]), false)
+
+
+## The activity feed's line for an invite you sent or got, sent or accepted (Net.activity; from the
+## server's S_INVITE: a fact the server holds, about you).
+func _feed_invite(inv: Dictionary, state: String, from_me: bool, _them: String, what: String) -> void:
+	var net := get_node_or_null("/root/Net")
+	if net == null or net.activity == null or not state in ["pending", "accepted"]:
+		return
+	net.activity.add_local({"k": "invite", "w": String(inv["to"] if from_me else inv["from"]), "state": state, "mine": from_me, "what": what,
+		"key": ControlsHelp.key_of("notifications"), "room": String(inv.get("room", "")), "game": String(inv.get("game", "")),
+		"text": String(inv.get("id", "")) + state})
+
+
+## A "Join me" you accepted: there through the normal ways in (a warp to the QING, then its door).
+func go_join(inv: Dictionary) -> void:
+	var room := String(inv["room"]).to_lower()
+	var door := String(inv.get("door", ""))
+	var tree := get_tree()
+	var reg := get_node("/root/Registry")
+	if not reg.has_territory(room):
+		_note("refused", "That QING (%s) is not in this game's territory list." % NetMatch.short(room), String(inv["id"]), InviteBook.JOIN, false)
+		return
+	var gm := get_node("/root/GameManager")
+	var cs := tree.current_scene
+	var path := String(cs.scene_file_path) if cs else ""
+	var same_qing := String(gm.territory_address).to_lower() == room
+	if same_qing and path == Travel.TERRITORY_SCENE:
+		if door != "":
+			Travel.through_door(tree, door)  # already here: in through the door
+		return
+	if same_qing and Travel.place_scene(door, room) == path and door != "":
+		return  # already there
+	if same_qing and path in [Travel.HALL_SCENE, Travel.ARCADE_SCENE, Travel.PUB_SCENE]:
+		pending_join = {"room": room, "door": door}
+		Travel.out_door(tree, Travel.door_of_scene(path))  # out of this building, then in through theirs
+		return
+	pending_join = {"room": room, "door": door}
+	Warp.to(tree, room)
+
+
+## The territory scene arrived at `qing` (NetPresence): a join's door, if any, is walked through now.
+func arrived_in(qing: String) -> void:
+	if pending_join.is_empty() or String(pending_join["room"]) != qing.to_lower():
+		return
+	var door := String(pending_join["door"])
+	pending_join = {}
+	if door == "":
+		return
+	await get_tree().create_timer(1.5).timeout  # the arrival settles (the warp's card fades) first
+	var gm := get_node("/root/GameManager")
+	if String(gm.territory_address).to_lower() == qing.to_lower() and String(get_tree().current_scene.scene_file_path) == Travel.TERRITORY_SCENE:
+		Travel.through_door(get_tree(), door)
+
+
+## Who is online, asked again now and then while signed in (the feed's "N to invite").
+func poll_online() -> void:
+	var now := Time.get_ticks_msec()
+	if blocker() != "" or now - _online_at < int(ONLINE_POLL_S * 1000.0):
+		return
+	_online_at = now
+	_client().request_online()
 
 
 # --- Games --------------------------------------------------------------------------
@@ -434,6 +558,8 @@ func _on_over(id: String) -> void:
 
 func _process(_delta: float) -> void:
 	var now := Time.get_ticks_msec()
+	if _bound:
+		poll_online()
 	for id in _retry_at.keys():
 		if now >= int(_retry_at[id]):
 			_retry_at.erase(id)
@@ -502,6 +628,10 @@ func check_wager(id: String) -> void:
 		var mid := String(dm["id"])
 		if was != true and dm["paid"] == true:
 			_note("wager", "#%s wager settled: %s" % [mid, Wager.text(dm, me(), display)], mid, String(dm["kind"]), false)
+			var net := get_node_or_null("/root/Net")
+			if net and net.activity:  # the chain's Transfer log: a fact this machine read
+				net.activity.add_local({"k": "paid", "w": String(dm["loser"]), "w2": String(dm["winner"]), "stake": NetMatch.fmt(dm["stake"]).trim_suffix(" Ⓐ"),
+					"block": int(dm.get("paid_block", head)), "room": String(dm.get("room", ""))})
 			_check_at.erase(mid)
 		elif was == null and dm["paid"] == false:
 			_note("wager", "#%s: %s · checked to block %d" % [mid, Wager.text(dm, me(), display), head], mid, String(dm["kind"]), dm["winner"] != me() and dm["loser"] != me())

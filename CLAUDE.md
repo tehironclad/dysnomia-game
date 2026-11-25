@@ -218,6 +218,15 @@
   The site's pulse node (entropy-ai-pulse `pulse-node/`) bridges to this server as a guest: `C_INFO`/`S_INFO`
   (counts only, no wallets) and `C_LB_TOP`, served as the site's `/api/game-live` (SERVER.md §5b).
 
+- Online names and the activity feed (`docs/SERVER.md` §5, §8c): `Net` signs in by itself once a wallet is connected
+  (one line first, then the free personal_sign; saved 24 h token per URL+wallet; a "no" is remembered: Sign in buttons in
+  F2 · Online and the panel). Names on tags/chat/feed are the CHAIN's for the server-verified wallet (`Net.names` =
+  `LauNames`: CHO.GetUserTokenAddress → LAU.Username/name; `NetNames` decides; "name · 0xabcd…1234", short wallet, or
+  "guest"), never the client's claimed name. Feed: server events `NetEvents` (C_PLACE 41, C_CLAIM 42, S_EVENT 105;
+  online/offline/arrive/guest/place/match/join/result/record/claim) + local chain facts (`Net.activity.add_local`: 🎪 lines,
+  Hypobar rises, ✓ paid); `ActivityFeed` top-left under the card (HudLayout "activity"), K (`activity_feed`) folds it.
+  "Join me" = `InviteBook.JOIN` (doors ""/room/arcade; accept → `Invites.go_join`: warp + door). Shots: `screenshot.gd --
+  --net-url=… --net-key=… --session=… --activity=N [--net-lau-of=<bot>=<real wallet>]`.
 - Invites and wagers over the game server (`docs/SERVER.md` §8b): `InviteBook` (server, pure), `NetMatch` (both
   machines replay the server's move log; cards = the first block ≥ 2 s after the move's stamp, `BlockClock`), `Wager`
   (honour-bound; ✓ paid only from an AFFECTION Transfer log), autoload `Invites` (session notifications, replay, pay via

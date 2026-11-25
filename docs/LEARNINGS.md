@@ -897,7 +897,10 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   pure GDScript (`scripts/net/crypto/`: Keccak-256, secp256k1 10×26-bit limbs, about 105 ms) on a
   WorkerThreadPool task. It checks against ethers v6 goldens (`tests/golden/ecrecover.json`, made by
   `tools/golden/ecrecover.js`). After that, a 24 h session token. Guests see and hear but can't talk.
-  Names are the client's LAU Username; the tag also shows the short verified wallet.
+  Names (2026-11-25): each client reads the verified wallet's LAU Username from the chain (`LauNames`) and
+  shows that with the short wallet; the name a client sends is never shown. Sign-in is automatic once a wallet is
+  connected (it used to wait for the first chat, so wallet players showed as "guest" to everyone). The activity
+  feed's events (`NetEvents`, SERVER.md §8c) carry only what the server knows itself.
 - **Wire:** NetProto (binary, little-endian). Presence is 19 B at 10 Hz, positions in int32 cm, yaw u16;
   the server relays changed states every 100 ms to the same room only. `NetInterp` draws 150 ms in the
   past on the sender's u16 clock. Voice is IMA-ADPCM, 16 kHz, 20 ms frames of 163 B, relayed within 40 m;

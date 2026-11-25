@@ -24,14 +24,14 @@ func _init() -> void:
 	add_child(_lines)
 	_talk = Label.new()
 	_talk.theme_type_variation = "MonoLabel"
-	_talk.add_theme_font_size_override("font_size", 12)
+	_talk.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	_talk.add_theme_color_override("font_color", Color(0.45, 1.0, 0.7))
 	_talk.text = "◉ talking"
 	_talk.visible = false
 	add_child(_talk)
 	status = Label.new()
 	status.theme_type_variation = "MutedLabel"
-	status.add_theme_font_size_override("font_size", 11)
+	status.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	status.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(status)
 
@@ -46,7 +46,7 @@ func _ready() -> void:
 func add_line(text: String, col: Color) -> void:
 	var l := Label.new()
 	l.theme_type_variation = "MonoLabel"
-	l.add_theme_font_size_override("font_size", 13)
+	l.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size = Vector2(460, 0)
 	l.add_theme_color_override("font_color", col)

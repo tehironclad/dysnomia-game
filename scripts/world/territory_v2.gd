@@ -247,6 +247,7 @@ func _ready() -> void:
 		presence.name = "NetPresence"
 		add_child(presence)
 		presence.setup(String(territory["address"]), player, hud)
+		presence.watch_chain(state)  # the activity feed's chain facts here (Hypobar rises, fair scores)
 	# --- end Online
 	# --- Acts (scripts/world/play/): markers at the buildings, the Steward, the tracker.
 	act_loop = ActLoop.new()

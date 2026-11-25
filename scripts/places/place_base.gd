@@ -106,10 +106,29 @@ func setup_hud(title: String) -> void:
 		kl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))  # readable over the floor rings
 		kl.add_theme_constant_override("outline_size", 6)
 		hint.add_child(kl)
+	var feed := ActivityFeed.new()  # online players' actions, under the place's card (HudLayout "activity")
+	root.add_child(feed)
+	feed.follow(where)
 	help = ControlsHelp.new()
 	help.position = Vector2(20, 130)
 	root.add_child(help)
 	add_child(NotificationPanel.new())  # invites, stakes, wagers: above a seated table too
+	_announce_place.call_deferred()
+
+
+## Online: tell the players in this QING's territory that we walked in here (NetEvents.PLACES).
+func _announce_place() -> void:
+	var place := ""
+	match scene_file_path:
+		Travel.ARCADE_SCENE: place = "arcade"
+		Travel.PUB_SCENE: place = "pub"
+		Travel.HALL_SCENE: place = "hall"
+		Travel.VOID_SCENE: place = "void"
+	var q = get("qing")
+	var qing := String(q) if q is String and String(q) != "" else String(GameManager.territory_address)
+	var net := get_node_or_null("/root/Net")
+	if place != "" and net and qing != "":
+		net.announce_place(place, qing.to_lower())
 
 
 ## The place's colour on its HUD: the QING's own hue when the place belongs to one.

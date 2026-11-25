@@ -31,16 +31,29 @@ const GAMES := {
 ## Moves every game takes: sit (I'm at the table), the stake confirmations,
 ## concede, and claim (the waiting player claims a game idle for NetMatch.IDLE_CLAIM_MS).
 const COMMON_OPS := ["sit", "stake_ok", "stake_no", "concede", "claim"]
+## "Join me": not a game but a request to come to where the inviter is. Same book, limits
+## and expiry; accepting opens no match: the invited player's game travels there through
+## the normal warp and door (Invites.go_join). `door` says where in the QING room `room`:
+## "" the territory itself, "room" the QING's hall, "arcade" its arcade (or Sunny's Pub).
+const JOIN := "join"
+const JOIN_DOORS := {"": "", "room": "hall", "arcade": "arcade"}
 
 var invites := {}  # id → invite
 
 
 static func game_ok(game: String) -> bool:
-	return GAMES.has(game)
+	return GAMES.has(game) or game == JOIN
 
 
 static func title_of(game: String) -> String:
+	if game == JOIN:
+		return "Join me"
 	return String(GAMES.get(game, {}).get("title", game))
+
+
+## The NetEvents place a join door leads to ("" for the territory itself).
+static func join_place(door: String) -> String:
+	return String(JOIN_DOORS.get(door, ""))
 
 
 static func ops_for(game: String) -> Array:
@@ -83,7 +96,12 @@ func create(id: String, from: String, from_name: String, to: String, to_name: St
 	room = NetProto.clean_room(room)
 	if room == "" or room.contains("/"):
 		return {"ok": false, "error": "the table's territory is not a QING address"}
-	if door != String(GAMES[game]["door"]):
+	if game == JOIN:
+		if not JOIN_DOORS.has(door):
+			return {"ok": false, "error": "you can't be joined there"}
+		if st != "":
+			return {"ok": false, "error": "a join request has no stake"}
+	elif door != String(GAMES[game]["door"]):
 		return {"ok": false, "error": "that game is not played there"}
 	if invites.has(id):
 		return {"ok": false, "error": "duplicate id"}
@@ -94,7 +112,7 @@ func create(id: String, from: String, from_name: String, to: String, to_name: St
 		if v["from"] == from:
 			open += 1
 			if v["to"] == to and v["game"] == game:
-				return {"ok": false, "error": "you already invited them to that game"}
+				return {"ok": false, "error": "you already asked them to join you" if game == JOIN else "you already invited them to that game"}
 	if open >= MAX_OPEN_PER_WALLET:
 		return {"ok": false, "error": "you have %d invites waiting already" % MAX_OPEN_PER_WALLET}
 	var inv := {"id": id, "from": from, "from_name": NetProto.clean_text(from_name, NetProto.NAME_MAX_CHARS),

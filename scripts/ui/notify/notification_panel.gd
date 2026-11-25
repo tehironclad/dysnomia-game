@@ -1,7 +1,8 @@
 class_name NotificationPanel
 extends CanvasLayer
 ## The notification panel (N, or click the bell): game invites, stakes and wagers,
-## and who is online to invite. Its own layer, above a seated table, so an invite
+## who is online to invite (Pool, 21, or "Join me": come to where I am), and the
+## activity feed's history (online players' actions this session, Net.activity). Its own layer, above a seated table, so an invite
 ## reaches you while you play. What it shows comes from the Invites autoload (this
 ## session's notifications; the server's invites and games; the chain's Transfer
 ## logs for wagers). Added as one node by the HUD and by places:
@@ -24,6 +25,7 @@ var _stake: LineEdit
 var _online_box: VBoxContainer
 var _online_note: Label
 var _notes_box: VBoxContainer
+var _activity_box: VBoxContainer
 var _msg: Label
 var _game := "pool"
 var _was_mouse := Input.MOUSE_MODE_VISIBLE
@@ -60,6 +62,10 @@ func _ready() -> void:
 	Invites.match_changed.connect(func(_id): _mark_dirty())
 	Invites.online_changed.connect(_mark_dirty)
 	Invites.note_added.connect(_on_note)
+	var net := get_node_or_null("/root/Net")
+	if net and net.activity:
+		net.activity.added.connect(func(_it): _mark_dirty())
+		net.activity.updated.connect(func(_it): _mark_dirty())
 	_refresh_bell()
 
 
@@ -156,6 +162,9 @@ func _mark_dirty() -> void:
 func _refresh_bell() -> void:
 	_bell.count = Invites.unread()
 	_bell.online = Invites.blocker() == ""
+	var others := Invites.online.size() if Invites.blocker() == "" else 0
+	_bell.tooltip_text = "Notifications (%s): invites, stakes, wagers, who is online%s" % [ControlsHelp.key_of("notifications"),
+		(" · %d other%s online to invite or ask to join you" % [others, "" if others == 1 else "s"]) if others > 0 else ""]
 	_bell.queue_redraw()
 
 
@@ -262,7 +271,7 @@ func _build_panel(root: Control) -> void:
 	head.add_child(t)
 	_button(head, "Close · %s" % ControlsHelp.key_of("notifications"), close)
 	_status = _label(col, "", "MutedLabel", 12)
-	_sign_in = _button(col, "Sign in to the game server (a free signature)", func():
+	_sign_in = _button(col, "Sign in so others see your name (one free signature, not a transaction)", func():
 		get_node("/root/Net").sign_in()
 		_msg.text = "Approve the free signature in your wallet window (not a transaction).")
 	_msg = _label(col, "", "MonoLabel", 12, DeepFieldTheme.ICE)
@@ -301,6 +310,11 @@ func _build_panel(root: Control) -> void:
 	_notes_box = VBoxContainer.new()
 	_notes_box.add_theme_constant_override("separation", 8)
 	col.add_child(_notes_box)
+	col.add_child(HSeparator.new())
+	_label(col, "ONLINE ACTIVITY (%s folds the feed)" % ControlsHelp.key_of("activity_feed"), "DisplayLabel", 13, DeepFieldTheme.ICE)
+	_activity_box = VBoxContainer.new()
+	_activity_box.add_theme_constant_override("separation", 2)
+	col.add_child(_activity_box)
 	_set_game(_game)
 
 
@@ -330,9 +344,10 @@ func _rebuild() -> void:
 	var net := get_node("/root/Net")
 	_status.text = b if b != "" else "Online · %s · signed in as %s" % [String(net.client.server_name), NetMatch.short(Invites.me())]
 	_status.add_theme_color_override("font_color", Color("#ffd27a") if b != "" else DeepFieldTheme.MUTED)
-	_sign_in.visible = net.client != null and net.client.is_online() and net.client.wallet == "" and net.client.features.has("invites")
+	_sign_in.visible = net.can_sign_in()
 	_build_online(b)
 	_build_notes()
+	_build_activity()
 
 
 func _build_online(b: String) -> void:
@@ -361,12 +376,38 @@ func _build_online(b: String) -> void:
 		l.clip_text = true
 		row.add_child(l)
 		var w := String(r["wallet"])
-		_button(row, "Invite: %s" % ("pool" if _game == "pool" else "21"), func(): _invite(w))
+		_button(row, "Pool", func(): _invite(w, "pool"))
+		_button(row, "21", func(): _invite(w, "cards"))
+		_button(row, "Join me", func(): _invite(w, InviteBook.JOIN)).tooltip_text = "Ask them to come to where you are (they travel here if they accept)"
 
 
-func _invite(wallet: String) -> void:
-	var err := Invites.invite(wallet, _game, _stake.text)
-	_msg.text = err if err != "" else "Invite sent: it expires in %d s if they don't answer." % InviteBook.TTL_S
+func _invite(wallet: String, game: String = "") -> void:
+	if game == "":
+		game = _game
+	elif game in GAMES:
+		_set_game(game)
+	var err := Invites.invite(wallet, game, _stake.text if game != InviteBook.JOIN else "")
+	if err != "":
+		_msg.text = err
+	elif game == InviteBook.JOIN:
+		_msg.text = "Asked them to join you: it expires in %d s if they don't answer." % InviteBook.TTL_S
+	else:
+		_msg.text = "Invite sent: it expires in %d s if they don't answer." % InviteBook.TTL_S
+
+
+## The activity feed's lines this session, newest first (Net.activity: server events and chain reads).
+func _build_activity() -> void:
+	for c in _activity_box.get_children():
+		c.queue_free()
+	var net := get_node_or_null("/root/Net")
+	var items: Array = net.activity.items if net and net.activity else []
+	if items.is_empty():
+		_label(_activity_box, "Nothing yet. When players come online, arrive, play or set records, it shows here.", "MutedLabel", DeepFieldTheme.FS_CAPTION)
+		return
+	var now := int(Time.get_unix_time_from_system())
+	for i in range(items.size() - 1, maxi(-1, items.size() - 31), -1):
+		var it: Dictionary = items[i]
+		_label(_activity_box, "%s · %s" % [_ago(now - int(it["at"])), it["text"]], "MonoLabel", DeepFieldTheme.FS_CAPTION, it["color"])
 
 
 ## Newest first; a game's buttons only on its newest notification.

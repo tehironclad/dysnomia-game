@@ -8,6 +8,10 @@ extends SceneTree
 ## client builds the text itself; a signature made for another host (a relay by a
 ## malicious server) or after its expiry is refused; tokens are stored hashed and are
 ## only sent back to the URL that issued them. Prints measured bandwidth.
+## The activity feed (NetEvents): sign-ins, arrivals, guests, places, claims, games and
+## their agreed results, board records reach the right players (signed-in or the room),
+## within their limits, and a reconnect inside the grace is not news. "Join me" requests
+## go through the invite book (no match opened).
 ##   godot --headless --path . -s res://tools/net_selftest.gd [-- --url=ws://127.0.0.1:8787]
 ## Without --url it starts its own server in this process (port 18787, data in
 ## user://server_selftest). Exit code 0 = every check passed.
@@ -15,11 +19,13 @@ extends SceneTree
 const ROOM := "0xd127839b83cbf537c29b7d268c135f745a0da2e8"
 const KEY_A := "0x8b2a5c8f8e1f1c6f3d9a0b4e2c7d5f1a9e3b6c8d0f2a4c6e8b1d3f5a7c9e0b2d"
 const KEY_B := "0x2f6c8e1a3b5d7f9e0c2a4b6d8f1e3c5a7b9d0e2f4a6c8b1d3e5f7a9c0b2d4e6f"
+const KEY_C := "0x5d3a7c9e1b2f4a6c8e0d2b4f6a8c1e3d5f7b9a0c2e4d6f8a1b3c5e7d9f0a2b4c"
 
 var failures := 0
 var checks := 0
 var server: Node
 var clients: Array = []
+var evs := {}  # client name → [events]
 
 
 func _initialize() -> void:
@@ -58,7 +64,14 @@ func make_client(label: String, key: String) -> Node:
 		c.signer_wallet = EthSign.address_of_private(key)
 		c.signer = func(message: String) -> String: return EthSign.sign_personal(message, key)
 	clients.append(c)
+	evs[label] = []
+	c.event.connect(func(ev): evs[label].append(ev))
 	return c
+
+
+## Events of kind `k` that client `label` got (about `w`, when given).
+func got_ev(label: String, k: String, w: String = "") -> Array:
+	return (evs.get(label, []) as Array).filter(func(e): return e["k"] == k and (w == "" or e.get("w", "") == w))
 
 
 func _run() -> void:
@@ -132,6 +145,7 @@ func _run() -> void:
 	ok(await wait_until(func(): return b.peers.has(a.my_id) and a.peers.has(b.my_id) and b.peers.has(g.my_id), 5.0), "peers see each other in the QING room")
 	ok(String(b.peers.get(a.my_id, {}).get("name", "")) == "Alice" and String(b.peers[a.my_id]["wallet"]) == a.wallet, "B sees A's name and verified wallet")
 	ok(bool(b.peers.get(g.my_id, {}).get("guest", false)), "B sees G as a guest")
+	await _events(url, a, b, g)
 	var b_in0: int = b.counters["state_bytes_in"]
 	var a_out0: int = a.counters["state_bytes_out"]
 	var t0 := Time.get_ticks_msec()
@@ -226,6 +240,11 @@ func _run() -> void:
 	ok(not fair.get("ok", true), "a fair score above the game's maximum is refused (%s)" % fair.get("error"))
 	var top: Dictionary = await b.lb_top(board, 10)
 	ok(top.get("ok", false) and top["rows"].size() == 1 and int(top["rows"][0]["score"]) == 4200 and top["rows"][0]["wallet"] == a.wallet, "B reads the board: one real row")
+	ok(await wait_until(func(): return not got_ev("B", "record", a.wallet).is_empty(), 3.0), "B is told A set a new #1 on the board (record event)")
+	if not got_ev("B", "record", a.wallet).is_empty():
+		var rec: Dictionary = got_ev("B", "record", a.wallet)[0]
+		ok(int(rec["score"]) == 4200 and rec["board"] == board and not rec["verified"], "…with the score, the board and its check: %s" % NetEvents.format(rec))
+	ok(got_ev("G", "record").is_empty(), "a guest is not sent signed-in players' events")
 
 	# ── server info (what the site's pulse node reads): counts only ──
 	if server:
@@ -307,6 +326,7 @@ func _run() -> void:
 		signed[0] += 1
 		return EthSign.sign_personal(message, KEY_A)
 	_await_resync = true
+	var b_online0 := got_ev("B", "online", a.wallet).size()
 	a.close()
 	ok(await wait_until(func(): return not b.peers.has(a.my_id) or b.peers.size() < 3, 5.0), "B saw A leave")
 	a.token = tok
@@ -315,6 +335,8 @@ func _run() -> void:
 	ok(await wait_until(func(): return a.wallet != "", 8.0) and signed[0] == 0, "A reconnected and signed in by token (no wallet prompt)")
 	ok(await wait_until(func(): return b.peers.values().any(func(p): return p.get("wallet", "") == a.wallet), 5.0), "B sees A back in the room")
 	ok(await wait_until(func(): return _resynced, 5.0), "after the reconnect the server sent A its games again (S_MATCH %s)" % _match_id)
+	await wait_s(1.5)
+	ok(got_ev("B", "online", a.wallet).size() == b_online0 and got_ev("B", "offline", a.wallet).is_empty(), "a reconnect inside the grace is not news: no went offline / came online for A")
 
 	# A token goes back only to the server that issued it
 	var kept: String = a.token
@@ -452,6 +474,28 @@ func _invites(a: Node, b: Node, g: Node) -> void:
 	ok(int(recs["b"][_match_id]["result"].get("winner", -1)) == 0 and recs["b"][_match_id]["result"].get("agreed") == true, "result: player 0, agreed")
 	b.send_move(_match_id, "concede")
 	ok(await wait_until(func(): return refused["b"].any(func(s): return String(s).contains("over")), 5.0), "no moves after the end")
+	ok(got_ev("G", "match").is_empty() and not got_ev("B", "match", a.wallet).is_empty(), "the accepted game was announced to signed-in players (match), not to the guest")
+	ok(await wait_until(func(): return not got_ev("B", "result", a.wallet).is_empty(), 3.0), "the agreed result is announced: %s" % (NetEvents.format(got_ev("B", "result", a.wallet)[0]) if not got_ev("B", "result", a.wallet).is_empty() else "—"))
+	if not got_ev("B", "result", a.wallet).is_empty():
+		var rv: Dictionary = got_ev("B", "result", a.wallet)[0]
+		ok(rv["w2"] == b.wallet and rv["game"] == "pool" and rv["stake"] == "2" and not rv.get("push", false), "…A beat B at pool, stake 2 Ⓐ")
+
+	# "Join me": the same book and limits; accepting opens no game
+	await wait_s(5.5)
+	var m0: int = recs["b"].size()
+	a.invite(b.wallet, InviteBook.JOIN, "", ROOM, "arcade")
+	ok(await wait_until(func(): return last.call("b").get("game") == InviteBook.JOIN and last.call("b").get("state") == "pending", 5.0), "B got A's join request")
+	ok(String(last.call("b").get("door", "x")) == "arcade" and String(last.call("b").get("stake", "x")) == "", "…to the arcade of A's QING, no stake")
+	b.answer_invite(String(last.call("b").get("id", "")), "accept")
+	ok(await wait_until(func(): return last.call("a").get("state") == "accepted" and last.call("a").get("game") == InviteBook.JOIN, 5.0), "B accepted: A is told")
+	await wait_s(0.4)
+	ok(recs["b"].size() == m0 and String(last.call("a").get("match", "")) == "", "no game was opened for a join")
+	ok(not got_ev("A", "join", b.wallet).is_empty(), "the feed says B is on the way: %s" % (NetEvents.format(got_ev("A", "join", b.wallet)[0]) if not got_ev("A", "join", b.wallet).is_empty() else "—"))
+	await wait_s(5.5)
+	refused["a"].clear()
+	a.invite(b.wallet, InviteBook.JOIN, "5", ROOM, "arcade")
+	ok(await wait_until(func(): return not refused["a"].is_empty(), 5.0), "a join request with a stake is refused (%s)" % refused["a"])
+	ok(refused["a"].any(func(e): return String(e).contains("stake")), "…because of the stake, not the rate")
 
 	# expiry (in-process server only: its clock is moved, not waited for)
 	if server:
@@ -468,3 +512,64 @@ func _invites(a: Node, b: Node, g: Node) -> void:
 
 class GameServerLimits:
 	const MAX_STRIKES := 20
+
+
+## The activity feed's events (NetEvents) over the server.
+func _events(url: String, a: Node, b: Node, g: Node) -> void:
+	ok(a.features.has("events"), "the welcome lists the events feature")
+	# arrivals: A and B were announced to each other; the guest's arrival to the room only
+	ok(await wait_until(func(): return not got_ev("A", "arrive", b.wallet).is_empty() or not got_ev("B", "arrive", a.wallet).is_empty(), 3.0),
+		"a signed-in player arriving in a QING is announced (arrive)")
+	ok(await wait_until(func(): return not got_ev("A", "guest").is_empty() and not got_ev("B", "guest").is_empty(), 3.0), "the room is told a guest arrived")
+	var gev: Array = got_ev("A", "guest")
+	ok(not gev.is_empty() and gev[0]["w"] == "" and gev[0]["room"] == ROOM, "the guest event names no one: %s" % (NetEvents.format(gev[0]) if not gev.is_empty() else "—"))
+	ok(got_ev("G", "arrive").is_empty() and got_ev("G", "online").is_empty(), "the guest gets no signed-in players' events")
+	# a re-join of the same QING is the same visit
+	var n0 := got_ev("A", "arrive", b.wallet).size()
+	b.leave()
+	await wait_s(0.2)
+	b.join(ROOM, {"name": "Bob", "head": "fox", "acc": [], "body": "male"})
+	await wait_s(0.6)
+	ok(got_ev("A", "arrive", b.wallet).size() == n0, "back in the same QING soon after: not announced again")
+	# a new signed-in player: everyone signed in is told; then they leave (the grace, moved by the test)
+	var c := make_client("C", KEY_C)
+	c.connect_to(url)
+	await wait_until(func(): return c.is_online(), 5.0)
+	c.sign_in()
+	ok(await wait_until(func(): return not got_ev("A", "online", c.signer_wallet).is_empty() and not got_ev("B", "online", c.signer_wallet).is_empty(), 8.0),
+		"C signed in: A and B see \"came online\" (%s)" % (NetEvents.format(got_ev("A", "online", c.signer_wallet)[0]) if not got_ev("A", "online", c.signer_wallet).is_empty() else "—"))
+	ok(got_ev("G", "online").is_empty(), "…the guest does not")
+	var cw: String = c.wallet
+	c.close()
+	if server:
+		await wait_until(func(): return server._gone.has(cw), 3.0)
+		ok(server._gone.has(cw) and got_ev("A", "offline", cw).is_empty(), "C left: not \"offline\" during the grace")
+		server._gone[cw]["at"] -= NetEvents.OFFLINE_GRACE_S + 1.0
+		ok(await wait_until(func(): return not got_ev("A", "offline", cw).is_empty(), 3.0), "after the grace: \"went offline\"")
+	# places: to the QING's room only; once per place for a while; a guest's place says nothing
+	ok(a.send_place("arcade", ROOM), "A says it walked into the arcade")
+	ok(await wait_until(func(): return not got_ev("B", "place", a.wallet).is_empty(), 3.0), "B (in that QING) is told: %s" % (NetEvents.format(got_ev("B", "place", a.wallet)[0]) if not got_ev("B", "place", a.wallet).is_empty() else "—"))
+	ok(not a.send_place("arcade", ROOM), "the client doesn't repeat the same place at once")
+	a._send(NetEvents.place_msg("arcade", ROOM))  # past the client's own check
+	g._send(NetEvents.place_msg("pub", ROOM))
+	await wait_s(0.5)
+	ok(got_ev("B", "place", a.wallet).size() == 1, "the server drops a repeat of the same place")
+	ok(got_ev("B", "place").filter(func(e): return e["place"] == "pub").is_empty(), "a guest's place is not announced")
+	# a bad place is a strike, not an event
+	var bad := PackedByteArray([NetEvents.C_PLACE])
+	bad.append_array("{\"place\":\"vault\",\"room\":\"x\"}".to_utf8_buffer())
+	var strikes0: int = server._peers[a.my_id].strikes if server else 0
+	a._send(bad)
+	await wait_s(0.3)
+	ok(not server or server._peers[a.my_id].strikes == strikes0 + 1, "an unknown place is a strike")
+	# the sender's limit: a burst of places (different ones) is cut to the bucket's burst
+	var before := got_ev("B", "place", a.wallet).size()
+	for pl in ["pub", "hall", "void", "pub", "hall", "void"]:
+		a._send(NetEvents.place_msg(pl, ROOM))
+	await wait_s(0.6)
+	var more := got_ev("B", "place", a.wallet).size() - before
+	ok(more >= 1 and more <= int(NetEvents.SENDER_BURST), "a burst of places is rate-limited: %d of 6 relayed" % more)
+	# a claim: relayed as a claim (receivers check the chain before showing it)
+	await wait_s(5.5)  # A's event bucket refills a little
+	ok(a.send_claim("rocket", ROOM), "A claims the rocket")
+	ok(await wait_until(func(): return not got_ev("B", "claim", a.wallet).is_empty(), 3.0), "B gets the claim, to be checked on the chain (NetActivity) before it is shown")
