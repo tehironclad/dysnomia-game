@@ -18,6 +18,11 @@ extends SceneTree
 ##       with that search and those filters, the top result selected and hovered)
 ##       [--access=<AccessGates goal> --access-fee=<wei>] (any scene: the AccessSteps overlay for that
 ##       goal, read live: e.g. fair_ticket, room_post; with --qing the room/fair is that QING's)
+##       [--invite=panel|seated|result] (game invites over a game server: with --net-url, --net-key=<test key>
+##       and --session=<its wallet>; a net_bot invites this wallet. panel: the notification panel with the
+##       invite; seated: accept → the walk to the table → seated, the bot's first move replayed; result: accept,
+##       confirm the stake, play to the end (this side stands), the panel over the table with the wager's
+##       chain check. Nothing is signed on chain or paid)
 ## With --qing, the territory is loaded from the chain first (read-only).
 
 var _out := ""
@@ -46,6 +51,7 @@ var _field_search := ""
 var _field_filter: Array = []
 var _access := ""
 var _access_fee := ""
+var _invite := ""  # panel | seated | result
 var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
@@ -90,6 +96,8 @@ func _initialize() -> void:
 			_field_filter = Array(a.substr(15).split(",", false))
 		elif a.begins_with("--access="):
 			_access = a.substr(9)
+		elif a.begins_with("--invite="):
+			_invite = a.substr(9)
 		elif a.begins_with("--access-fee="):
 			_access_fee = a.substr(13)
 		elif a == "--classic":
@@ -221,6 +229,8 @@ func _run() -> void:
 			if not busy and not steps.result.is_empty():
 				break
 			await process_frame
+	if _invite != "":
+		await _invite_preview()
 	for i in _frames:
 		await process_frame
 	await RenderingServer.frame_post_draw
@@ -253,3 +263,69 @@ func _chat_preview() -> void:
 	elif _chat == "history":
 		cf.hud.feed.toggle_history()
 
+
+
+## Game invites over a game server (Invites): waits for the bot's invite, then
+## shows the panel, or accepts and follows the walk to the table, or plays the
+## game out and opens the panel over the table with the wager line.
+func _invite_preview() -> void:
+	var inv = root.get_node("Invites")
+	var t0 := Time.get_ticks_msec()
+	var pending := ""
+	while pending == "" and Time.get_ticks_msec() - t0 < 120000:
+		for i in inv.invites.values():
+			if i["state"] == "pending" and i["to"] == inv.me():
+				pending = String(i["id"])
+		await process_frame
+	print("[shot] invite: ", pending if pending != "" else "none arrived")
+	if pending == "":
+		return
+	if _invite == "panel":
+		for i in 30:
+			await process_frame
+		var p = current_scene.find_child("NotificationPanel", true, false) if current_scene else null
+		if p:
+			p.open()
+		await create_timer(2.0).timeout  # the online list answers
+		return
+	inv.answer(pending, "accept")
+	var mid := ""
+	while mid == "" and Time.get_ticks_msec() - t0 < 120000:
+		mid = String(inv.invites[pending].get("match", ""))
+		await process_frame
+	# the walk through the door, then seated
+	var seat = null
+	while Time.get_ticks_msec() - t0 < 150000:
+		seat = current_scene.get("seat") if current_scene else null
+		if seat and seat.is_inside():
+			break
+		await process_frame
+	print("[shot] seated: ", seat != null and seat.is_inside(), " match ", mid)
+	var m: Dictionary = inv.match_dict(mid)
+	if _invite == "seated":
+		if m.get("status") == "confirm":
+			inv.confirm_stake(mid, true)
+		# the bot (player 0) breaks: wait for its shot to be replayed here, and catch it rolling
+		while Time.get_ticks_msec() - t0 < 150000 and not m.has("last_shot") and int(m.get("moves", 0)) < 3:
+			await process_frame
+		await create_timer(0.9).timeout
+		return
+	if m.get("status") == "confirm":
+		inv.confirm_stake(mid, true)
+	var me: int = (m["players"] as Array).find(inv.me())
+	var stood := false
+	while Time.get_ticks_msec() - t0 < 200000 and m.get("status") != "over":
+		var d = m.get("game")
+		if not stood and m.get("status") == "playing" and d != null and d.get("dealt") and int(d.turn) == me:
+			stood = true
+			inv.send_move(mid, "stand")
+		await process_frame
+	print("[shot] over: ", m.get("status"), " winner ", m.get("winner"))
+	await create_timer(3.0).timeout
+	while Time.get_ticks_msec() - t0 < 240000 and m.get("paid") == null and String(m.get("check_note", "")) == "":
+		await process_frame  # the wager's chain check (the end block, then the Transfer logs)
+	print("[shot] wager: paid=", m.get("paid"), " end block ", m.get("end_block"), " ", m.get("check_note", ""))
+	var p = current_scene.find_child("NotificationPanel", true, false) if current_scene else null
+	if p:
+		p.open()
+	await create_timer(1.5).timeout
