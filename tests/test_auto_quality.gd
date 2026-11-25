@@ -34,3 +34,14 @@ func test_follow_the_frame_rate() -> void:
 	eq(Config.decide(1, 60.0, 3.0, 4.0, true), 1, "no going back up after a step down")
 	eq(Config.decide(1, 60.0, 0.0, 4.0, false), 1, "no GPU timing (lightweight renderer): no step up")
 	eq(Config.decide(2, 40.0, 9.0, 6.0, false), 2, "fine as it is")
+
+
+func test_relaunch_args_never_override_the_path_of_an_exported_build() -> void:
+	# A release template quits on --path ("compiled without support for path overrides").
+	var none := PackedStringArray()
+	eq(Config.relaunch_args("gl_compatibility", true, "/x/", none), PackedStringArray(["--rendering-method", "gl_compatibility"]),
+		"exported: the renderer only")
+	eq(Config.relaunch_args("gl_compatibility", false, "/src/game/", none),
+		PackedStringArray(["--path", "/src/game/", "--rendering-method", "gl_compatibility"]), "from source: the project too")
+	eq(Config.relaunch_args("forward_plus", true, "/x/", PackedStringArray(["--quality=1"])),
+		PackedStringArray(["--rendering-method", "forward_plus", "--", "--quality=1"]), "user args ride along")

@@ -298,3 +298,4 @@ environment/ssao/quality=2
 environment/ssil/quality=2
 environment/subsurface_scattering/subsurface_scattering_quality=1
 environment/defaults/default_clear_color=Color(0.05, 0.05, 0.08, 1)
+textures/vram_compression/import_etc2_astc=true

@@ -1,11 +1,13 @@
 # Release: on a version tag (v1.2.3), check → export Windows/Linux/macOS with release
 # templates → zip → SHA-256 → upload to the public download bucket (Cloudflare R2) →
-# update latest.json, which the site (systm0.vercel.app/download) reads.
+# update latest.json, which the site (enterdysnomia.com/download, via /api/download-manifest) reads.
 #
 # Repository secrets (Settings → Secrets and variables → Actions):
 #   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY  — an R2 API token scoped to the bucket only
-#   R2_BUCKET            — e.g. dysnomia-downloads
-#   R2_PUBLIC_BASE_URL   — the bucket's public URL, e.g. https://pub-xxxx.r2.dev or https://dl.systm0.app
+#   R2_BUCKET            — dysnomia-downloads
+#   R2_PUBLIC_BASE_URL   — the bucket's custom domain, https://dl.enterdysnomia.com
+# The site's Vercel project needs DYSNOMIA_DOWNLOADS_BASE_URL set to the same URL.
+# R2 serves downloads with no egress fee, so players never download from the box.
 # The source stays private; only the built zips, SHA256SUMS and latest.json are public.
 
 name: release

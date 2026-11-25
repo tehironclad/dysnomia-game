@@ -121,15 +121,28 @@ func _interactive() -> bool:
 ## Starts the game again with another renderer (the renderer can't change
 ## while running), then quits this one.
 func _relaunch(method: String) -> void:
-	var args: Array = ["--path", ProjectSettings.globalize_path("res://"), "--rendering-method", method]
-	var user := OS.get_cmdline_user_args()
-	if not user.is_empty():
-		args.append("--")
-		args.append_array(user)
-	if OS.create_process(OS.get_executable_path(), PackedStringArray(args)) > 0:
+	var args := relaunch_args(method, OS.has_feature("template"), ProjectSettings.globalize_path("res://"),
+		OS.get_cmdline_user_args())
+	if OS.create_process(OS.get_executable_path(), args) > 0:
 		get_tree().quit()
 	else:
 		apply()  # couldn't start it: carry on as we are
+
+
+## The command line for the relaunch. `--path` only when running from source
+## (the editor binary): an exported build carries its own pack, and its release
+## template refuses `--path` and quits ("compiled without support for path
+## overrides"), so on a weak GPU the game would close the moment it opened.
+## User args (after `--`, e.g. `--quality=`) ride along. Pure (tests call it).
+static func relaunch_args(method: String, exported: bool, project_dir: String, user_args: PackedStringArray) -> PackedStringArray:
+	var args := PackedStringArray()
+	if not exported:
+		args.append_array(["--path", project_dir])
+	args.append_array(["--rendering-method", method])
+	if not user_args.is_empty():
+		args.append("--")
+		args.append_array(user_args)
+	return args
 
 
 ## The level and renderer the hardware asks for. Pure (tests call it).
