@@ -18,6 +18,7 @@ signal chat(id: int, wallet: String, name: String, text: String, pos: Vector3)
 signal voice(id: int, codec: int, data: PackedByteArray)
 signal notice(code: String, text: String)
 signal room_joined(room: String, count: int)
+signal bump_received(from_id: int, target_id: int, yaw: float, level: int)  # NetBump
 
 const STATE_INTERVAL_MS := 100   # 10 Hz
 const STATE_HEARTBEAT_MS := 1000 # resend unchanged state once a second
@@ -290,6 +291,7 @@ func _handle(m: PackedByteArray) -> void:
 			server_name = String(b.get("server", ""))
 			login_message = String(b.get("login", ""))
 			voice_radius = float(b.get("voice_radius", 40.0))
+			features = b.get("features", []) if b.get("features") is Array else []
 			_set_status("online")
 			welcomed.emit(my_id)
 			if token != "":
@@ -339,6 +341,28 @@ func _handle(m: PackedByteArray) -> void:
 			var req := int(b.get("req", 0))
 			if _lb_waiting.has(req):
 				_lb_waiting[req] = b
+		NetBump.S_BUMP:
+			var d := NetBump.unpack_relay(m)
+			if not d.is_empty():
+				bump_received.emit(int(d["from"]), int(d["target"]), float(d["dir"]), int(d["level"]))
 		NetProto.S_ROOM:
 			var b := NetProto.json_body(m)
 			room_joined.emit(String(b.get("room", "")), int(b.get("peers", 0)))
+
+
+# ── bumps (NetBump) ─────────────────────────────────────────────────────────
+
+var features: Array = []  ## what the server said it understands (S_WELCOME)
+var _bump_sent := {}      ## target id → ms of the last bump sent
+
+
+## Tells the room we ran into `target_id` (pushed along `yaw`). Only to a server
+## that relays bumps, at most once a NetBump.CLIENT_COOLDOWN_S per target.
+func send_bump(target_id: int, yaw: float, level: int) -> bool:
+	if not is_online() or room == "" or not features.has("bump"):
+		return false
+	var now := _now_ms()
+	if now - int(_bump_sent.get(target_id, -100000)) < int(NetBump.CLIENT_COOLDOWN_S * 1000.0):
+		return false
+	_bump_sent[target_id] = now
+	return _send(NetBump.bump_msg(target_id, yaw, level))

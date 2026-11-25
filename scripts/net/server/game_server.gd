@@ -89,6 +89,8 @@ class Peer:
 	var b_lb := TokenBucket.new(0.5, 4.0)
 	var b_bytes := TokenBucket.new(48000.0, 96000.0)
 	var b_msgs := TokenBucket.new(120.0, 240.0)  # every message: 10 states + 50 voice frames a second leave room
+	var b_bump := TokenBucket.new(NetBump.SENDER_RATE, NetBump.SENDER_BURST)  # bumps (NetBump)
+	var bumped_at := -100.0
 
 
 func _now() -> float:
@@ -242,7 +244,7 @@ func _poll_peer(p: Peer, now: float) -> void:
 		stats["connections"] += 1
 		_send(p, NetProto.json_msg(NetProto.S_WELCOME, {"id": p.id, "nonce": p.nonce, "server": server_name,
 			"v": NetProto.VERSION, "login": NetProto.login_message(server_name, p.nonce), "voice_radius": voice_radius,
-			"features": NetProto.FEATURES}))
+			"features": NetProto.FEATURES + NetBump.FEATURES}))
 	var n := 0
 	while p.ws.get_available_packet_count() > 0 and n < 200:
 		n += 1
@@ -366,6 +368,8 @@ func _handle(p: Peer, msg: PackedByteArray, now: float) -> void:
 				"rows": lb.top(board, int(b.get("n", 10))) if board != "" else [], "error": "" if board != "" else "bad board id"}))
 		NetProto.C_LB_SUBMIT:
 			_lb_submit(p, NetProto.json_body(msg), now)
+		NetBump.C_BUMP:
+			_bump(p, msg, now)
 		NetProto.C_INFO:
 			if not p.b_ctrl.take(now):
 				_throttled(p, now)
@@ -644,3 +648,29 @@ func _lb_submit(p: Peer, b: Dictionary, now: float) -> void:
 	if res.get("ok", false):
 		log_line("score %s %s %d (%s)" % [board, p.wallet, int(res["row"]["score"]), res["row"]["check"]])
 	_send(p, NetProto.json_msg(NetProto.S_LB, res))
+
+
+# ── bumps (NetBump) ─────────────────────────────────────────────────────────
+
+## One player ran into another: checked against what the server knows (same
+## room, both placed, within NetBump.MAX_DIST, the target's cooldown) and
+## relayed to the room, except the sender. Too many is throttling, not a strike.
+func _bump(p: Peer, msg: PackedByteArray, now: float) -> void:
+	if p.room == "":
+		return
+	if not p.b_bump.take(now):
+		stats["throttled"] += 1
+		return
+	var b := NetBump.unpack_bump(msg)
+	if b.is_empty():
+		_strike(p, "bad bump")
+		return
+	var q: Peer = _peers.get(int(b["target"]))
+	if q == null:
+		return
+	var why := NetBump.check(p.id, q.id, p.room == q.room, p.has_pos and q.has_pos, p.pos, q.pos, now - q.bumped_at)
+	if why != "":
+		return
+	q.bumped_at = now
+	stats["bumps"] = int(stats.get("bumps", 0)) + 1
+	_room_send(p.room, NetBump.relay(p.id, b), p.id)

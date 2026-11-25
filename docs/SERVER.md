@@ -229,3 +229,15 @@ One WebSocket **binary** message is `[type u8][body]`, little-endian. The code i
 - Sign-in text: `NetProto.login_message(server, nonce)`. The nonce is new for each attempt.
 - Run the checks: `godot --headless --path . -s res://tools/net_selftest.gd` (its own server), or add
   `-- --url=ws://127.0.0.1:8787` to test a running server. `tools/net_bot.gd` is a scripted remote player.
+
+### Bumps (players running into each other)
+
+Kept apart from the core types (`scripts/net/net_bump.gd`, numbers chosen away from the sequential ones):
+- `C_BUMP` (40) = target id u16 + direction u8 (the push's yaw, 256 steps) + level u8 (5 B). A client sends it
+  only when the welcome's `features` lists `"bump"` (the server adds `NetBump.FEATURES`), at most once a second
+  per target.
+- The server relays `S_BUMP` (104) = from u16 + target u16 + direction u8 + level u8 (7 B) to the room, except the
+  sender, after checking both players are in the same room with positions, within 3.5 m of each other (their last
+  `C_STATE`), the sender's bucket (1 a second, burst 3; over it is throttling, not a strike) and the target's 1.5 s
+  cooldown. The level is capped at a stumble: nobody is knocked down over the network.
+- Receivers: the bumped avatar stumbles; the bumped player staggers for at most 0.6 s (`BumpMath.STAGGER_MAX_S`).
