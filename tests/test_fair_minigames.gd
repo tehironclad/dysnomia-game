@@ -244,7 +244,13 @@ func test_progress_codes() -> void:
 	eq(FairProgress.code_of(BigInt.from_decimal("1000000000000000003")), 3)
 	eq(FairProgress.code_of(BigInt.from_decimal("1000000000000000000")), 0, "a plain 1 Ⓐ carries no code")
 	eq(FairProgress.code_of(BigInt.from_decimal("1000000000000000008")), 0)
-	eq(FairProgress.code_of(BigInt.from_decimal("2000000000000000001")), 0)
+	# Since ticket strips (TicketCode) the whole Ⓐ is the price, the low wei the code: 2 Ⓐ + 1 wei is
+	# one Test Your Affection ticket paid over its price (counts); 10 Ⓐ + 1001 a strip of 10 for it
+	eq(FairProgress.code_of(BigInt.from_decimal("2000000000000000001")), 1)
+	eq(FairProgress.code_of(BigInt.from_decimal("10000000000000001001")), 1, "a per-game strip counts for its game")
+	eq(FairProgress.code_of(BigInt.from_decimal("10000000000000001008")), 0, "an any-game strip counts for no game by itself")
+	eq(FairProgress.code_of(BigInt.from_decimal("9000000000000001001")), 0, "a strip paid under its price")
+	eq(FairProgress.code_of(BigInt.from_decimal("1000000000000000150")), 0, "100..199 is not a code")
 	var logs := []
 	for g in ["crystal", "striker", "crystal", "waat"]:
 		logs.append(_receipt(PLAYER, QING, FairProgress.fee_wei(g))["logs"][0])

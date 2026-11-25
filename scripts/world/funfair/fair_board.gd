@@ -4,13 +4,18 @@ extends RefCounted
 ## (CHOA.Chat) and checked by every reader. Nothing is trusted that the chain can't show.
 ##
 ## A score line (≤ MAX_LEN characters; the room's line limit is 280):
-##   🎪 <game> <score> <ticket tx hash> v1:<compact input log>
-##   🎪 motzkin 700 0x9f3c…5678 v1:1k2bxz.u2c3d…
+##   🎪 <game> <score> <ticket tx hash>[#<play>] v2:<compact input log>
+##   🎪 motzkin 700 0x9f3c…5678 v2:1k2bxz.u2c3d…        a single ticket
+##   🎪 crystal 950 0x77aa…01b2#3 v2:k2bxz.u2c3d…       play 3 (0-based) of a ticket strip
 ## A line counts when
-##   (a) the ticket's receipt (read from the chain) has AFFECTION Transfer(signer → this QING,
-##       1 Ⓐ + the game's code), where the signer is the line's own tx.from; and
-##   (b) MidwaySim.replay(game, seed_from_tx(ticket), log) gives exactly the claimed score.
-## One ticket counts once (its first valid line). Lines failing either check are dropped and
+##   (a) the ticket's receipt (read from the chain) has AFFECTION Transfer(signer → this QING)
+##       whose amount (TicketCode) is a ticket for this game: a single ticket (no #), or a strip
+##       for this game or for any fair game with 0 ≤ play < its size; paid in full (Prices.covers).
+##       The signer is the line's own tx.from; and
+##   (b) MidwaySim.replay(game, seed, log) gives exactly the claimed score, seed =
+##       MidwayGame.seed_from_tx(TicketCode.seed_tx(ticket, play)) (the ticket's hash for a single).
+## One play counts once: the first valid line naming ticket#play, across all the stalls (an
+## any-game strip's play can't be posted at two stalls). Lines failing a check are dropped and
 ## counted as "unverified". Rows carry the line's block and the ticket's block.
 
 const MARK := "🎪"
@@ -23,27 +28,29 @@ static var _state := {}     ## qing → {rows: Array, scanned_to: int, ok: bool,
 static var _receipts := {}  ## ticket tx → receipt (immutable once mined)
 
 
-## The room line for a finished paid round.
-static func line_text(game: String, score: int, ticket: String, log: Array) -> String:
-	return "%s %s %d %s v%d:%s" % [MARK, game, score, ticket.to_lower(), MidwaySim.VERSION, MidwaySim.encode_log(game, log)]
+## The room line for a finished paid round (index: the strip play, -1 for a single ticket).
+static func line_text(game: String, score: int, ticket: String, log: Array, index: int = -1) -> String:
+	return "%s %s %d %s%s v%d:%s" % [MARK, game, score, ticket.to_lower(), ("#%d" % index) if index >= 0 else "",
+		MidwaySim.VERSION, MidwaySim.encode_log(game, log)]
 
 
-## {} if the text isn't a score line; else {game, score, ticket, version, log_text, log, log_ok}.
+## {} if the text isn't a score line; else {game, score, ticket, index, version, log_text, log, log_ok}.
 static func parse(text: String) -> Dictionary:
 	if _re == null:
-		_re = RegEx.create_from_string("^🎪 (striker|entropy|regolith|crystal|motzkin|waat|saat) ([0-9]{1,6}) (0x[0-9a-fA-F]{64}) v([0-9]+):([0-9a-z.]*)\\s*$")
+		_re = RegEx.create_from_string("^🎪 (striker|entropy|regolith|crystal|motzkin|waat|saat) ([0-9]{1,6}) (0x[0-9a-fA-F]{64})(?:#([0-9]{1,2}))? v([0-9]+):([0-9a-z.]*)\\s*$")
 	var m := _re.search(text.strip_edges())
 	if m == null:
 		return {}
 	var game := m.get_string(1)
-	var d := MidwaySim.decode_log(game, m.get_string(5))
+	var d := MidwaySim.decode_log(game, m.get_string(6))
 	return {"game": game, "score": int(m.get_string(2)), "ticket": m.get_string(3).to_lower(),
-		"version": int(m.get_string(4)), "log_text": m.get_string(5), "log": d["log"], "log_ok": d["ok"]}
+		"index": int(m.get_string(4)) if m.get_string(4) != "" else -1,
+		"version": int(m.get_string(5)), "log_text": m.get_string(6), "log": d["log"], "log_ok": d["ok"]}
 
 
-## (a): the ticket's receipt pays this QING from the signer for this game. Pure.
-## {ok, why, block}
-static func ticket_check(receipt: Dictionary, signer: String, qing: String, game: String) -> Dictionary:
+## (a): the ticket's receipt pays this QING from the signer for this game (and, for a strip, the
+## play index is one of its plays). Pure. {ok, why, block, plays, item}
+static func ticket_check(receipt: Dictionary, signer: String, qing: String, game: String, index: int = -1) -> Dictionary:
 	if receipt.is_empty():
 		return {"ok": false, "why": "no receipt for that ticket"}
 	if String(receipt.get("status", "0x1")) != "0x1":
@@ -60,11 +67,23 @@ static func ticket_check(receipt: Dictionary, signer: String, qing: String, game
 			continue
 		if String(t[1]).to_lower().right(40) != want_from:
 			return {"ok": false, "why": "the ticket was paid by another wallet"}
-		var k := FairProgress.code_of(BigInt.from_hex(String(lg.get("data", "0x0"))))
-		if k != MidwaySim.code(game):
-			return {"ok": false, "why": "the ticket was for another stall" if k > 0 else "not a coded 1 Ⓐ ticket"}
-		return {"ok": true, "why": "", "block": String(receipt.get("blockNumber", "0x0")).hex_to_int()}
+		var d := TicketCode.decode(BigInt.from_hex(String(lg.get("data", "0x0"))))
+		var item := int(d["item"])
+		if not d["ok"] or not TicketCode.is_fair(item) or (item == TicketCode.FAIR_ANY and not d["strip"]):
+			return {"ok": false, "why": "not a coded fair ticket"}
+		if not TicketCode.fits_game(item, MidwaySim.code(game)):
+			return {"ok": false, "why": "the ticket was for another stall"}
+		if not Prices.covers(d):
+			return {"ok": false, "why": "the ticket paid less than its price"}
+		if not TicketCode.index_ok(int(d["plays"]), index):
+			return {"ok": false, "why": ("play #%d is not one of the strip's %d" % [index, int(d["plays"])]) if d["strip"] else "a single ticket has no play number"}
+		return {"ok": true, "why": "", "block": String(receipt.get("blockNumber", "0x0")).hex_to_int(), "plays": int(d["plays"]), "item": item}
 	return {"ok": false, "why": "the ticket paid nothing to this QING"}
+
+
+## The seed a line's round was played from: the ticket's hash, or its strip play's derived hash.
+static func seed_of(p: Dictionary) -> int:
+	return MidwayGame.seed_from_tx(TicketCode.seed_tx(String(p["ticket"]), int(p.get("index", -1))))
 
 
 ## (b): the claimed score replays from the ticket's seed. Pure.
@@ -73,7 +92,7 @@ static func replay_check(p: Dictionary) -> Dictionary:
 		return {"ok": false, "why": "sim version v%d is not this game's v%d" % [int(p.get("version", 0)), MidwaySim.VERSION]}
 	if not p.get("log_ok", false):
 		return {"ok": false, "why": "malformed input log"}
-	var s := MidwaySim.replay(String(p["game"]), MidwayGame.seed_from_tx(String(p["ticket"])), p["log"])
+	var s := MidwaySim.replay(String(p["game"]), seed_of(p), p["log"])
 	if s < 0:
 		return {"ok": false, "why": "the log does not replay"}
 	if s != int(p["score"]):
@@ -86,17 +105,19 @@ static func verify(line: Dictionary, receipt: Dictionary, qing: String) -> Dicti
 	var p := parse(String(line.get("text", "")))
 	if p.is_empty():
 		return {}
-	var row := {"game": p["game"], "score": int(p["score"]), "ticket": p["ticket"], "wallet": String(line.get("from", "")),
+	var row := {"game": p["game"], "score": int(p["score"]), "ticket": p["ticket"], "index": int(p["index"]),
+		"play": TicketCode.play_key(p["ticket"], int(p["index"])), "wallet": String(line.get("from", "")),
 		"name": String(line.get("name", "")), "line_block": int(line.get("block", 0)), "line_tx": String(line.get("tx", "")),
 		"log_index": int(line.get("log_index", 0)), "verified": false, "why": ""}
 	if row["wallet"] == "":
 		row["why"] = "signer unreadable"
 		return row
-	var a := ticket_check(receipt, row["wallet"], qing, p["game"])
+	var a := ticket_check(receipt, row["wallet"], qing, p["game"], int(p["index"]))
 	if not a["ok"]:
 		row["why"] = a["why"]
 		return row
 	row["ticket_block"] = int(a["block"])
+	row["plays"] = int(a["plays"])
 	var b := replay_check(p)
 	if not b["ok"]:
 		row["why"] = b["why"]
@@ -105,22 +126,34 @@ static func verify(line: Dictionary, receipt: Dictionary, qing: String) -> Dicti
 	return row
 
 
-## One stall's board from verified rows (chain order in): one ticket counts once (its first
-## valid line), best first (ties: the earlier line). {top, verified, unverified}.
-static func compile(rows: Array, game: String, top: int = TOP) -> Dictionary:
+## Rows in chain order with each play's later lines marked: one play counts once, its first valid
+## line, whatever stall it was posted at. Pure.
+static func dedupe(rows: Array) -> Array:
 	var seen := {}
+	var out: Array = []
+	for r in rows:
+		var x: Dictionary = r.duplicate()
+		if x.get("verified", false):
+			var key := String(x.get("play", TicketCode.play_key(String(x.get("ticket", "")), int(x.get("index", -1)))))
+			if seen.has(key):
+				x["verified"] = false
+				x["why"] = "that play was already posted"
+			seen[key] = true
+		out.append(x)
+	return out
+
+
+## One stall's board from verified rows (chain order in): one play counts once (its first valid
+## line), best first (ties: the earlier line). {top, verified, unverified}.
+static func compile(rows: Array, game: String, top: int = TOP) -> Dictionary:
 	var good: Array = []
 	var bad := 0
-	for r in rows:
+	for r in dedupe(rows):
 		if String(r.get("game", "")) != game:
 			continue
 		if not r.get("verified", false):
 			bad += 1
 			continue
-		if seen.has(r["ticket"]):
-			bad += 1
-			continue
-		seen[r["ticket"]] = true
 		good.append(r)
 	good.sort_custom(func(x, y):
 		if int(x["score"]) != int(y["score"]):

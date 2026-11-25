@@ -1,7 +1,7 @@
 class_name FairVerifier
 extends RefCounted
 ## The leaderboard verifier for Affection Fair boards ("<qing>/fair:<game>").
-## A fair round is seeded by its ticket's tx hash (MidwayGame.seed_from_tx), so
+## A fair round is seeded by its ticket's tx hash (a strip's play i: TicketCode.seed_tx(tx, i)), so
 ## a score can be checked by replaying (seed, input log):
 ##   1. entry {score, game, tx, inputs?}: the game must exist and the score be
 ##      within MidwayGame.max_score(game);
@@ -32,7 +32,8 @@ static func verify(board: String, entry: Dictionary, wallet: String) -> Dictiona
 	var dec: Dictionary = MidwaySim.decode_log(game, log_text)
 	if not dec.get("ok", false):
 		return {"ok": false, "check": "malformed input log"}
-	var replayed := MidwaySim.replay(game, MidwayGame.seed_from_tx(tx), dec["log"])
+	var index := int(entry.get("index", -1))  # a ticket strip's play (TicketCode), -1 for a single ticket
+	var replayed := MidwaySim.replay(game, MidwayGame.seed_from_tx(TicketCode.seed_tx(tx, index)), dec["log"])
 	if replayed != score:
 		return {"ok": false, "check": "replay of the input log scores %d, not %d" % [replayed, score]}
 	notes.append("replayed")
@@ -46,7 +47,7 @@ static func verify(board: String, entry: Dictionary, wallet: String) -> Dictiona
 		var qing := board.get_slice("/", 0) if board.contains("/") else ""
 		if qing.begins_with("0x"):
 			# The same check as the room boards: Transfer(wallet → this QING, 1 Ⓐ + this stall's code)
-			var t: Dictionary = FairBoard.ticket_check(r, wallet, qing, game)
+			var t: Dictionary = FairBoard.ticket_check(r, wallet, qing, game, index)
 			if not t.get("ok", false):
 				return {"ok": false, "check": String(t.get("why", "ticket check failed"))}
 		notes.append("ticket receipt checked (block %d)" % String(r.get("blockNumber", "0x0")).hex_to_int())
