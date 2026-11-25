@@ -671,6 +671,51 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
     preview, as before. Measured 2026-11-24: that two-topic filter over **the whole chain** (block 0 → head)
     answers in < 1 s when the pair has few transfers, but for a busy pair (hundreds of transfers a day) the
     node cuts the body off after ~10 s (HTTP 200, 23 bytes of JSON); scan from `FROM_BLOCK`, never block 0.
+  - **Ticket strips (2026-11-25).** Measured: 1 Ⓐ ≈ 26.5 PLS on PulseX and one approval's gas ≈ 21 PLS, so a
+    single play paid nearly half its cost in gas. A strip buys several plays with ONE transfer (gas once).
+    - **Prices are one table:** `scripts/games/prices.gd` (`Prices`): a play 1 Ⓐ (stall, cabinet, rental, jump), a
+      strip of 10 for 10 Ⓐ, a ride 1 Ⓐ, the Upsilon Rocket flight 5 Ⓐ (its practice flight stays free), Sunny's
+      round 1 Ⓐ and drinks 1–2 Ⓐ by drink (paid to the QING before the drink's own call; a paid drink that fails to
+      pour pours again free while the menu is open), wagers player-set (`Prices.wager_wei/wager_text`, ≤ 1,000 Ⓐ).
+      Every label, button and transfer reads it (`ArcadePay.FEE_WEI` = `Prices.wei(Prices.PLAY)`).
+    - **The amount says what it bought** (`TicketCode`): value = A Ⓐ (the price) + c wei, c < 10,000.
+      c < 100 is ONE play of item c — every ticket sold before strips decodes unchanged (1 Ⓐ + k = one play of
+      fair game k; a plain N Ⓐ = one general play). c = plays × 100 + item (plays 2..99) is a strip; 100..199 is
+      not a code. Items: 0 general, 1–7 the fair games, 8 any fair game, 9 the rocket, 10 arcade cabinets, 20 the
+      round, 21–27 the drinks. E.g. 10 Ⓐ + 1003 wei = 10 plays of Regolith Ring Toss, 10 Ⓐ + 1008 = 10 plays of any
+      fair game, 10 Ⓐ + 1010 = 10 arcade plays, 5 Ⓐ + 9 = a rocket flight. Decoding is price-independent;
+      `Prices.covers(decoded)` asks that A ≥ today's price for that item and size (lowering a price is safe; raising
+      one would drop older tickets from the boards: then keep the old price as the floor for older blocks).
+    - **Buying:** `ArcadePay.buy(qing, label, item, plays)` = the same pipeline (`ensure_funds` → `Wallet.send`:
+      simulate → sign → receipt → AFFECTION Transfer log → QING re-read), then the receipt's own Transfer amount must
+      decode to exactly that item and size, then ONE ledger entry with `plays` plays (`user://arcade_credits.cfg`,
+      `{tx, block, item, plays, spent: [indices]}`; entries from before read as one general play).
+    - **Seeds:** play i (0-based) of a strip = `TicketCode.seed_tx(tx, i)` = `"0x" + SHA-256("<tx lower case>#<i>")`,
+      fed to `MidwayGame.seed_from_tx` / `ArcadeWorld.seed_from_tx`; a single ticket is still seeded by its own hash.
+      Entropy Drift's road mixes the play number into the block hash the same way.
+    - **Room lines name the play:** `🎪 <game> <score> <tx>#<i> v2:<log>` (old lines have no `#`). FairBoard accepts a
+      strip line only if its ticket is a strip for this game or for any fair game, paid in full, with 0 ≤ i < plays;
+      a strip line without `#i`, or a single ticket with one, is refused. **One play counts once across all stalls**
+      (`FairBoard.dedupe`: the first valid line naming tx#i; an any-game play can't be posted at two stalls).
+    - **Plays left** are counted locally (the ledger) AND derivable: `FairProgress.refresh` also collects the fair
+      strips in the wallet → QING Transfer logs (`strips_from_logs`, any computer) and `ArcadePay.sync_strip` adds them
+      with every play the room shows posted (`FairProgress.posted_indices`) marked spent. A play played but never
+      posted on another computer can't be known; the board still counts each play once.
+    - **The rocket's rule:** a game counts as played when the chain shows (a) a ticket for that game — a single ticket
+      or a per-game strip — in the Transfer logs, or (b) a verified 🎪 line of that game signed by the wallet. (b) is
+      how an any-game strip's plays count (one game per posted play); it is also true of any posted round. Old tickets
+      keep counting. `FairProgress.played(log_codes, rows, wallet)`.
+    - **UX:** a stall's prompt and its counter plaque say "1 Ⓐ a play · strip of 10: 10 Ⓐ" and, with plays left,
+      "strip: N plays left · no new payment" (Use then plays at once, this game's strip before an any-game one). With
+      none, Use opens `TicketChoice` (Play 1 · 1 Ⓐ / Strip of 10 · 10 Ⓐ (gas once) · this game / · any fair game);
+      after a strip's last play it offers the next one. A cabinet's menu has "Buy 1 play · 1 Ⓐ", "Strip of 10 · 10 Ⓐ
+      (gas once)" and "Play · N left". Blocked payments still open AccessSteps.
+    - **Checks:** `tests/test_strips.gd` (encoding, seeds, lines, dedupe, rocket rule, ledger), `tools/probe_fair.gd`
+      (the stall's prices, the buy choice, a local fixture strip played twice), `tools/e2e_wallet.sh` (a real strip
+      purchase through the mock wallet: `transfer(QING, 10e18 + 1008)`; no strip exists on chain yet, so the harness's
+      localhost RPC pass-through serves `--hash`'s real receipt with its Transfer amount set to the signed amount, and
+      says so; then two plays replayed and verified, play #10 and a second posting refused, 8 left locally and derived).
+      Shots: `--fair=<game> --fair-phase=buy|strip`.
   - **Game feel** (`minigame/fair_fx.gd`, `fair_sfx.gd`, `fair_crowd.gd`): MidwayPlay watches the sim (presses,
     `last_tick`, the frenzy) and dresses each event: bursts, sparks, rising score pop-ups, a flash light, chase
     bulbs round the back wall (still / idle / win / grand), squash-and-stretch, camera shake (`Camera3D.h/v_offset`)
