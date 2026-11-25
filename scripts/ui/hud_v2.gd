@@ -1,22 +1,31 @@
 class_name HudV2
 extends CanvasLayer
 ## The v2 HUD (Deep Field). Every chain number is a FactLabel with its source.
-## Layout: territory card + "here" facts (top-left), block & DysnomiaTime
-## (top-right), prompt (bottom-centre), key hints (bottom-left).
+## Layout (HudLayout): WHERE YOU ARE top-left (the territory card in the
+## QING's colours, its few facts), WHO YOU ARE top-right (your face and name,
+## the notification slot, the block clock) with WHAT TO DO HERE under it (the
+## act tracker), the room's chat dock bottom-left (ChatHud), the keys
+## bottom-right, the ticker top-centre, the prompt bottom-centre.
 
 var card: TerritoryCard
 var prompt: Label          # the prompt's text (the key, if any, sits in prompt_key)
 var prompt_key: Label
 var prompt_box: PanelContainer
 var tracker: ActTracker    # the acts here and your goals (ActLoop fills it)
+var you_name: Label
+var you_sub: Label
+var you_face: HeadBadge
+var notify_slot: HBoxContainer  # empty: for a notification bell/badge (the top-right corner)
 var _banner: VBoxContainer
 var clock: Label
-var hint: Label
+var hint: HBoxContainer
 var ticker_box: VBoxContainer
+var where_box: PanelContainer
 var _facts := {}  # key → FactLabel
 var _state: TerritoryState
 var _sky: DeepFieldSky
 var _root: Control
+var _tint := DeepFieldTheme.ICE
 
 
 const COMPACT_HIDDEN := ["epi", "reactors", "door"]
@@ -29,44 +38,122 @@ func _ready() -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.theme = DeepFieldTheme.get_theme()
 	add_child(_root)
-	var left := VBoxContainer.new()
-	left.position = Vector2(20, 20)
-	left.add_theme_constant_override("separation", 8)
-	left.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(left)
+	_build_where()
+	_build_who()
+	_build_middle()
+	_build_keys()
+
+
+## Top-left: the territory card and its facts, one panel in the QING's colour.
+func _build_where() -> void:
+	where_box = PanelContainer.new()
+	where_box.name = "Where"
+	where_box.position = Vector2(HudLayout.MARGIN, HudLayout.MARGIN)
+	where_box.custom_minimum_size = Vector2(HudLayout.COL_W, 0)
+	where_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	where_box.add_theme_stylebox_override("panel", DeepFieldTheme.accent_style(_tint, 0.72))
+	_root.add_child(where_box)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", DeepFieldTheme.SPACE)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	where_box.add_child(col)
 	card = TerritoryCard.new()
-	left.add_child(card)
-	var here := PanelContainer.new()
-	here.custom_minimum_size = Vector2(320, 0)
-	left.add_child(here)
+	card.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	card.custom_minimum_size = Vector2(0, 0)
+	card.set_compact(true)
+	col.add_child(card)
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 14)
-	here.add_child(grid)
-	for row in [["omega", "HYPOBAR PER SU"], ["hypo", "HYPOBAR HERE"], ["epi", "EPIBAR HERE"],
-			["reactors", "REACTORS"], ["door", "COVER CHARGE"], ["dev", "DEVELOPMENT"], ["you", "YOU HERE"]]:
+	grid.add_theme_constant_override("v_separation", 2)
+	col.add_child(grid)
+	for row in [["omega", "Ω PER SU"], ["hypo", "HYPOBAR"], ["epi", "EPIBAR HERE"],
+			["reactors", "REACTORS"], ["door", "COVER CHARGE"], ["dev", "TIER"], ["you", "YOU HERE"]]:
 		# Less clutter: Epibar, reactors and the cover live in the Inspector (H) and
 		# the act tracker; the facts are still read and kept current.
 		var shown: bool = not row[0] in COMPACT_HIDDEN
 		var l := Label.new()
 		l.visible = shown
 		l.theme_type_variation = "MutedLabel"
-		l.add_theme_font_size_override("font_size", 11)
 		l.text = row[1]
+		l.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		grid.add_child(l)
 		var f := FactLabel.new()
 		f.theme_type_variation = "MonoLabel"
+		f.add_theme_font_size_override("font_size", DeepFieldTheme.FS_SMALL)
+		f.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		f.custom_minimum_size = Vector2(250, 0)
 		f.set_fact(Fact.loading("…"))
 		f.visible = shown
 		grid.add_child(f)
 		_facts[row[0]] = f
+
+
+## Top-right: who you are (face, name, the notification slot), the clock, and
+## what to do here (the act tracker).
+func _build_who() -> void:
+	var col := VBoxContainer.new()
+	col.name = "Who"
+	col.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	col.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	col.offset_left = -HudLayout.MARGIN - HudLayout.COL_W
+	col.offset_right = -HudLayout.MARGIN
+	col.offset_top = HudLayout.MARGIN
+	col.add_theme_constant_override("separation", HudLayout.GAP)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(col)
+	var strip := PanelContainer.new()
+	strip.name = "You"
+	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ss := DeepFieldTheme.panel_style()
+	ss.content_margin_top = 8
+	ss.content_margin_bottom = 8
+	strip.add_theme_stylebox_override("panel", ss)
+	col.add_child(strip)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	strip.add_child(row)
+	var names := VBoxContainer.new()
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	names.add_theme_constant_override("separation", 0)
+	names.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(names)
+	you_name = Label.new()
+	you_name.theme_type_variation = "DisplayLabel"
+	you_name.add_theme_font_size_override("font_size", DeepFieldTheme.FS_SMALL)
+	you_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	you_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	you_name.clip_text = true
+	names.add_child(you_name)
+	you_sub = Label.new()
+	you_sub.theme_type_variation = "MutedLabel"
+	you_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	you_sub.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	you_sub.clip_text = true
+	names.add_child(you_sub)
+	you_face = HeadBadge.new("human", DeepFieldTheme.ICE, 52.0)
+	row.add_child(you_face)
+	notify_slot = HBoxContainer.new()
+	notify_slot.name = HudLayout.NOTIFY_SLOT  # a notification bell/badge goes here (the corner itself)
+	notify_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	notify_slot.add_theme_constant_override("separation", 6)
+	row.add_child(notify_slot)
 	clock = Label.new()
 	clock.theme_type_variation = "MonoLabel"
-	clock.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	clock.position = Vector2(-380, 20)
-	clock.size = Vector2(360, 40)
 	clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_root.add_child(clock)
+	clock.add_theme_color_override("font_color", DeepFieldTheme.MUTED)
+	clock.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	clock.add_theme_constant_override("outline_size", 5)
+	col.add_child(clock)
+	tracker = ActTracker.new()
+	col.add_child(tracker)
+	Session.changed.connect(_refresh_you)
+	_refresh_you()
+
+
+## The middle: the ticker under the wallet chip, the celebration banner, the prompt.
+func _build_middle() -> void:
 	# The prompt: one style everywhere: [KEY] what it does (glass, centred).
 	prompt_box = PanelContainer.new()
 	prompt_box.add_theme_stylebox_override("panel", DeepFieldTheme.panel_style(Color(DeepFieldTheme.ICE, 0.35)))
@@ -75,63 +162,108 @@ func _ready() -> void:
 	prompt_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	prompt_box.offset_left = 0.0
 	prompt_box.offset_right = 0.0
-	prompt_box.offset_top = -96.0
-	prompt_box.offset_bottom = -96.0
+	prompt_box.offset_top = -HudLayout.PROMPT_BOTTOM
+	prompt_box.offset_bottom = -HudLayout.PROMPT_BOTTOM
 	prompt_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	prompt_box.visible = false
 	_root.add_child(prompt_box)
 	var pr := HBoxContainer.new()
 	pr.add_theme_constant_override("separation", 12)
 	prompt_box.add_child(pr)
-	prompt_key = Label.new()
-	prompt_key.theme_type_variation = "MonoLabel"
-	prompt_key.add_theme_font_size_override("font_size", 15)
-	prompt_key.add_theme_color_override("font_color", DeepFieldTheme.BLACK)
-	var ks := StyleBoxFlat.new()
-	ks.bg_color = DeepFieldTheme.ICE
-	ks.set_corner_radius_all(4)
-	ks.content_margin_left = 8
-	ks.content_margin_right = 8
-	ks.content_margin_top = 1
-	ks.content_margin_bottom = 1
-	prompt_key.add_theme_stylebox_override("normal", ks)
+	prompt_key = DeepFieldTheme.key_chip("", DeepFieldTheme.FS_LEAD)
 	pr.add_child(prompt_key)
 	prompt = Label.new()
 	prompt.theme_type_variation = "MonoLabel"
-	prompt.add_theme_font_size_override("font_size", 15)
+	prompt.add_theme_font_size_override("font_size", DeepFieldTheme.FS_LEAD)
 	prompt.add_theme_color_override("font_color", DeepFieldTheme.INK)
 	prompt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	pr.add_child(prompt)
 	_banner = VBoxContainer.new()
 	_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_banner.position = Vector2(0, 120)
+	_banner.position = Vector2(0, HudLayout.BANNER_TOP)
 	_banner.alignment = BoxContainer.ALIGNMENT_CENTER
 	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_banner)
 	ticker_box = VBoxContainer.new()
-	ticker_box.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	ticker_box.position = Vector2(-460, 80)
-	ticker_box.custom_minimum_size = Vector2(440, 0)
+	ticker_box.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	ticker_box.offset_left = -HudLayout.TICKER_W * 0.5
+	ticker_box.offset_right = HudLayout.TICKER_W * 0.5
+	ticker_box.offset_top = HudLayout.TICKER_TOP
 	ticker_box.alignment = BoxContainer.ALIGNMENT_BEGIN
 	ticker_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ticker_box.add_theme_constant_override("separation", 2)
 	_root.add_child(ticker_box)
-	tracker = ActTracker.new()
-	left.add_child(tracker)
-	hint = Label.new()
-	hint.theme_type_variation = "MutedLabel"
-	hint.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	hint.position = Vector2(20, -36)
-	hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))  # readable over bright regolith
-	hint.add_theme_constant_override("outline_size", 6)
-	hint.text = "%s  use   ·   %s  how is this drawn   ·   %s  the field   ·   %s  controls   ·   %s  settings" % [
-		ControlsHelp.key_of("interact"), ControlsHelp.key_of("inspect"), ControlsHelp.key_of("open_field"),
-		ControlsHelp.key_of("controls_help"), ControlsHelp.key_of("settings")]
+
+
+## Bottom-right: the main keys, each as a chip.
+func _build_keys() -> void:
+	hint = HBoxContainer.new()
+	hint.name = "Keys"
+	hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	hint.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	hint.offset_right = -HudLayout.MARGIN
+	hint.offset_bottom = -HudLayout.MARGIN
+	hint.offset_left = -HudLayout.MARGIN
+	hint.offset_top = -HudLayout.MARGIN
+	hint.alignment = BoxContainer.ALIGNMENT_END
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hint.add_theme_constant_override("separation", 6)
 	_root.add_child(hint)
+	var hints := key_hints()
+	for i in hints.size():
+		hint.add_child(DeepFieldTheme.key_chip(String(hints[i][0])))
+		var l := Label.new()
+		l.text = String(hints[i][1]) + ("" if i == hints.size() - 1 else "   ")
+		l.theme_type_variation = "MutedLabel"
+		l.add_theme_color_override("font_color", DeepFieldTheme.INK.lerp(DeepFieldTheme.MUTED, 0.4))
+		l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))  # readable over bright regolith
+		l.add_theme_constant_override("outline_size", 6)
+		hint.add_child(l)
+
+
+## [[key, words]] of the HUD's key row (bound keys, read from the InputMap).
+static func key_hints() -> Array:
+	return [[ControlsHelp.key_of("interact"), "use"], [ControlsHelp.key_of("inspect"), "how is this drawn"],
+		[ControlsHelp.key_of("open_field"), "the Field"], [ControlsHelp.key_of("controls_help"), "controls"],
+		[ControlsHelp.key_of("settings"), "settings"]]
+
+
+## Who you are, as the chain says (a visitor until a wallet is connected).
+func _refresh_you() -> void:
+	var t := you_text(Session.wallet, Session.player)
+	you_name.text = t["name"]
+	you_sub.text = t["sub"]
+	var ps: PlayerState = Session.player
+	var kind := "human"
+	if Session.wallet != "" and ps != null and ps.ok and ps.has_lau():
+		var pick := AvatarHeads.local_choice(Session.wallet)
+		kind = pick if pick != "" else ps.head_kind()
+	you_face.set_face(kind, _tint if kind == "human" else HeadIcons.color_of(kind))
+
+
+## Pure: the identity strip's two lines.
+static func you_text(wallet: String, ps: PlayerState) -> Dictionary:
+	if wallet == "":
+		return {"name": "VISITOR", "sub": "looking is free · a wallet to play"}
+	var short := "%s…%s" % [wallet.left(6), wallet.right(4)]
+	if ps == null or not ps.ok:
+		return {"name": short, "sub": "reading your identity…"}
+	if not ps.has_lau():
+		return {"name": short, "sub": "no LAU yet: the Void, at the front door"}
+	var nm := ps.username if ps.username != "" else ps.lau_name
+	return {"name": nm.to_upper() if nm != "" else short,
+		"sub": "%s%s" % [(ps.lau_symbol + " · ") if ps.lau_symbol != "" else "", short]}
 
 
 func bind(address: String, state: TerritoryState, sky: DeepFieldSky) -> void:
 	card.show_territory(address)
+	_tint = ChatFeedPanel.room_tint(Registry.get_territory(address))
+	var ws := where_box.get_theme_stylebox("panel") as StyleBoxFlat
+	if ws:
+		ws.border_color = Color(_tint, 0.55)
+	_refresh_you()
 	_state = state
 	_sky = sky
 	state.changed.connect(_on_state)
@@ -187,21 +319,25 @@ static func dev_fact(st: TerritoryState) -> Fact:
 		"tier of Σ YUE.Bar(QING).Hypobar", "known players only", st.block)
 
 
-## A phenomenon line (each carries its block). Fades after `ttl` seconds.
+## A phenomenon line (each carries its block), top-centre under the wallet
+## chip. Fades after `ttl` seconds; the newest TICKER_ROWS stay.
 func ticker(text: String, color: Color = DeepFieldTheme.ICE, ttl: float = 24.0) -> void:
 	var l := Label.new()
 	l.theme_type_variation = "MonoLabel"
-	l.add_theme_font_size_override("font_size", 12)
 	l.add_theme_color_override("font_color", color)
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	l.add_theme_constant_override("outline_size", 6)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size = Vector2(440, 0)
+	l.custom_minimum_size = Vector2(HudLayout.TICKER_W, 0)
 	l.text = text
 	ticker_box.add_child(l)
 	ticker_box.move_child(l, 0)
-	while ticker_box.get_child_count() > 6:
+	while ticker_box.get_child_count() > HudLayout.TICKER_ROWS:
 		ticker_box.get_child(ticker_box.get_child_count() - 1).free()
+	l.modulate.a = 0.0
 	var tw := l.create_tween()
+	tw.tween_property(l, "modulate:a", 1.0, 0.4)
 	tw.tween_interval(ttl)
 	tw.tween_property(l, "modulate:a", 0.0, 2.0)
 	tw.tween_callback(l.queue_free)
@@ -272,8 +408,9 @@ func celebrate(title: String, line: String, color: Color = DeepFieldTheme.ICE) -
 		c.queue_free()
 	var t := Label.new()
 	t.text = title
+	t.theme_type_variation = "DisplayLabel"
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	t.add_theme_font_size_override("font_size", 34)
+	t.add_theme_font_size_override("font_size", DeepFieldTheme.FS_DISPLAY)
 	t.add_theme_color_override("font_color", color.lerp(Color.WHITE, 0.3))
 	t.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	t.add_theme_constant_override("outline_size", 8)
@@ -282,8 +419,10 @@ func celebrate(title: String, line: String, color: Color = DeepFieldTheme.ICE) -
 	l.text = line
 	l.theme_type_variation = "MonoLabel"
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", 14)
+	l.add_theme_font_size_override("font_size", DeepFieldTheme.FS_SMALL)
 	l.add_theme_color_override("font_color", DeepFieldTheme.INK)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	l.add_theme_constant_override("outline_size", 6)
 	_banner.add_child(l)
 	_banner.modulate.a = 0.0
 	_banner.scale = Vector2(0.9, 0.9)
@@ -306,5 +445,5 @@ func _process(delta: float) -> void:
 		return
 	_clock_t = 0.25  # the clock text is rebuilt 4×/s, not every frame
 	var t := _sky.now_unix()
-	clock.text = (("block %d\n%s" % [Chain.head_block, DysnomiaTime.format(t)]) if t >= 0 else "block —\ntime unknown") \
+	clock.text = (("block %s · %s" % [TokenFormat.group(str(Chain.head_block)), DysnomiaTime.format(t)]) if t >= 0 else "block — · time unknown") \
 		+ "\nWORLD " + {"latent": "not deployed yet", "stirring": "· deployer moved", "unverified": "· unverified code", "live": "LIVE", "unknown": "—"}.get(World.status, "—")

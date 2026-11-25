@@ -5,6 +5,7 @@ extends PanelContainer
 ## from chain reads and saying so on hover. Unread values show "—".
 
 const SHOW_ACTS := 3
+const SHOW_GOALS := 2  # the rest: the Steward at the Core, and the guide
 
 var _acts: VBoxContainer
 var _goals: VBoxContainer
@@ -12,16 +13,17 @@ var _foot: Label
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(320, 0)
+	custom_minimum_size = Vector2(HudLayout.COL_W, 0)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 4)
+	v.add_theme_constant_override("separation", 6)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(v)
 	var head := Label.new()
-	head.theme_type_variation = "MutedLabel"
-	head.add_theme_font_size_override("font_size", 11)
-	head.text = "TO DO HERE"
+	head.theme_type_variation = "DisplayLabel"
+	head.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
+	head.add_theme_color_override("font_color", DeepFieldTheme.MUTED)
+	head.text = "WHAT TO DO HERE"
 	v.add_child(head)
 	_acts = VBoxContainer.new()
 	_acts.add_theme_constant_override("separation", 3)
@@ -33,7 +35,7 @@ func _ready() -> void:
 	v.add_child(_goals)
 	_foot = Label.new()
 	_foot.theme_type_variation = "MutedLabel"
-	_foot.add_theme_font_size_override("font_size", 11)
+	_foot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(_foot)
 
 
@@ -55,20 +57,19 @@ func show_loop(acts: Array, goals: Array, block: int) -> void:
 		var dot := Label.new()
 		dot.text = "◆"
 		dot.add_theme_color_override("font_color", ActBeacon.color_of(a["kind"]) if a["doable"] else DeepFieldTheme.DIM)
-		dot.add_theme_font_size_override("font_size", 11)
+		dot.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 		row.add_child(dot)
 		var col := VBoxContainer.new()
 		col.add_theme_constant_override("separation", 0)
 		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var t := Label.new()
 		t.text = String(a["title"])
-		t.add_theme_font_size_override("font_size", 13)
+		t.add_theme_font_size_override("font_size", DeepFieldTheme.FS_SMALL)
 		t.add_theme_color_override("font_color", DeepFieldTheme.INK if a["doable"] else DeepFieldTheme.MUTED)
 		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		col.add_child(t)
 		var d := Label.new()
 		d.theme_type_variation = "MutedLabel"
-		d.add_theme_font_size_override("font_size", 12)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		d.text = String(a.get("detail", "")) if a["doable"] or String(a.get("blocker", "")) == "" else String(a["blocker"])
 		d.tooltip_text = String(a.get("call", ""))
@@ -80,14 +81,16 @@ func show_loop(acts: Array, goals: Array, block: int) -> void:
 		l.theme_type_variation = "MutedLabel"
 		l.text = "reading this territory…"
 		_acts.add_child(l)
-	for g in goals:
+	for g in goals.slice(0, SHOW_GOALS):
 		var l := Label.new()
 		l.theme_type_variation = "MonoLabel"
-		l.add_theme_font_size_override("font_size", 12)
 		l.add_theme_color_override("font_color", DeepFieldTheme.MUTED)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.text = String(g["text"])
 		l.tooltip_text = String(g["source"])
 		l.mouse_filter = Control.MOUSE_FILTER_PASS
 		_goals.add_child(l)
-	_foot.text = ("block %d" % block if block > 0 else "block —") + " · markers show where · ask the steward at the Core"
+	_goals.get_parent().get_child(_goals.get_index() - 1).visible = not goals.is_empty()  # the rule above the goals
+	var more := goals.size() - SHOW_GOALS
+	_foot.text = ("block %s" % TokenFormat.group(str(block)) if block > 0 else "block —") + " · ◆ marks the spot · " + \
+		("%d more goal%s with the Steward at the Core" % [more, "" if more == 1 else "s"] if more > 0 else "the Steward at the Core knows more")
