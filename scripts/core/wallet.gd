@@ -350,7 +350,7 @@ static func call_refusal(data: String) -> String:
 	if sel == SEL_SET_APPROVAL_FOR_ALL:
 		return "setApprovalForAll (it would hand over a whole collection) is never asked for"
 	if sel == SEL_APPROVE or sel == SEL_INCREASE_ALLOWANCE:
-		if d.length() < 10 + 128 or not d.substr(10, 128).is_valid_hex_number():
+		if d.length() < 10 + 128 or not NetProto.is_hex(d.substr(10, 128)):
 			return "a malformed approval"
 		var amount := BigInt.from_hex("0x" + d.substr(74, 64))
 		if BigInt.bit_length(amount) > APPROVE_MAX_BITS:
@@ -457,7 +457,7 @@ static func quantity(v: String) -> String:
 		var h := s.substr(2)
 		if h == "":
 			return "0x0"
-		if not h.is_valid_hex_number():
+		if not NetProto.is_hex(h):
 			return ""
 		return "0x" + BigInt.to_hex(BigInt.from_hex(s))
 	for c in s:
@@ -468,4 +468,4 @@ static func quantity(v: String) -> String:
 
 ## Pure: "0x" + 64 hex digits.
 static func is_tx_hash(h: String) -> bool:
-	return h.length() == 66 and h.begins_with("0x") and h.substr(2).is_valid_hex_number()
+	return h.length() == 66 and h.begins_with("0x") and NetProto.is_hex(h.substr(2))

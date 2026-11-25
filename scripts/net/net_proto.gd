@@ -300,9 +300,19 @@ static func clean_text(s: String, max_chars: int) -> String:
 ## 0x + 40 hex, lowercase; "" otherwise.
 static func clean_wallet(s: String) -> String:
 	s = s.strip_edges().to_lower()
-	if s.length() == 42 and s.begins_with("0x") and s.substr(2).is_valid_hex_number():
+	if s.length() == 42 and s.begins_with("0x") and is_hex(s.substr(2)):
 		return s
 	return ""
+
+
+## Pure: only 0-9 a-f A-F, at least one (String.is_valid_hex_number also takes a sign).
+static func is_hex(s: String) -> bool:
+	if s == "":
+		return false
+	for ch in s:
+		if not ((ch >= "0" and ch <= "9") or (ch >= "a" and ch <= "f") or (ch >= "A" and ch <= "F")):
+			return false
+	return true
 
 
 ## Room keys: "<qing 0x…>" or "<qing>/<place>" (lowercase); "" if malformed.

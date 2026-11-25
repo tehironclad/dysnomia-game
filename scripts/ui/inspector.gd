@@ -88,7 +88,8 @@ func visible_entries() -> Array:
 func _refresh() -> void:
 	var parts: PackedStringArray = []
 	for e in visible_entries():
-		parts.append("[color=#a8e6ff]%s[/color]\n[code]%s[/code]" % [String(e["title"]).to_upper(), e["text"]])
+		# Titles and texts carry chain strings (territory names): escaped, never BBCode
+		parts.append("[color=#a8e6ff]%s[/color]\n[code]%s[/code]" % [ChatLines.esc(String(e["title"]).to_upper()), ChatLines.esc(String(e["text"]))])
 	if parts.is_empty():
 		parts.append("[color=#8e97a9]Nothing on screen is drawn from chain data yet.[/color]")
 	_text.text = "\n\n".join(parts)

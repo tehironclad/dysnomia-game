@@ -15,7 +15,7 @@ var head_block := -1
 func _ready() -> void:
 	rpc = Rpc.new()
 	rpc.name = "Rpc"
-	rpc.endpoint = Config.rpc_url if Config.rpc_url != "" else Contracts.DEFAULT_RPC
+	rpc.endpoint = Config.rpc_url if Rpc.url_ok(Config.rpc_url) else Contracts.DEFAULT_RPC
 	add_child(rpc)
 	multicall = Multicall.new(rpc)
 	logs = LogScanner.new(rpc)
@@ -51,7 +51,7 @@ func _verify_endpoint() -> void:
 
 ## Re-reads the endpoints from Config (after Settings → Apply).
 func apply_config() -> void:
-	rpc.endpoint = Config.rpc_url if Config.rpc_url != "" else Contracts.DEFAULT_RPC
+	rpc.endpoint = Config.rpc_url if Rpc.url_ok(Config.rpc_url) else Contracts.DEFAULT_RPC
 	_verify_endpoint()
 	site.base_url = Config.site_api_base
 	site.enabled = Config.site_api_enabled

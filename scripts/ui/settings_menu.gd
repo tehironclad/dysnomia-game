@@ -171,7 +171,7 @@ func _apply() -> void:
 	Config.music_volume = _music.value
 	Config.sfx_volume = _sfx.value
 	var rpc := _rpc.text.strip_edges()
-	if rpc.begins_with("https://") or rpc.begins_with("http://"):
+	if Rpc.url_ok(rpc):  # https://, or http:// to this computer only
 		Config.rpc_url = rpc
 	Config.site_api_enabled = _site_on.button_pressed
 	Config.site_api_base = _site.text.strip_edges()

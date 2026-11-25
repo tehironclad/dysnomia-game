@@ -37,6 +37,21 @@ var _in_flight := 0
 var _next_id := 1
 ## Counters for diagnostics overlays.
 var stats := {"requests": 0, "retries": 0, "failures": 0}
+## A node's answer larger than this is a failure, never parsed (a hostile or broken node).
+const BODY_LIMIT := 32 * 1024 * 1024
+
+
+## Pure: may the game send requests to `url`? https:// anywhere (TLS verified), or
+## plain http:// only to this computer (a local node or test pass-through). Anything
+## else would let the network in between rewrite what the chain "says".
+static func url_ok(url: String) -> bool:
+	var u := url.strip_edges().to_lower()
+	if u.begins_with("https://"):
+		return u.length() > 8 and not u.contains(" ")
+	if not u.begins_with("http://"):
+		return false
+	var host := NetProto.login_host(u)
+	return host == "localhost" or host == "127.0.0.1" or host == "[::1]"
 
 
 func request(method: String, params: Array = []) -> Dictionary:
@@ -144,13 +159,17 @@ func _send_once(method: String, params: Array, url: String = "") -> Dictionary:
 
 func _send_raw(method: String, params: Array, url: String = "") -> Dictionary:
 	stats["requests"] += 1
+	var target := url if url != "" else endpoint
+	if not url_ok(target):
+		return {"ok": false, "kind": "transport", "error": {"message": "refused a non-https RPC address (%s)" % target.left(60)}}
 	var http := HTTPRequest.new()
 	http.timeout = TIMEOUT_S
+	http.body_size_limit = BODY_LIMIT
 	apply_tls(http)
 	add_child(http)
 	var body := JSON.stringify({"jsonrpc": "2.0", "id": _next_id, "method": method, "params": params})
 	_next_id += 1
-	var err := http.request(url if url != "" else endpoint, PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, body)
+	var err := http.request(target, PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, body)
 	if err != OK:
 		http.queue_free()
 		return {"ok": false, "kind": "transport", "error": {"message": "request error %d" % err}}

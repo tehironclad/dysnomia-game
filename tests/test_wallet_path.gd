@@ -16,6 +16,8 @@ func test_quantity_is_canonical_hex() -> void:
 	eq(W.quantity("-1"), "")
 	eq(W.quantity("1e18"), "")
 	eq(W.quantity("0xzz"), "")
+	eq(W.quantity("0x-5"), "", "no sign")
+	check(not W.is_tx_hash("0x-" + "a".repeat(63)), "no sign in a hash")
 
 
 func test_tx_hash_shape() -> void:

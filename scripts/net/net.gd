@@ -160,8 +160,18 @@ func _discover() -> String:
 		return normalize_url(server_url)
 	var r: Dictionary = await Chain.site.get_json(DISCOVERY_PATH)
 	if r.get("ok", false) and r["data"] is Dictionary:
-		return normalize_url(String(r["data"].get("url", "")))
+		return discovered_url(String(r["data"].get("url", "")))
 	return ""
+
+
+## Pure: a server address the SITE suggests must be wss:// (TLS), or ws:// to this
+## computer; "" otherwise. (An address typed in Settings is the player's own choice.)
+static func discovered_url(u: String) -> String:
+	var n := normalize_url(u)
+	if n.begins_with("wss://"):
+		return n
+	var host := NetProto.login_host(n)
+	return n if n != "" and (host == "localhost" or host == "127.0.0.1") else ""
 
 
 ## https://x → wss://x; ws(s):// kept; anything else → "".

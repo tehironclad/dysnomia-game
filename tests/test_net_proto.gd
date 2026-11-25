@@ -69,6 +69,33 @@ func test_text_hygiene() -> void:
 	eq(NetProto.clean_room("0xd127839b83cbf537c29b7d268c135f745a0da2e8/hall"), "0xd127839b83cbf537c29b7d268c135f745a0da2e8/hall")
 	eq(NetProto.clean_room("lobby"), "", "rooms are QINGs")
 	eq(NetProto.clean_room("0xd127839b83cbf537c29b7d268c135f745a0da2e8/../x"), "")
+	eq(NetProto.clean_wallet("0x-bcdef0123456789abcdef0123456789abcdef01"), "", "is_valid_hex_number takes a sign; wallets don't")
+	eq(NetProto.clean_wallet("0x+bcdef0123456789abcdef0123456789abcdef01"), "")
+	check(NetProto.is_hex("00aAfF") and not NetProto.is_hex("") and not NetProto.is_hex("-1") and not NetProto.is_hex("0x1"))
+
+
+func test_untrusted_names_and_lines() -> void:
+	# A LAU Username / room line is anyone's text: no direction overrides or invisible
+	# characters, one line, names capped; BBCode is escaped where it is drawn.
+	eq(ChatLines.clean_text("send\u202e 01 Ⓐ\u200b to\u2066 me\ufeff"), "send 01 Ⓐ to me")
+	eq(ChatLines.clean_text("a\u0085b"), "ab", "C1 controls")
+	eq(ChatLines.speaker({"name": "Sunny\u202e" + "x".repeat(80)}).length(), ChatLines.NAME_CHARS)
+	eq(ChatLines.speaker({"name": "\u200b"}), "?")
+	check(not ChatLines.bbcode({"name": "[url=x]Sunny[/url]", "text": "[color=red]send 10 Ⓐ[/color]", "source": "chain", "block": 1}).contains("[url=x]"), "names can't open a link")
+	check(ChatLines.bbcode({"name": "n", "text": "[img]res://icon.svg[/img]", "source": "chain", "block": 1}).contains("[lb]img]"), "lines can't draw images")
+
+
+func test_transport_addresses() -> void:
+	check(Rpc.url_ok("https://rpc.pulsechain.com"))
+	check(Rpc.url_ok("http://127.0.0.1:8545/"), "a local node")
+	check(Rpc.url_ok("http://localhost:8545"))
+	check(not Rpc.url_ok("http://rpc.pulsechain.com"), "plain http to the internet: anyone in between could rewrite the chain")
+	check(not Rpc.url_ok("http://127.0.0.1.evil.example/"))
+	check(not Rpc.url_ok("ftp://x"))
+	var Net = load("res://scripts/net/net.gd")
+	eq(Net.discovered_url("https://game.example.com"), "wss://game.example.com")
+	eq(Net.discovered_url("ws://game.example.com"), "", "the site may only suggest TLS servers")
+	eq(Net.discovered_url("ws://127.0.0.1:8787"), "ws://127.0.0.1:8787")
 
 
 static func _tone(n: int, hz: float, amp: float, rate: float = 16000.0) -> PackedFloat32Array:

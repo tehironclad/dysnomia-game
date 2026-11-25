@@ -16,6 +16,8 @@ var enabled := true
 func get_json(path: String, query: Dictionary = {}) -> Dictionary:
 	if not enabled or base_url.is_empty():
 		return {"ok": false, "error": "site API disabled"}
+	if not Rpc.url_ok(base_url):
+		return {"ok": false, "error": "site API address must be https:// (%s)" % base_url.left(60)}
 	var url := base_url.trim_suffix("/") + path
 	if not query.is_empty():
 		var parts: PackedStringArray = []
@@ -24,6 +26,7 @@ func get_json(path: String, query: Dictionary = {}) -> Dictionary:
 		url += "?" + "&".join(parts)
 	var http := HTTPRequest.new()
 	http.timeout = TIMEOUT_S
+	http.body_size_limit = 8 * 1024 * 1024  # the site's answers are small; a huge one is a failure
 	Rpc.apply_tls(http)  # system certificate store when TLS is being intercepted
 	add_child(http)
 	if http.request(url) != OK:

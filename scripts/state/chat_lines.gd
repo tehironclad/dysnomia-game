@@ -95,7 +95,9 @@ static func say_line(wallet: String, name: String, text: String, ms: int) -> Dic
 
 
 ## Text fit for one HUD line: data URIs named by kind and size, control
-## characters and newlines flattened, long lines cut with an ellipsis.
+## characters and newlines flattened, invisible and direction-override characters
+## dropped (a name or line can't hide or reverse text: U+200B–200F, U+202A–202E,
+## U+2066–2069, U+FEFF, C1 controls), long lines cut with an ellipsis.
 static func clean_text(text: String, max_chars: int = FEED_CHARS) -> String:
 	var t := text.strip_edges()
 	if t.begins_with("data:"):
@@ -111,7 +113,8 @@ static func clean_text(text: String, max_chars: int = FEED_CHARS) -> String:
 		var c := ch.unicode_at(0)
 		if c == 10 or c == 13 or c == 9:
 			out += " "
-		elif c < 32 or c == 127:
+		elif c < 32 or (c >= 127 and c < 160) or (c >= 0x200B and c <= 0x200F) or (c >= 0x202A and c <= 0x202E) \
+				or (c >= 0x2066 and c <= 0x2069) or c == 0xFEFF:
 			continue
 		else:
 			out += ch
@@ -128,8 +131,13 @@ static func _size(bytes: int) -> String:
 	return "%.1f kB" % (bytes / 1024.0)
 
 
+## A speaker's name as shown: the chain's Username is anyone's text, so it is one
+## clean line of at most NAME_CHARS characters.
+const NAME_CHARS := 32
+
+
 static func speaker(l: Dictionary) -> String:
-	var nm := String(l.get("name", ""))
+	var nm := clean_text(String(l.get("name", "")), NAME_CHARS)
 	return nm if nm != "" else "?"
 
 
