@@ -167,7 +167,7 @@ func _build_board() -> void:
 	_board_text.size = Vector2(1528, 512)
 	_board_text.scroll_active = false
 	_board_text.add_theme_font_override("normal_font", DeepFieldTheme.mono_font())
-	_board_text.add_theme_font_size_override("normal_font_size", 34)
+	_board_text.add_theme_font_size_override("normal_font_size", 42)  # legible from the door (≈ 14 m)
 	_board_vp.add_child(_board_text)
 	_board_text.text = "[color=#5d6578]Reading this room's lines from its own logs…[/color]"
 	DeepFieldView.throttle(_board_vp, 2.0)
@@ -220,18 +220,18 @@ static func board_bbcode(lines: Array, loaded: bool, history_ok: bool, head: int
 			return "[color=#5d6578]This room's history could not be read: —[/color]"
 		return "[color=#8e97a9]No lines in this room yet. Every QING is a room: say the first word (%s).[/color]" % ControlsHelp.key_of("chat")
 	var t := ""
-	for l in lines.slice(maxi(0, lines.size() - 8)):
+	for l in lines.slice(maxi(0, lines.size() - 7)):
 		var badge := ""
 		if l.get("badge", "") == "og":
 			badge = " [color=#64e3a8]✓[/color]"
 		elif l.get("badge", "") == "imposter":
 			badge = " [color=#ff8fa0]⚠[/color]"
 		var col := ChatLines.speaker_color(l).to_html(false)
-		var text := ChatPanel._esc(ChatLines.clean_text(String(l.get("text", "")), 96))
+		var text := ChatPanel._esc(ChatLines.clean_text(String(l.get("text", "")), 64))
 		if me != "" and ChatLines.mentions(String(l.get("text", "")), me):
 			text = "[color=#ffd27a]%s[/color]" % text
 		var when := "say" if String(l.get("source", "")) == "say" else "%s · %s" % [ChatLines.age_text(int(l.get("block", -1)), head), TokenFormat.group(str(int(l.get("block", -1))))]
-		t += "[color=#%s]%s[/color]%s  %s  [color=#5d6578][font_size=24]%s[/font_size][/color]\n" % [
+		t += "[color=#%s]%s[/color]%s  %s  [color=#5d6578][font_size=28]%s[/font_size][/color]\n" % [
 			col, ChatPanel._esc(ChatLines.speaker(l)), badge, text, when]
 	return t
 

@@ -34,6 +34,7 @@ var _panels := {}
 var _summary: VBoxContainer
 var _sum_emblem: DeepFieldView
 var _sum_name: Label
+var _sum_face: HeadBadge  # your LAU's creature head, beside your name
 var _sum_lines: Label
 var _sum_qings: HFlowContainer
 var _sum_state: Label
@@ -211,7 +212,7 @@ func _door(key: String, title: String, sub: String, call: Callable) -> Button:
 	b.add_theme_font_override("font", DeepFieldTheme.display_font())
 	b.add_theme_font_size_override("font_size", 19)
 	b.pressed.connect(call)
-	var s := _label(sub, "MutedLabel", 14, false)
+	var s := _label(sub, "MutedLabel", DeepFieldTheme.FS_CAPTION, false)
 	s.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
 	s.offset_left = -330
 	s.offset_right = -20
@@ -254,12 +255,12 @@ func _build_left() -> void:
 	_left.custom_minimum_size = Vector2(620, 0)
 	_left.add_theme_constant_override("separation", 12)
 	add_child(_left)
-	var kicker := _label("PULSECHAIN 369  ·  A MOON THAT COMPUTES ITSELF", "MonoLabel", 14, false)
+	var kicker := _label("PULSECHAIN 369  ·  A MOON THAT COMPUTES ITSELF", "MonoLabel", DeepFieldTheme.FS_CAPTION, false)
 	kicker.add_theme_color_override("font_color", DeepFieldTheme.ICE)
 	_left.add_child(kicker)
 	var title := _label("DYSNOMIA", "DisplayLabel", 104, false)
 	_left.add_child(title)
-	var lede := _label("Every territory here is a real QING on PulseChain, drawn from its own numbers. Walk them, react, talk in their rooms, play at their fairs: every change you see was made by a real transaction.", "MutedLabel", 18)
+	var lede := _label("Every territory here is a real QING on PulseChain, drawn from its own numbers. Walk them, react, talk in their rooms, play at their fairs: every change you see was made by a real transaction.", "MutedLabel", DeepFieldTheme.FS_BODY)
 	lede.custom_minimum_size = Vector2(600, 0)
 	_left.add_child(lede)
 	var gap := Control.new()
@@ -298,7 +299,7 @@ func _build_left() -> void:
 		b.custom_minimum_size = Vector2(0, 38)
 		b.pressed.connect(m[1])
 		more.add_child(b)
-	_status = _label("", "MonoLabel", 13)
+	_status = _label("", "MonoLabel", DeepFieldTheme.FS_CAPTION)
 	_status.custom_minimum_size = Vector2(600, 0)
 	_status.add_theme_color_override("font_color", DeepFieldTheme.ICE)
 	_left.add_child(_status)
@@ -346,14 +347,22 @@ func _build_right() -> void:
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(info)
-	var k := _label("WHO YOU ARE", "MutedLabel", 11, false)
+	var k := _label("WHO YOU ARE", "MutedLabel", DeepFieldTheme.FS_CAPTION, false)
 	k.add_theme_color_override("font_color", DeepFieldTheme.ICE)
 	info.add_child(k)
+	var name_row := HBoxContainer.new()
+	name_row.add_theme_constant_override("separation", 10)
+	info.add_child(name_row)
+	_sum_face = HeadBadge.new("human", DeepFieldTheme.ICE, 40.0)
+	_sum_face.visible = false
+	name_row.add_child(_sum_face)
 	_sum_name = _label("", "DisplayLabel", 24)
-	info.add_child(_sum_name)
-	_sum_lines = _label("", "MonoLabel", 13)
+	_sum_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sum_name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	name_row.add_child(_sum_name)
+	_sum_lines = _label("", "MonoLabel", DeepFieldTheme.FS_CAPTION)
 	info.add_child(_sum_lines)
-	_sum_state = _label("", "MonoLabel", 13)
+	_sum_state = _label("", "MonoLabel", DeepFieldTheme.FS_CAPTION)
 	col.add_child(_sum_state)
 	_sum_qings = HFlowContainer.new()
 	_sum_qings.add_theme_constant_override("h_separation", 6)
@@ -470,6 +479,11 @@ func _refresh_identity() -> void:
 		_sum_lines.text = "wallet %s\nYour identity could not be read: %s" % [AccessGates.short(w), ps.error]
 		return
 	_sum_name.text = (ps.username if ps.username != "" else ("(no username)" if ps.has_lau() else "NO LAU YET")).to_upper()
+	_sum_face.visible = ps.has_lau()
+	if ps.has_lau():
+		var pick := AvatarHeads.local_choice(w)
+		var kind := pick if pick != "" else ps.head_kind()
+		_sum_face.set_face(kind, HeadIcons.color_of(kind))
 	_sum_lines.text = "wallet %s\nLAU    %s%s\nYUE    %s\nblock  %d" % [AccessGates.short(w),
 		AccessGates.short(ps.lau) if ps.has_lau() else "— (none registered)",
 		("  %s · %s" % [ps.lau_name, ps.lau_symbol]) if ps.has_lau() and ps.lau_name != "" else "",
@@ -616,13 +630,13 @@ func _build_bottom() -> void:
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(col)
-	var k := _label("IN THE SKY TONIGHT", "MutedLabel", 11, false)
+	var k := _label("IN THE SKY TONIGHT", "MutedLabel", DeepFieldTheme.FS_CAPTION, false)
 	k.add_theme_color_override("font_color", DeepFieldTheme.ICE)
 	col.add_child(k)
 	var nm := _label(String(featured.get("name", "—")).to_upper(), "DisplayLabel", 17)
 	col.add_child(nm)
 	var p := DeepField.for_territory(featured) if not featured.is_empty() else {}
-	var facts := _label("", "MonoLabel", 12)
+	var facts := _label("", "MonoLabel", DeepFieldTheme.FS_CAPTION)
 	if not featured.is_empty():
 		facts.text = "%s · %s · reactors %s%s\nThe sky's faint Field marks its c; its Julia set is this picture and its ground." % [
 			String(p["tier"]), FieldIndex.tier_text(featured_row), FieldIndex.reactors_text(featured_row),
@@ -636,7 +650,7 @@ func _build_bottom() -> void:
 	go.pressed.connect(_explore)
 	col.add_child(go)
 	# News, bottom left
-	_news = _label("", "MonoLabel", 13)
+	_news = _label("", "MonoLabel", DeepFieldTheme.FS_CAPTION)
 	# As wide as the doors (it ran under the globe's labels) and growing upward from the strip.
 	_news.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_news.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -662,10 +676,10 @@ func _build_bottom() -> void:
 		cell.add_theme_constant_override("separation", 0)
 		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(cell)
-		var t := _label(key.to_upper() if key != "qings" else "QINGS", "MutedLabel", 10, false)
+		var t := _label(key.to_upper() if key != "qings" else "QINGS", "MutedLabel", DeepFieldTheme.FS_CAPTION, false)
 		t.add_theme_color_override("font_color", DeepFieldTheme.DIM)
 		cell.add_child(t)
-		var v := _label("checking…", "MonoLabel", 13, false)
+		var v := _label("checking…", "MonoLabel", DeepFieldTheme.FS_CAPTION, false)
 		v.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		v.clip_text = true
 		cell.add_child(v)
