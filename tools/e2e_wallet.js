@@ -14,11 +14,17 @@
 //    a second window is turned away; later the window is closed and a payment
 //    reopens/relinks it.
 // 4. Checks the game's results (results.json) and the requests the wallet saw.
+// 5. The game reads the chain through a pass-through on localhost (--rpc): every request goes to
+//    the public node unchanged, except one. No ticket strip exists on chain to point at, so when
+//    the wallet signed a transfer larger than --hash's real one (the strip), the receipt of --hash
+//    is served with its AFFECTION Transfer amount set to the signed amount. The harness prints
+//    each time it does that; every other receipt is the chain's own.
 //
 // Usage: node tools/e2e_wallet.js [--godot=godot] [--port=48420] [--keep]
 'use strict';
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
+const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -34,6 +40,8 @@ const WALLET = arg('wallet', '0xb644ba4797c8eab1c5a33c41e00096eb4e06d465');
 const QING = arg('qing', '0x299c56d1e1efa1d662823faa7fe7ccda6a4f35eb');
 const HASH = arg('hash', '0x4a556d285461e5a01d1c857b12efcc5d6f13ce6ae9daaf44b8a7fbb6c0658f3b');
 const AFFECTION = '0x24f0154c1dce548adf15da2098fdd8b8a3b8151d';
+const TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+const NODE = arg('node', 'https://rpc.pulsechain.com');
 const FAKE_SIG = '0x' + 'ab'.repeat(32) + 'cd'.repeat(32) + '1b';
 // The account as a wallet reports it: mixed case (the game must not care)
 const MIXED = '0x' + WALLET.slice(2).split('').map((c, i) => (i % 3 === 0 ? c.toUpperCase() : c)).join('');
@@ -50,7 +58,7 @@ async function waitFile(name, ms) {
 
 // ---- The mock wallet: state and decisions live here (shared by every page) ----
 const calls = [];
-const st = { chain: '0x1', switches: 0, txs: 0 };
+const st = { chain: '0x1', switches: 0, txs: 0, signed: null, reencoded: [] };
 const STRICT_QTY = /^0x(0|[1-9a-f][0-9a-f]*)$/;
 async function decide(pageName, method, params) {
   calls.push({ page: pageName, method, params, t: Date.now() });
@@ -81,6 +89,8 @@ async function decide(pageName, method, params) {
       if (st.chain !== '0x171') bad.push('sent while the wallet is on ' + st.chain);
       if (bad.length) return { error: { code: -32602, message: 'Invalid params: ' + bad.join(', ') } };
       if (st.txs === 3) return { error: { code: 4001, message: 'User rejected the request.' } };
+      // The amount this transfer(QING, amount) signs (what the strip's receipt is re-encoded to)
+      if (String(tx.data).startsWith('0xa9059cbb')) st.signed = BigInt('0x' + String(tx.data).slice(74, 138));
       if (st.txs === 4) await sleep(3000);
       return { result: HASH };
     }
@@ -112,11 +122,46 @@ function mockWallet() {
   announce();
 }
 
+// The pass-through to the public node (see 5. above)
+function startRpc() {
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => { body += c; });
+      req.on('end', async () => {
+        try {
+          let out = await (await fetch(NODE, { method: 'POST', headers: { 'content-type': 'application/json' }, body })).text();
+          const msg = JSON.parse(body);
+          if (msg.method === 'eth_getTransactionReceipt' && String(msg.params[0]).toLowerCase() === HASH && st.signed !== null) {
+            const j = JSON.parse(out);
+            const lg = j.result && (j.result.logs || []).find((l) => l.address.toLowerCase() === AFFECTION && l.topics[0] === TRANSFER
+              && l.topics[1].toLowerCase().endsWith(WALLET.slice(2)) && l.topics[2].toLowerCase().endsWith(QING.slice(2)));
+            if (lg && BigInt(lg.data) < st.signed) {
+              st.reencoded.push({ real: BigInt(lg.data).toString(), served: st.signed.toString() });
+              console.log('  [rpc] receipt of ' + HASH.slice(0, 10) + '…: Transfer amount ' + BigInt(lg.data) + ' served as the signed ' + st.signed + ' (no strip exists on chain)');
+              lg.data = '0x' + st.signed.toString(16).padStart(64, '0');
+              out = JSON.stringify(j);
+            }
+          }
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(out);
+        } catch (e) {
+          res.writeHead(502);
+          res.end('');
+        }
+      });
+    });
+    server.listen(0, '127.0.0.1', () => resolve(server));
+  });
+}
+
 async function main() {
+  const rpc = await startRpc();
+  const rpcUrl = 'http://127.0.0.1:' + rpc.address().port + '/';
   const logPath = path.join(ctl, 'godot.log');
   const out = fs.openSync(logPath, 'w');
   const godot = spawn(GODOT, ['--headless', '--path', ROOT, '-s', 'res://tools/e2e_wallet.gd', '--',
-    '--port=' + PORT, '--ctl=' + ctl, '--wallet=' + WALLET, '--qing=' + QING, '--hash=' + HASH], { stdio: ['ignore', out, out] });
+    '--port=' + PORT, '--rpc=' + rpcUrl, '--ctl=' + ctl, '--wallet=' + WALLET, '--qing=' + QING, '--hash=' + HASH], { stdio: ['ignore', out, out] });
   const exited = new Promise((res) => godot.on('exit', (code) => res(code)));
   let browser;
   const problems = [];
@@ -192,12 +237,21 @@ async function main() {
     expect(fee > 10n ** 18n && fee <= 10n ** 18n + 7n, 'the fair fee is 1 Ⓐ + a 1..7 wei code (' + fee + ')');
     const wantFair = '0xa9059cbb' + pad(QING) + pad(fee.toString(16));
     const wantArcade = '0xa9059cbb' + pad(QING) + pad((10n ** 18n).toString(16));
-    expect(sends.length === 5, 'exactly 5 eth_sendTransaction reached the wallet (got ' + sends.length + '; the reverting one must not)');
+    expect(sends.length === 6, 'exactly 6 eth_sendTransaction reached the wallet (got ' + sends.length + '; the reverting one must not)');
     const s0 = sends[0] || {};
     expect(s0.from === WALLET && s0.to === AFFECTION && s0.data === wantFair, 'fair ticket params: from, to = AFFECTION, data = transfer(QING, 1e18+k)');
     expect(s0.chainId === '0x171' && s0.value === undefined && s0.gas === undefined, 'fair ticket: chainId 0x171, no value, no gas (the wallet estimates)');
     expect((sends[1] || {}).data === wantArcade, 'arcade credit data = transfer(QING, 1e18)');
-    expect(sends.slice(2).every((x) => x.data === wantFair), 'the later tickets carry the same fair calldata');
+    expect(sends.slice(2, 5).every((x) => x.data === wantFair), 'the later tickets carry the same fair calldata');
+    // The strip: one transfer of 10 Ⓐ + (10 × 100 + 8) wei, for 10 plays of any fair game
+    const strip = res.results.find((r) => r.name.startsWith('fair strip')) || {};
+    const stripFee = BigInt(strip.fee_wei || '0');
+    expect(stripFee === 10n * 10n ** 18n + 1008n, 'the strip is 10 Ⓐ + 1008 wei (' + stripFee + ')');
+    expect((sends[5] || {}).data === '0xa9059cbb' + pad(QING) + pad(stripFee.toString(16)), 'strip data = transfer(QING, 10e18 + 1008): one approval for 10 plays');
+    expect(st.reencoded.length >= 1 && st.reencoded.every((x) => x.served === stripFee.toString()), 'only the strip\'s receipt was re-encoded (' + st.reencoded.length + 'x), to the signed amount');
+    expect((strip.plays || []).length === 2 && strip.plays.every((p) => p.verified && p.replay === p.score), 'two plays of the strip replay and verify: ' + JSON.stringify((strip.plays || []).map((p) => [p.game, p.index, p.score])));
+    expect(strip.plays_left_local === 8 && strip.plays_left_derived === 8, 'plays left: 8 here, 8 derived from the chain (' + strip.plays_left_local + ', ' + strip.plays_left_derived + ')');
+    expect((strip.refused || []).length === 2 && /not one of the strip/.test(strip.refused[0]) && /already posted/.test(strip.refused[1]), 'refused: ' + JSON.stringify(strip.refused));
     const sw = calls.filter((c2) => c2.method === 'wallet_switchEthereumChain');
     expect(sw.length >= 2, 'refused switch at connect, then the payment asked again (' + sw.length + ' switch requests)');
     const firstSend = calls.findIndex((c2) => c2.method === 'eth_sendTransaction');
@@ -214,6 +268,7 @@ async function main() {
     expect(false, 'harness: ' + (e && e.stack || e));
   } finally {
     if (browser) await browser.close();
+    rpc.close();
     if (godot.exitCode === null) godot.kill('SIGKILL');
   }
   const log = fs.readFileSync(logPath, 'utf8').split('\n').filter((l) => /\[(Pay|E2E|WalletBridge)\]|SCRIPT ERROR|ERROR:/.test(l));
