@@ -26,6 +26,9 @@ var _target_idx: int = 0
 var _pause: float = 0.0
 var _rng := RandomNumberGenerator.new()
 var _height_fn: Callable = Callable()  # Optional (x, z) -> floor y in parent space
+## Set before setup(): false for riders on a ride (nobody can run into them).
+var bumpable := true
+var _stumble: Stumble  # running into them (KnockWorld)
 
 
 func setup(seed_value: int, points: Array = [], facing: Vector3 = Vector3.FORWARD, height_fn: Callable = Callable()) -> void:
@@ -43,6 +46,8 @@ func setup(seed_value: int, points: Array = [], facing: Vector3 = Vector3.FORWAR
 	add_child(_model)
 	_model.apply_appearance(PlayerAppearance.generate([_rng.randi(), _rng.randi(), _rng.randi()]))
 	_apply_culling(_model)
+	if bumpable:
+		_stumble = Stumble.attach(_model)
 	walk_speed *= _rng.randf_range(0.8, 1.2)
 	if _points.size() > 0:
 		position = _points[0]
@@ -54,6 +59,9 @@ func setup(seed_value: int, points: Array = [], facing: Vector3 = Vector3.FORWAR
 
 func _process(delta: float) -> void:
 	if _model == null:
+		return
+	if is_down():
+		_model.update_movement(Vector3.ZERO, true, false)
 		return
 	if _points.size() < 2:
 		_model.update_movement(Vector3.ZERO, true, false)
@@ -79,6 +87,11 @@ func _process(delta: float) -> void:
 	var want := atan2(-dir.x, -dir.z)
 	rotation.y = lerp_angle(rotation.y, want, clampf(delta * 6.0, 0.0, 1.0))
 	_model.update_movement(dir * walk_speed, true, false)
+
+
+## Knocked down (Stumble): whoever walks them should wait.
+func is_down() -> bool:
+	return _stumble != null and _stumble.busy()
 
 
 func go_to(point: Vector3, linger: float = 4.0) -> void:

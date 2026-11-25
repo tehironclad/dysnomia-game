@@ -77,6 +77,7 @@ func _make(l: Dictionary) -> Dictionary:
 		m.material_override = _holo
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	av.extras.visible = false
+	Stumble.attach(av)  # even an echo can be bumped over
 	var lab := Label3D.new()
 	lab.font = DeepFieldTheme.mono_font()
 	lab.font_size = 26
