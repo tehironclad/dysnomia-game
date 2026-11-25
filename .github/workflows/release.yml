@@ -22,8 +22,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to build (e.g. 0.9.0) — uploads only when run from a tag"
+        description: "Version to build (e.g. 0.9.0)"
         required: true
+      publish:
+        description: "Upload to the public download bucket (else build only: the zips stay a private artifact)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -118,8 +122,8 @@ jobs:
           name: dysnomia-${{ steps.v.outputs.version }}
           path: dist/
 
-      - name: Upload to R2 (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Upload to R2 (a v* tag, or a manual run from master with publish ticked)
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && inputs.publish)
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
