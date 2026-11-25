@@ -677,8 +677,9 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
     and a hit-stop (the sim's ticks pause a beat: replay is unaffected). Sounds are synthesised into
     AudioStreamWAV on first use (no sample files). Onlookers (AmbientNPC, walked by FairCrowd) gather as the
     streak grows and dance on a good round; a prize of a moon or better (or a pennant with a streak of 3) gets a
-    3.4 s celebration (wide shot, confetti, the prize spinning over the counter). A how-to card shows the first
-    time per game on this computer (`user://fair_seen.cfg`). `MidwayAuto` is a skilled player for previews only.
+    3.4 s celebration (wide shot, confetti, the prize spinning over the counter). Every round opens on
+    GameHowto's card (the rules, the tips, every control as a key chip) and waits for a key; the controls strip
+    stays for the whole round and the help key (`game_help`) brings the card back, the sim's ticks waiting. `MidwayAuto` is a skilled player for previews only.
   - **Prizes** (`fair_prizes.gd`): crystal trophy / toy Upsilon rocket / plush moon / pennant, one merged mesh
     each. Local keepsakes like ArcadeScores (`user://fair_prizes.cfg`, with the ticket tx); each stall's shelf
     shows today's stock (1/2/4/3, a sold-out tier gives the next one down) and "yours". Practice wins show the
@@ -720,6 +721,17 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   receipt block − 1 and the receipt block and shows the measured change; for an AFFECTION op it is +0 (§1),
   and the menu says so. "The House Su" is `CHEON.Su(QING)`, the drink that does move bars. "Round for the
   house" is `ArcadePay.transfer_to_qing` (1 Ⓐ, receipt-verified, no arcade credit); the room cheers only after it.
+- **Ordering, seen** (2026-11-25, the owner: "the menu stays up the whole time so you can't see him pour"): Pour
+  hides the menu at once (`BarMenu.order_started`); a small line mirrors the menu's own stage words while the
+  wallet works (`status_changed`; Esc walks off, the pour still comes). Once the receipt is read, `PourScene`
+  (pure timeline `shot_at`/`drink_weight`) films Sunny pouring and sliding the glass, the handover, and the player
+  drinking it (`HumanAvatar.drink` raises the right hand, `right_hand()` holds the glass); any key skips; then the
+  menu comes back (`reveal`) with the measured result. A failed order (`order_failed`) brings it straight back.
+- **Voices** (`VoiceLines`): a line is an id and its words. `assets/audio/voices/<speaker>/<id>.ogg|.wav|.mp3`
+  plays from the speaker (3D, SFX bus) if it exists; the subtitle (`SubtitleBar` + the bubble) always shows; no
+  file = subtitle only, never a synthesised voice. A measured detail ("· block N") follows the words in the
+  subtitle and is never recorded. Sunny's list and recording tips: `assets/audio/voices/sunny/README.md` (a test
+  keeps it in step with `VoiceLines.SUNNY`).
 
 ## 16. The skyline landmark and base jumping (2026-11-24)
 

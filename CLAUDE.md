@@ -97,7 +97,15 @@
   V in/out, R upright. Shots: `--view=garage`, or `--drive=<kind> [--drive-s=N --steer=left] [--session=0x…]`.
   The pub's room, regulars and bar menu are `scripts/places/pub/` (`PubRoom`, `PubLife`, `PubKit`,
   `BarMenu`; drinks = `scripts/games/bar_tab.gd`). Render it with
-  `--scene=res://scenes/places/sunny_pub.tscn --view=street|bar|lounge|room|games|stools|menu`.
+  `--scene=res://scenes/places/sunny_pub.tscn --view=street|bar|lounge|room|games|stools|menu`. An order hides the
+  menu and, once its receipt is read, `PourScene` films the pour and the drink (`--view=waiting|pour|slide|handover|drink|cheers`,
+  previews: nothing ordered). Sunny speaks through `VoiceLines` (`scripts/audio/voice_lines.gd`): recordings go in
+  `assets/audio/voices/sunny/<line id>.ogg` (list + tips in its README); subtitles always show.
+- Game instructions (`scripts/ui/game_howto.gd`, `GameHowto`): every game a player starts (midway games, arcade dives,
+  pool/Twenty-One seats, vehicles, the rocket voyage, base jumps, rides) shows one card (rules + every control as a key
+  chip) that waits for a key or counts down ≥ 6 s, then a controls strip for the whole game; `game_help` (I) brings the
+  card back. Hosts pass controls as `[[ControlsHelp.key_of(…), words]]`; hosts with their own `_input` check
+  `howto.wants(event)` first. Shots: `--fair=<game> --fair-phase=howto`, `--seat=pool|cards --seat-phase=howto`.
 - Affection Fair (`scripts/world/funfair/`, LEARNINGS §14): `FairSite` picks what Use does by distance (a ride's
   booth or anywhere within its `reach_radius`; a midway game spot). Midway games are first-person 3D mini games:
   `MidwaySim` (pure integer rules, replayable from the ticket + input log), `minigame/MidwayPlay` (seat glide,
