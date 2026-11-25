@@ -18,6 +18,14 @@ extends Node
 ##     "stale": the page reloads itself from this server and links with the new token;
 ##   - losing the link keeps the wallet address (the wallet didn't change); requests
 ##     wait for the page to relink, and the page re-sends any answer it couldn't deliver.
+##
+## Hardening (docs/SECURITY_AUDIT.md):
+##   - the page (and so the token) is served only to a request whose Host header is
+##     localhost:PORT or 127.0.0.1:PORT: a DNS-rebinding site (evil.example resolving
+##     to 127.0.0.1) gets 403 and never sees the token;
+##   - the page is served with a CSP, frame-ancestors 'none' (no clickjacking frame),
+##     no-referrer, nosniff and a same-origin opener policy;
+##   - sockets that have not said a valid hello are capped (MAX_UNAUTHED) and time out.
 
 signal wallet_connected(address: String, chain_id: int)
 signal wallet_disconnected()
@@ -53,7 +61,15 @@ const DEFAULT_PORT: int = 38420
 const MAX_PORT_RETRIES: int = 10
 const PING_INTERVAL: float = 15.0
 ## An open socket that hasn't said a valid hello within this is closed.
-const HELLO_TIMEOUT_MS := 10000
+const HELLO_TIMEOUT_MS := 5000
+## At most this many sockets still handshaking or waiting for their hello: a web page
+## opening sockets to 127.0.0.1 in a loop can't make the game hold memory for each.
+const MAX_UNAUTHED := 8
+## An HTTP request's headers must arrive within this many bytes and milliseconds.
+const HTTP_MAX_HEADER := 8192
+const HTTP_TIMEOUT_MS := 5000
+## The relay nodes the page may fetch (also in wallet.html; the CSP's connect-src).
+const RELAY_NODES := ["https://rpc.pulsechain.com", "https://pulsechain-rpc.publicnode.com"]
 ## The window title the page sets (FindWindow / EnumWindows match on it).
 const WINDOW_TITLE := "Dysnomia Wallet Bridge"
 
@@ -63,7 +79,7 @@ var _ws_peer: WebSocketPeer      # the linked (authenticated) page
 var _pending_peers: Array = []   # WebSocketPeer still in the HTTP upgrade handshake
 var _unauthed: Array = []        # {ws: WebSocketPeer, t0: int}: open, waiting for hello
 var _closing_ws: Array = []      # {ws, t0}: closing; polled so the last message and close frame go out
-var _pending_http: Array = []    # StreamPeerTCP waiting to send their request
+var _pending_http: Array = []    # {peer: StreamPeerTCP, buf: PackedByteArray, t0}: reading the request
 var _closing_http: Array = []    # {peer, frames}: answered, flushing
 var _http_port: int = DEFAULT_PORT
 var _ws_port: int = DEFAULT_PORT + 1
@@ -147,8 +163,8 @@ func stop_server() -> void:
 		u["ws"].close()
 	_unauthed.clear()
 	_closing_ws.clear()
-	for http_peer in _pending_http:
-		http_peer.disconnect_from_host()
+	for h in _pending_http:
+		h["peer"].disconnect_from_host()
 	_pending_http.clear()
 	for item in _closing_http:
 		item.peer.disconnect_from_host()
@@ -230,14 +246,16 @@ func reopen_wallet_page() -> void:
 ## Sends a fully built transaction ({from, to, data, value[, gas]}) for the user to
 ## sign. Calldata is built in Godot (Abi); the page only relays it to the browser
 ## wallet (eth_sendTransaction). `raise`: the game is raising the wallet window, so
-## the page waits (≤ 4 s) to be in front before asking the wallet. Returns the
-## request id (-1 if no page is linked).
-func send_raw(tx: Dictionary, raise: bool = false) -> int:
+## the page waits (≤ 4 s) to be in front before asking the wallet. `label` and
+## `summary` (what it is, the decoded call) are shown on the page next to the
+## contract, value and selector, so the player can compare them with the wallet's
+## popup. Returns the request id (-1 if no page is linked).
+func send_raw(tx: Dictionary, raise: bool = false, label: String = "", summary: String = "") -> int:
 	if not is_linked():
 		return -1
 	var tx_id := _next_tx_id
 	_next_tx_id += 1
-	_send_json({"type": "send_raw", "id": tx_id, "tx": tx, "raise": raise})
+	_send_json({"type": "send_raw", "id": tx_id, "tx": tx, "raise": raise, "label": label, "summary": summary})
 	return tx_id
 
 
@@ -383,7 +401,10 @@ func _process(delta: float) -> void:
 	while _http_server.is_connection_available():
 		var peer := _http_server.take_connection()
 		if peer:
-			_pending_http.append(peer)
+			if _pending_http.size() >= MAX_UNAUTHED * 4:
+				peer.disconnect_from_host()
+				continue
+			_pending_http.append({"peer": peer, "buf": PackedByteArray(), "t0": Time.get_ticks_msec()})
 	_poll_http_peers()
 	_flush_closing_http()
 
@@ -413,31 +434,119 @@ func _process(delta: float) -> void:
 # ─── HTTP Server ──────────────────────────────────────────────────────────
 
 func _poll_http_peers() -> void:
-	var to_remove: Array[int] = []
-	for i in range(_pending_http.size()):
-		var peer: StreamPeerTCP = _pending_http[i]
+	var keep: Array = []
+	for h in _pending_http:
+		var peer: StreamPeerTCP = h["peer"]
 		peer.poll()
 		var status := peer.get_status()
-		if status == StreamPeerTCP.STATUS_CONNECTED:
-			if peer.get_available_bytes() > 0:
-				var _request := peer.get_utf8_string(peer.get_available_bytes())
-				# The page for every path (a favicon request gets it too: harmless)
-				var body := _cached_html.to_utf8_buffer()
-				var header := "HTTP/1.1 200 OK\r\n"
-				header += "Content-Type: text/html; charset=utf-8\r\n"
-				header += "Content-Length: %d\r\n" % body.size()
-				header += "Cache-Control: no-store\r\n"
-				header += "Connection: close\r\n"
-				header += "\r\n"
-				peer.put_data(header.to_utf8_buffer())
-				peer.put_data(body)
-				_closing_http.append({"peer": peer, "frames": 10})
-				to_remove.append(i)
-		elif status != StreamPeerTCP.STATUS_CONNECTING:
-			to_remove.append(i)
-	to_remove.reverse()
-	for idx in to_remove:
-		_pending_http.remove_at(idx)
+		if status == StreamPeerTCP.STATUS_CONNECTING:
+			keep.append(h)
+			continue
+		if status != StreamPeerTCP.STATUS_CONNECTED:
+			continue
+		var buf: PackedByteArray = h["buf"]
+		var n := peer.get_available_bytes()
+		if n > 0:
+			var got: Array = peer.get_data(mini(n, HTTP_MAX_HEADER + 1 - buf.size()))
+			if got[0] == OK:
+				buf.append_array(got[1])
+				h["buf"] = buf
+		var text: String = buf.get_string_from_utf8()
+		var complete := text.contains("\r\n\r\n")
+		var too_big: bool = buf.size() > HTTP_MAX_HEADER
+		var late := Time.get_ticks_msec() - int(h["t0"]) > HTTP_TIMEOUT_MS
+		if not (complete or too_big or late):
+			keep.append(h)
+			continue
+		var verdict := http_verdict(text, _http_port) if complete else "bad_request"
+		match verdict:
+			"ok":
+				_respond(peer, "200 OK", "text/html; charset=utf-8", _cached_html)
+			"bad_method":
+				_respond(peer, "405 Method Not Allowed", "text/plain; charset=utf-8", "Only GET.\n")
+			"bad_host":
+				# DNS rebinding (or a proxy): never serve the token to another host name
+				push_warning("[WalletBridge] refused a request for host %s (only localhost:%d)" % [header_value(text, "host").left(80), _http_port])
+				_respond(peer, "403 Forbidden", "text/plain; charset=utf-8", "This wallet relay only answers http://localhost:%d/\n" % _http_port)
+			_:
+				_respond(peer, "400 Bad Request", "text/plain; charset=utf-8", "Bad request.\n")
+	_pending_http = keep
+
+
+func _respond(peer: StreamPeerTCP, status: String, content_type: String, body_text: String) -> void:
+	var body := body_text.to_utf8_buffer()
+	var header := "HTTP/1.1 %s\r\n" % status
+	header += "Content-Type: %s\r\n" % content_type
+	header += "Content-Length: %d\r\n" % body.size()
+	for line in security_headers(_ws_port):
+		header += line + "\r\n"
+	header += "Connection: close\r\n"
+	header += "\r\n"
+	peer.put_data(header.to_utf8_buffer())
+	peer.put_data(body)
+	_closing_http.append({"peer": peer, "frames": 10})
+
+
+## Pure: what to do with an HTTP request (its text up to the blank line). "ok" for a
+## GET (any path: a favicon request gets the page too, harmlessly) whose Host is
+## localhost:PORT or 127.0.0.1:PORT; "bad_host" for any other Host (DNS rebinding:
+## a site whose name now resolves to 127.0.0.1 sends its own name); "bad_method";
+## "bad_request" when there is no request line or no Host.
+static func http_verdict(request_text: String, port: int) -> String:
+	var first := request_text.get_slice("\r\n", 0).strip_edges()
+	var parts := first.split(" ", false)
+	if parts.size() != 3 or not parts[2].begins_with("HTTP/1."):
+		return "bad_request"
+	if parts[0] != "GET":
+		return "bad_method"
+	var host := header_value(request_text, "host").to_lower()
+	if host == "":
+		return "bad_request"
+	if host == "localhost:%d" % port or host == "127.0.0.1:%d" % port:
+		return "ok"
+	return "bad_host"
+
+
+## Pure: the value of header `name` (case-insensitive), "" if absent.
+static func header_value(request_text: String, name: String) -> String:
+	var lines := request_text.split("\r\n")
+	for i in range(1, lines.size()):
+		var line: String = lines[i]
+		if line == "":
+			break
+		var colon := line.find(":")
+		if colon > 0 and line.left(colon).strip_edges().to_lower() == name.to_lower():
+			return line.substr(colon + 1).strip_edges()
+	return ""
+
+
+## Pure: the response headers of every answer. The page has no external scripts and
+## writes untrusted text only with textContent; the CSP is a second line: no framing,
+## no plugins, no <base>, no forms, and the page may only talk to the game's socket and
+## the two relay nodes. Inline script stays allowed ('unsafe-inline') because wallet
+## extensions inject their provider that way; chrome-/moz-extension: for the same reason.
+static func security_headers(ws_port: int) -> PackedStringArray:
+	var ext := "chrome-extension: moz-extension:"
+	var csp := "; ".join(PackedStringArray([
+		"default-src 'none'",
+		"script-src 'self' 'unsafe-inline' " + ext,
+		"style-src 'self' 'unsafe-inline'",
+		"img-src 'self' data: " + ext,
+		"connect-src 'self' ws://127.0.0.1:%d %s %s" % [ws_port, " ".join(PackedStringArray(RELAY_NODES)), ext],
+		"object-src 'none'",
+		"base-uri 'none'",
+		"form-action 'none'",
+		"frame-ancestors 'none'",
+	]))
+	return PackedStringArray([
+		"Content-Security-Policy: " + csp,
+		"X-Frame-Options: DENY",
+		"X-Content-Type-Options: nosniff",
+		"Referrer-Policy: no-referrer",
+		"Cross-Origin-Opener-Policy: same-origin",
+		"Cross-Origin-Resource-Policy: same-origin",
+		"Cache-Control: no-store",
+	])
 
 
 func _flush_closing_http() -> void:
@@ -460,6 +569,11 @@ func _flush_closing_http() -> void:
 func _try_ws_accept(peer: StreamPeerTCP) -> void:
 	## Every connection is upgraded; only a valid hello links it (a stale or second
 	## window must never lock the real page out).
+	if _pending_peers.size() + _unauthed.size() >= MAX_UNAUTHED:
+		if _unauthed.is_empty():
+			peer.disconnect_from_host()  # a flood of half-open handshakes: refuse the newest
+			return
+		_close_later(_unauthed.pop_front()["ws"])  # the oldest silent socket makes room
 	var new_ws := WebSocketPeer.new()
 	# Relayed chain reads (multicall results, logs) can be far larger than the 64 KiB
 	# default; an oversized message would be dropped and the read lost.

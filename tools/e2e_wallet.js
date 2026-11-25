@@ -14,6 +14,10 @@
 //    a second window is turned away; later the window is closed and a payment
 //    reopens/relinks it.
 // 4. Checks the game's results (results.json) and the requests the wallet saw.
+// 4b. Attacks on the bridge (docs/SECURITY_AUDIT.md): a DNS-rebinding request (Host:
+//    evil.example) gets 403 and no token; a cross-origin page (another local origin)
+//    can't read the page, can't frame it, and its sockets (guessed token, a forged
+//    "connected") never link or change the game's wallet.
 // 5. The game reads the chain through a pass-through on localhost (--rpc): every request goes to
 //    the public node unchanged, except one. No ticket strip exists on chain to point at, so when
 //    the wallet signed a transfer larger than --hash's real one (the strip), the receipt of --hash
@@ -122,10 +126,44 @@ function mockWallet() {
   announce();
 }
 
+// A page from another origin (the harness's own server): what any website open in the
+// player's browser could try against the bridge.
+function evilPage(port) {
+  return `<!DOCTYPE html><title>evil</title><body><iframe id="f" src="http://localhost:${port}/"></iframe><script>
+  window.__evil = { msgs: [], closed: 0 };
+  fetch('http://localhost:${port}/').then((r) => r.text()).then((t) => { __evil.read = t.length; __evil.leak = /var TOKEN = '[0-9a-f]{32}'/.test(t); })
+    .catch(() => { __evil.read = 'blocked'; });
+  for (const first of [{ type: 'hello', token: '0'.repeat(32) }, { type: 'connected', address: '0x' + 'de'.repeat(20), chainId: 369 }, { type: 'hello' }]) {
+    const ws = new WebSocket('ws://127.0.0.1:${port + 1}');
+    ws.onopen = () => { ws.send(JSON.stringify(first)); ws.send(JSON.stringify({ type: 'accounts_changed', address: '0x' + 'de'.repeat(20) })); };
+    ws.onmessage = (e) => __evil.msgs.push(String(e.data));
+    ws.onclose = () => { __evil.closed++; };
+  }
+  </script></body>`;
+}
+
+function rawGet(port, host) {
+  return new Promise((resolve) => {
+    const req = http.request({ host: '127.0.0.1', port, path: '/', method: 'GET', headers: { Host: host } }, (res) => {
+      let b = '';
+      res.on('data', (c) => { b += c; });
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
+    });
+    req.on('error', (e) => resolve({ status: 0, headers: {}, body: String(e) }));
+    req.end();
+  });
+}
+
 // The pass-through to the public node (see 5. above)
+let EVIL_PORT = 0;
 function startRpc() {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
+      if (req.method === 'GET' && req.url === '/evil') {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end(evilPage(EVIL_PORT));
+        return;
+      }
       let body = '';
       req.on('data', (c) => { body += c; });
       req.on('end', async () => {
@@ -212,6 +250,27 @@ async function main() {
     await b.waitForFunction(() => /already linked/.test(document.getElementById('status').textContent), null, { timeout: 15000 });
     expect(true, 'a second window is told another one is linked');
     expect(await b.title() === 'Dysnomia Wallet Bridge (closed)', 'the second window renames itself (focus never raises it)');
+
+    // Attacks on the bridge while A is linked
+    const good = await rawGet(port, 'localhost:' + port);
+    const token = ((good.body.match(/var TOKEN = '([0-9a-f]{32})'/) || [])[1]) || '';
+    expect(good.status === 200 && token !== '', 'the real page (Host localhost) carries the session token');
+    expect(/frame-ancestors 'none'/.test(good.headers['content-security-policy'] || '') && good.headers['x-frame-options'] === 'DENY',
+      'the page is served with a CSP (frame-ancestors none) and X-Frame-Options DENY');
+    const rebound = await rawGet(port, 'evil.example:' + port);
+    expect(rebound.status === 403 && !rebound.body.includes(token) && !/TOKEN/.test(rebound.body), 'DNS rebinding: Host evil.example gets 403 and no token');
+    EVIL_PORT = port;
+    const evil = await context.newPage();
+    await evil.goto(rpcUrl + 'evil');
+    await sleep(3000);
+    const ev = await evil.evaluate(() => window.__evil);
+    expect(ev.read === 'blocked', 'a cross-origin page cannot read the bridge page (' + JSON.stringify(ev.read) + ')');
+    expect(!ev.leak, 'the token never reached the cross-origin page');
+    const fr = evil.frames().find((f) => f !== evil.mainFrame());
+    const framedTitle = fr ? await fr.title().catch(() => '') : '';
+    expect(framedTitle !== 'Dysnomia Wallet Bridge' && framedTitle !== 'Dysnomia Wallet Bridge (closed)', 'the bridge page refuses to load in another site\'s frame (' + (fr ? fr.url() : 'no frame') + ')');
+    expect(ev.closed === 3 && !ev.msgs.some((m) => /welcome|request_accounts|send_raw|personal_sign/.test(m)), 'its three sockets (guessed token, forged "connected", no token) were closed unlinked: ' + JSON.stringify(ev.msgs));
+    await evil.close();
     fs.writeFileSync(path.join(ctl, 'go'), '1');
 
     // Later: the game asks to close A, then a payment waits for a new window C

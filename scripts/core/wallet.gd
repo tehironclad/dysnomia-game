@@ -183,7 +183,7 @@ func send(label: String, to: String, data: String, value_wei: String = "0x0") ->
 	# not under a window raised later. The page waits (≤ 4 s) for the focus.
 	bridge.focus_wallet_page()
 	var tx := {"from": from, "to": to.to_lower(), "data": data, "value": value}
-	var id: int = bridge.send_raw(tx, OS.get_name() == "Windows")
+	var id: int = bridge.send_raw(tx, OS.get_name() == "Windows", label)
 	if id < 0:
 		return _fail(label, "link", "The wallet window is not linked; click the wallet chip to reopen it.")
 	_log(label, "sign", "request #%d sent to the wallet window; waiting for the wallet" % id)

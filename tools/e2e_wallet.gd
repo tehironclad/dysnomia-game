@@ -105,6 +105,10 @@ func _run() -> void:
 		_finish("the JS side never said go")
 		return
 	_record("one window linked", bridge.is_linked(), {"page_info": bridge.page_info})
+	# The JS side has just thrown a cross-origin page's sockets (a guessed token, a forged
+	# "connected" and accounts_changed) at the bridge: nothing they said reached the game.
+	_record("a cross-origin page could not link or speak", bridge.is_linked() and _W.address == _wallet and bridge.get_wallet_address() == _wallet
+		and String(bridge.page_info.get("wallet", "")) == "Mock Rabby", {"address": _W.address, "bridge_address": bridge.get_wallet_address()})
 
 	# 2. A fair ticket: 1 Ⓐ + the game's code in the last wei. The wallet connected on
 	#    chain 1 (it refused the first switch): Wallet.send asks it to switch again.

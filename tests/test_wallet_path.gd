@@ -54,6 +54,40 @@ func test_hello_verdict() -> void:
 	eq(B.hello_verdict('{"type":"hello","token":""}', ""), "bad", "no token, no link")
 
 
+func test_http_host_check_stops_dns_rebinding() -> void:
+	var B = load(BRIDGE)
+	var req := func(host: String, method: String = "GET") -> String:
+		return "%s / HTTP/1.1\r\nHost: %s\r\nUser-Agent: x\r\n\r\n" % [method, host]
+	eq(B.http_verdict(req.call("localhost:38420"), 38420), "ok")
+	eq(B.http_verdict(req.call("127.0.0.1:38420"), 38420), "ok")
+	eq(B.http_verdict(req.call("LOCALHOST:38420"), 38420), "ok", "host names are case-insensitive")
+	eq(B.http_verdict(req.call("evil.example:38420"), 38420), "bad_host", "a rebinding site sends its own name: no page, no token")
+	eq(B.http_verdict(req.call("localhost:38421"), 38420), "bad_host", "another port")
+	eq(B.http_verdict(req.call("localhost"), 38420), "bad_host", "no port")
+	eq(B.http_verdict(req.call("localhost.evil.example:38420"), 38420), "bad_host")
+	eq(B.http_verdict(req.call("127.0.0.1:38420@evil.example"), 38420), "bad_host")
+	eq(B.http_verdict(req.call("localhost:38420", "POST"), 38420), "bad_method")
+	eq(B.http_verdict("GET / HTTP/1.1\r\nUser-Agent: x\r\n\r\n", 38420), "bad_request", "no Host header")
+	eq(B.http_verdict("garbage\r\n\r\n", 38420), "bad_request")
+	eq(B.header_value("GET / HTTP/1.1\r\nhOsT:  localhost:1 \r\n\r\n", "Host"), "localhost:1")
+
+
+func test_page_security_headers() -> void:
+	var B = load(BRIDGE)
+	var h: String = "\n".join(B.security_headers(38421))
+	check(h.contains("frame-ancestors 'none'"), "no framing (clickjacking)")
+	check(h.contains("X-Frame-Options: DENY"))
+	check(h.contains("object-src 'none'") and h.contains("base-uri 'none'") and h.contains("form-action 'none'"))
+	check(h.contains("connect-src 'self' ws://127.0.0.1:38421 https://rpc.pulsechain.com https://pulsechain-rpc.publicnode.com"), "the page talks only to the game and the relay nodes")
+	check(h.contains("Referrer-Policy: no-referrer") and h.contains("X-Content-Type-Options: nosniff"))
+	check(h.contains("Cross-Origin-Opener-Policy: same-origin"), "a site that opened the page keeps no handle on it")
+	check(h.contains("Cache-Control: no-store"), "the token is never cached")
+	var html := FileAccess.get_file_as_string("res://assets/web/wallet.html")
+	check(not html.contains("<script src") and not html.contains("<link"), "no external scripts or stylesheets in the signing page")
+	for node in B.RELAY_NODES:
+		check(html.contains("'%s'" % node), "the page's relay nodes are the CSP's: %s" % node)
+
+
 func test_default_browser() -> void:
 	var B = load(BRIDGE)
 	var out := "\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice\r\n    ProgId    REG_SZ    BraveHTML\r\n\r\n"

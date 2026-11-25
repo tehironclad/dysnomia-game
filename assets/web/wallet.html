@@ -15,7 +15,12 @@
   - It authenticates to the game with a per-session token ({{TOKEN}}). A window
     left open from an earlier game session reloads itself to get the new token.
   - It never claims a transaction succeeded: it reports the hash, and the game
-    reads the receipt from the chain itself.
+    reads the receipt and the transaction from the chain itself (and refuses one
+    that is not what it asked for).
+  - Before each signature it shows what the game asked for (what it is, the
+    contract, the value, the call), so it can be compared with the wallet's popup.
+  - Served only to Host localhost:PORT / 127.0.0.1:PORT, with a CSP and
+    frame-ancestors 'none' (scripts/chain/wallet_bridge.gd).
   - Answers to signing requests are queued until the game has them: a dropped
     link (sleep, reload of the game's socket) never loses a hash.
   Tested end to end by tools/e2e_wallet.sh (a mock EIP-1193 wallet in Chromium).
@@ -33,7 +38,7 @@
   button { width: 100%; padding: 10px; background: transparent; color: var(--ice);
            border: 1px solid var(--ice); border-radius: 6px; font: inherit; cursor: pointer; margin-top: 6px; }
   button:disabled { opacity: .4; cursor: default; }
-  #ask { display: none; margin-top: 12px; padding: 10px; border: 1px solid #ffd27a; border-radius: 6px; color: #ffd27a; }
+  #ask { display: none; margin-top: 12px; padding: 10px; border: 1px solid #ffd27a; border-radius: 6px; color: #ffd27a; white-space: pre-wrap; }
   #log { margin-top: 14px; max-height: 180px; overflow: auto; color: var(--muted); white-space: pre-wrap; }
   .ok { color: #64e3a8; } .bad { color: #ff8fa0; }
 </style>
@@ -216,7 +221,24 @@
     });
   }
 
-  async function sendRaw(id, tx, raise) {
+  // What the game asked for, in words, before the wallet's popup: the player compares it
+  // with what the wallet shows (contract, value, call). Untrusted strings go in as text.
+  function weiToPls(q) {
+    var n = BigInt(q || '0x0'), whole = n / 1000000000000000000n, frac = n % 1000000000000000000n;
+    var f = frac.toString().padStart(18, '0').replace(/0+$/, '');
+    return whole.toString() + (f ? '.' + f : '');
+  }
+  function describe(id, req, label, summary) {
+    var lines = ['Request #' + id + ': approve it in ' + walletName() + ' only if it matches:'];
+    if (label) lines.push(String(label).slice(0, 160));
+    if (summary) lines.push(String(summary).slice(0, 200));
+    lines.push('contract ' + req.to);
+    lines.push('value ' + weiToPls(req.value) + ' PLS · chain 369 (PulseChain)');
+    lines.push('call ' + String(req.data).slice(0, 10) + ' · ' + Math.max(0, (String(req.data).length - 10) / 2) + ' bytes of arguments');
+    return lines.join('\n');
+  }
+
+  async function sendRaw(id, tx, raise, label, summary) {
     try {
       if (!eth()) throw { code: -4, message: 'no browser wallet in this browser window' };
       if (!account) await connectWallet();
@@ -227,8 +249,8 @@
       var value = quantity(tx.value);
       if (value && value !== '0x0') req.value = value;
       if (tx.gas) req.gas = quantity(tx.gas);
-      ask('Approve request #' + id + ' in ' + walletName() + ' (to ' + req.to + ')');
-      log('sign request #' + id + ' → ' + req.to + ' — approve it in your wallet', 'ok');
+      ask(describe(id, req, label, summary));
+      log('sign request #' + id + (label ? ' (' + String(label).slice(0, 80) + ')' : '') + ' → ' + req.to + ' — approve it in your wallet', 'ok');
       // Wallet extensions (Rabby especially) attach the approval popup to the
       // active window: when the game is raising this one, wait until it is in front.
       if (raise) await waitFocus(4000);
@@ -285,11 +307,11 @@
   // Chain reads relayed for the game when its own connection to the RPC fails
   // (firewall, antivirus HTTPS scanning…). Reads only: a JSON-RPC body is posted to a
   // fixed public PulseChain node and the raw answer goes back; nothing is signed here.
-  var RELAY_NODES = ['https://rpc.pulsechain.com', 'https://pulsechain-rpc.publicnode.com'];
+  var RELAY_NODES = ['https://rpc.pulsechain.com', 'https://pulsechain-rpc.publicnode.com'];  // = WalletBridge.RELAY_NODES (in the CSP)
   async function relayRpc(id, body) {
     var method = '';
     try { method = JSON.parse(body).method || ''; } catch (e) {}
-    if (!/^(eth_call|eth_blockNumber|eth_getBlockByNumber|eth_getTransactionReceipt|eth_getLogs|eth_getCode|eth_chainId|eth_getTransactionCount|eth_estimateGas|eth_gasPrice|eth_getBalance)$/.test(method)) {
+    if (!/^(eth_call|eth_blockNumber|eth_getBlockByNumber|eth_getTransactionReceipt|eth_getTransactionByHash|eth_getLogs|eth_getCode|eth_chainId|eth_getTransactionCount|eth_estimateGas|eth_gasPrice|eth_getBalance)$/.test(method)) {
       send({ type: 'rpc_result', id: id, ok: false, status: 0, body: '' });
       return;
     }
@@ -341,7 +363,7 @@
         try { window.close(); } catch (e) {}
       }
       else if (m.type === 'request_accounts') connectWallet();
-      else if (m.type === 'send_raw') sendRaw(m.id, m.tx || {}, !!m.raise);
+      else if (m.type === 'send_raw') sendRaw(m.id, m.tx || {}, !!m.raise, m.label || '', m.summary || '');
       else if (m.type === 'personal_sign') personalSign(m.id, m.message, m.address, !!m.raise);
       else if (m.type === 'status') statusQuery(m.id);
       else if (m.type === 'switch_chain') ensureChain().then(function (cid) { send({ type: 'chain_changed', chainId: cid }); },
