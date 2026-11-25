@@ -1050,3 +1050,27 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
 - **Sounds:** `BumpSfx` (wood, metal, glass, soft, oof, thud), synthesised on FairSfx's helpers, positional.
 - **Check:** `tools/probe_bump.gd [-- --only=pub,fair --shots=<abs dir> --debug]`; `tests/test_bump.gd`;
   `tools/net_selftest.gd` (the bump block).
+
+## 22. Security rules for players' wallets (2026-11-25; the audit: `docs/SECURITY_AUDIT.md`)
+
+- **Bridge:** `wallet.html` (and its session token) is served only to `Host: localhost:PORT` / `127.0.0.1:PORT`
+  (DNS rebinding gets 403), with a CSP, `frame-ancestors 'none'` and COOP. Never add a route that serves the token
+  to another host, never load an external script into the page, and write untrusted text only with `textContent`.
+- **Writes:** `Wallet.send` refuses approve/increaseAllowance above 2^128 and any setApprovalForAll before the
+  wallet sees them. Approve the exact amount you are about to spend. After the receipt it reads the transaction back:
+  from/to/calldata/value must equal the request, or it stops at `verify`. The `to` of a write is a `Contracts`
+  constant or an address read from the chain (territory, LAU, CHAN.Yan YUE, QING.Asset), never chat, server or
+  typed text. A YUE is a desk only if `CHAN.Yan(wallet)` confirms it.
+- **Signatures:** `Wallet.sign_message` signs only `Wallet.SIGN_PREFIXES` texts. The server sign-in text is built
+  by the client (`NetClient.login_for`: its own host, the server's nonce and time) and checked by the server for its
+  own host and a 10-minute expiry; never sign a text a server sends. Session tokens go back only to the URL that
+  issued them; the server stores their SHA-256.
+- **Server data is untrusted:** clean names/chat/notices on the client; a wager is paid only if this computer
+  recorded the wallet agreeing to that exact stake (`Invites.pay_refusal`).
+- **Transport:** `Rpc.url_ok` (https, or http to this computer only) for the RPC and the site; the site may only
+  suggest `wss://` game servers; HTTP bodies are capped.
+- **Releases:** actions pinned by SHA; Godot downloads checked against pinned SHA-512; no `${{ }}` inside scripts.
+  `--net-key` exists in debug builds only.
+- **Check:** `tools/e2e_wallet.sh` (rebinding, cross-origin page, unlimited approve, foreign text, tampered tx),
+  `tools/net_selftest.gd` (relayed and expired sign-ins, hashed tokens), `tests/test_wallet_path.gd`,
+  `tests/test_net_proto.gd`, `tests/test_invites.gd`, `tests/test_exchanges.gd`.

@@ -14,6 +14,8 @@
   failed read shows "—". Every number carries its source and block.
 - **Every write goes:** simulate (`eth_call` with `from` = wallet) → sign → verify the receipt from the
   chain → re-read state. Never trust the wallet page's "confirmed".
+- **Wallet security** (`docs/SECURITY_AUDIT.md`, LEARNINGS §22): exact approvals only, sign only the game's own
+  texts, the mined tx must equal the request, never take a payee from chat/server/site text.
 - **`tx.origin` reads need `from` = wallet** (Su, Beat, Eta, Yuan, Power…). `META.Beat` takes a **Waat**.
 - **Big integers never become floats.** Coordinates are ~240-bit int256.
 - **No JSON-RPC batches** (the public node serialises them). Use Multicall3

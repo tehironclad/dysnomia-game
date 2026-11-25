@@ -87,3 +87,16 @@ console prints the same lines with `[Pay]` (run the game from a terminal, or rea
 | 4 | Restart the game with the old wallet window still open | The old window reloads itself and links to the new game session. |
 | 5 | Reject the approval | "✗ … stopped at your wallet's approval: rejected in the wallet". Nothing is credited. |
 | 6 | While the approval is open, sleep/wake or wait 20 s | No popup is covered: the wallet window is raised again only while the game itself has the focus. |
+
+## Security checks (docs/SECURITY_AUDIT.md)
+
+Automated in `tools/e2e_wallet.sh` and `tools/net_selftest.gd`; repeat these by hand with a real wallet before a release.
+
+| # | Do | Expect |
+|---|---|---|
+| 1 | Buy an arcade credit and read the wallet window before approving | It names the request ("Arcade credit at …"), `AFFECTION.transfer(address,uint256) to 0x<the QING>, 1000000000000000000 wei`, the contract, value 0 PLS, chain 369. The wallet popup shows the same contract, recipient and amount. |
+| 2 | `curl -H "Host: evil.example:38420" http://127.0.0.1:38420/` while the game runs | `403 Forbidden`, no `TOKEN` in the body. With `Host: localhost:38420` the page comes back with CSP and `X-Frame-Options: DENY` headers. |
+| 3 | Open any website and put `<iframe src="http://localhost:38420/">` in it (browser devtools) | The frame refuses to load; the game's wallet window stays linked. |
+| 4 | Swap on PulseX (sell a token) | The approval asks for exactly the amount you sell, never "unlimited". |
+| 5 | Sign in to the game server (chat with Tab → say) | The wallet shows "Dysnomia game server sign-in", the server's name, its host, a nonce, issued/expiry times and "not a transaction". |
+| 6 | Lose a staked game you confirmed on another computer, then press Pay here | "Not paid: this computer has no record of you agreeing…": nothing reaches the wallet. On the computer where you confirmed it, Pay offers the transfer to the winner. |

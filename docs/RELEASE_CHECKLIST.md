@@ -29,3 +29,8 @@
 - [ ] The wallet relay starts and opens the browser page. The page carries the session token, and a
       page without it is refused.
 - [ ] Publish SHA-256 checksums next to the binaries, and reproduce one build from the tag.
+- [ ] Run the security checks in [`WALLET_TESTS.md`](WALLET_TESTS.md) (rebinding Host, framing, exact approvals,
+      the sign-in text) with a real wallet. See [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) for what is still open
+      (release signing).
+- [ ] Bumping Godot: update `GODOT_SHA512` / `TEMPLATES_SHA512` in `release.yml` from the release's
+      `SHA512-SUMS.txt`, and re-pin any action by its commit SHA.
