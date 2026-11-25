@@ -5,7 +5,9 @@ extends PanelContainer
 ## block and quotes gas; "Pour" signs it through Wallet.send (simulate → sign →
 ## receipt read from the chain) and then shows what was measured: the mint logs
 ## in the receipt and your bars here re-read at the blocks either side. A round
-## for the house is 1 Ⓐ to this QING (ArcadePay.transfer_to_qing, verified).
+## for the house is Prices.ROUND Ⓐ to this QING (ArcadePay.transfer_to_qing, verified). Each drink
+## has its price (Prices.DRINKS, 1–2 Ⓐ): paid to this QING first (its code in the last wei), then
+## poured; a drink paid but not poured pours again without paying while the menu is open.
 ## Nothing is shown as done before its receipt is read; a failed read is "—".
 
 signal closed
@@ -34,6 +36,7 @@ var _sel: Dictionary = {}
 var _busy := false
 var _ask := 0  # preview generation: a stale preview never overwrites a newer one
 var _label := ""
+var _paid_tab := {}  ## drink id → its verified payment, poured not yet (a failed pour pours again free)
 var _rng := RandomNumberGenerator.new()
 
 
@@ -57,7 +60,7 @@ func _init() -> void:
 	sub.theme_type_variation = "MutedLabel"
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	sub.custom_minimum_size = Vector2(900, 0)
-	sub.text = "Every drink is your own real contract call, signed in your wallet: simulated from your wallet first, then the receipt is read from the chain and your bars here are re-read. Gas only; the round costs %s." % ArcadePay.fee_text()
+	sub.text = "Every drink is your own real contract call, signed in your wallet: simulated from your wallet first, then the receipt is read from the chain and your bars here are re-read. Each drink's price goes to this QING first (one transfer), then the drink's call; the round is %s." % Prices.text(Prices.ROUND)
 	col.add_child(sub)
 	var body := HBoxContainer.new()
 	body.add_theme_constant_override("separation", 14)
@@ -138,7 +141,8 @@ func _wrap(parent: Control, variation: String) -> Label:
 
 
 static func price_text(d: Dictionary) -> String:
-	return ArcadePay.fee_text() if d["id"] == BarTab.ROUND["id"] else "gas only"
+	var w := Prices.drink(String(d["id"]))
+	return Prices.text(w) if d["id"] == BarTab.ROUND["id"] or w <= 0 else "%s + the call" % Prices.text(w)
 
 
 ## The board's lines: [name, price].
@@ -216,18 +220,19 @@ func _refresh_preview() -> void:
 	_ask += 1
 	var ask := _ask
 	var is_round: bool = _sel["id"] == BarTab.ROUND["id"]
-	_call.text = ("AFFECTION.transfer(this QING, %s)" % ArcadePay.fee_text()) if is_round else BarTab.call_text(_sel, qing, _seed_value(), _phi.button_pressed)
-	_pour.text = ("Buy the round · sign %s" % ArcadePay.fee_text()) if is_round else "Pour · sign in your wallet"
+	var cost := Prices.drink(String(_sel["id"]))
+	_call.text = ("AFFECTION.transfer(this QING, %s)" % Prices.text(cost)) if is_round else BarTab.call_text(_sel, qing, _seed_value(), _phi.button_pressed)
+	_pour.text = ("Buy the round · sign %s" % Prices.text(cost)) if is_round else ("Pour · already paid" if _paid_tab.has(String(_sel["id"])) else "Pay %s, then pour" % Prices.text(cost) if cost > 0 else "Pour · sign in your wallet")
 	var blocker := _blocker()
 	_pour.disabled = _busy or blocker != ""
 	_status.text = blocker
 	if _access == null:
 		_access = AccessSteps.embed(_status.get_parent(), _status.get_index() + 1)
-	_access.update_for(blocker, "drink" if is_round else ("su" if _sel.get("kind") == BarTab.KIND_SU else "sign"), {"qing": qing, "fee_wei": ArcadePay.FEE_WEI,
+	_access.update_for(blocker, "drink" if is_round else ("su" if _sel.get("kind") == BarTab.KIND_SU else "sign"), {"qing": qing, "fee_wei": Prices.drink_wei(String(_sel["id"])),
 		"title": "Buy the round" if is_round else "Order %s (a Su at this bar)" % String(_sel.get("name", "a drink"))})
 	_status.add_theme_color_override("font_color", WARN)
 	if is_round:
-		_preview.text = "Paid to %s's QING contract (its own balance). Wallet.send simulates the transfer from your wallet before you sign; the receipt must show AFFECTION's Transfer(you → this QING, ≥ %s)." % [place, ArcadePay.fee_text()]
+		_preview.text = "Paid to %s's QING contract (its own balance). Wallet.send simulates the transfer from your wallet before you sign; the receipt must show AFFECTION's Transfer(you → this QING, ≥ %s)." % [place, Prices.text(Prices.ROUND)]
 		return
 	if Session.wallet == "":
 		_preview.text = "Simulation: — (it runs from your wallet; connect one at the front door)."
@@ -253,13 +258,13 @@ func _on_pour() -> void:
 	_result.text = ""
 	var d := _sel
 	if d["id"] == BarTab.ROUND["id"]:
-		_label = "Round for the house at Sunny's (%s)" % ArcadePay.fee_text()
-		var r: Dictionary = await ArcadePay.transfer_to_qing(qing, _label)
+		_label = "Round for the house at Sunny's (%s)" % Prices.text(Prices.ROUND)
+		var r: Dictionary = await ArcadePay.transfer_to_qing(qing, _label, Prices.drink_wei(String(d["id"])))
 		_busy = false
 		if r["ok"]:
 			var bal: Variant = r.get("qing_balance", null)
 			_result.text = "Verified: AFFECTION Transfer(you → this QING, %s) in block %d.\nThe QING now holds %s (AFFECTION.balanceOf, read at block %d)." % [
-				ArcadePay.fee_text(), r["block"], ArcadePay.fmt(bal) if bal != null else "—", r["block"]]
+				ArcadePay.fmt(r["value"]), r["block"], ArcadePay.fmt(bal) if bal != null else "—", r["block"]]
 			_set_status("The round is on you. Cheers!", OK)
 			round_bought.emit(r)
 			Session.refresh()
@@ -267,6 +272,18 @@ func _on_pour() -> void:
 			_set_status("Not bought (%s): %s" % [r.get("stage", "?"), r.get("message", "")], WARN)
 		_pour.disabled = _blocker() != ""
 		return
+	# The drink's price first (Prices.DRINKS): AFFECTION.transfer to this QING, its code in the last wei
+	var cost := Prices.drink(String(d["id"]))
+	if cost > 0 and not _paid_tab.has(String(d["id"])):
+		_set_status("Paying %s for the %s…" % [Prices.text(cost), d["name"]], WARN)
+		var paid: Dictionary = await ArcadePay.transfer_to_qing(qing, "%s at Sunny's (%s)" % [d["name"], Prices.text(cost)], Prices.drink_wei(String(d["id"])))
+		if not paid["ok"]:
+			_busy = false
+			_pour.disabled = _blocker() != ""
+			_set_status("Not paid (%s): %s" % [paid.get("stage", "?"), paid.get("message", "")], WARN)
+			return
+		_paid_tab[String(d["id"])] = paid
+		_set_status("Paid %s in block %d (verified). Now the drink's own call…" % [Prices.text(cost), int(paid["block"])], OK)
 	_label = "%s at Sunny's · %s" % [d["name"], BarTab.call_text(d, qing, _seed_value(), _phi.button_pressed)]
 	var yue := ""
 	if Session.player != null and Session.player.has_yue():
@@ -275,9 +292,13 @@ func _on_pour() -> void:
 	_busy = false
 	_pour.disabled = _blocker() != ""
 	if not res["ok"]:
-		_set_status("Not poured (%s): %s" % [res.get("stage", "?"), res.get("message", "")], WARN)
+		_set_status("Not poured (%s): %s%s" % [res.get("stage", "?"), res.get("message", ""),
+			" · it's paid: pour again without paying" if _paid_tab.has(String(d["id"])) else ""], WARN)
+		_refresh_preview()
 		return
-	_set_status("Poured. Here's what the chain shows:", OK)
+	var paid_for: Dictionary = _paid_tab.get(String(d["id"]), {})
+	_paid_tab.erase(String(d["id"]))
+	_set_status("Poured. Here's what the chain shows:" + ((" (paid %s in block %d)" % [ArcadePay.fmt(paid_for["value"]), int(paid_for["block"])]) if not paid_for.is_empty() else ""), OK)
 	_result.text = BarTab.report(d, res) + ("" if yue != "" else "\n(No YUE on this wallet, so there are no bars to read: —.)")
 	poured.emit(d, res)
 	Session.refresh()

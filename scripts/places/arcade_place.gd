@@ -27,7 +27,7 @@ func _ready() -> void:
 	setup_player(Vector3(0, 0.1, HZ - 2.6), 0.0)
 	add_door("slide", 2.4, 3.2, Vector3(0, 0, HZ))
 	setup_hud("THE ARCADE · %s" % String(territory.get("name", "")).to_upper())
-	info_label.text = "Cabinets: %s a play, paid to this QING and checked on chain before the run. Pool and Twenty-One are played in this room's lines (T opens the chat)." % ArcadePay.fee_text()
+	info_label.text = "Cabinets: %s (one approval), paid to this QING and checked on chain before the run. Pool and Twenty-One are played in this room's lines (T opens the chat)." % Prices.menu_line()
 	var spots: Array = []
 	for i in SpeakerEchoes.MAX:
 		# Two rows of three either side of the entrance lane: you walk in between them, not into them.
@@ -123,7 +123,7 @@ func _shell() -> void:
 	box(self, Vector3(3.0, 1.05, 0.7), Vector3(-7.5, 0.525, HZ - 1.6), mat(Color(0.12, 0.1, 0.16), 0.4, 0.4), true)
 	box(self, Vector3(3.0, 0.05, 0.75), Vector3(-7.5, 1.07, HZ - 1.6), glow(accent, 1.4))
 	var sign := Label3D.new()
-	sign.text = "Ⓐ CREDITS\n%s a play · goes to this QING" % ArcadePay.fee_text()
+	sign.text = "Ⓐ CREDITS\n%s a play · goes to this QING\nstrip of %d: %s" % [ArcadePay.fee_text(), Prices.STRIP_PLAYS, Prices.strip_text()]
 	sign.font = DeepFieldTheme.display_font()
 	sign.font_size = 56
 	sign.pixel_size = 0.008

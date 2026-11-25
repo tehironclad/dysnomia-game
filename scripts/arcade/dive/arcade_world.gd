@@ -62,7 +62,7 @@ func prepare_demo() -> void:
 
 ## A paid run is about to start with this credit ({tx, block}). Returns the run's seed.
 func prepare_run(credit: Dictionary) -> int:
-	return seed_from_tx(String(credit.get("tx", "")))
+	return seed_from_tx(ArcadePay.seed_tx(credit))  # a strip's play: SHA-256("<tx>#<i>") (TicketCode)
 
 
 ## The cabinet's seed rule: the credit's tx hash, first 12 hex digits.

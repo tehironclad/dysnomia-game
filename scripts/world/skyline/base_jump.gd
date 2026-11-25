@@ -585,7 +585,7 @@ func _show_card(s: Dictionary, has_ring: bool) -> void:
 		lines.append("%.1f m from the ring's centre · +%d" % [float(s["from_target"]), int(s["accuracy"])])
 	match source:
 		"ticket":
-			lines.append("ticket %s… verified in block %d (1 Ⓐ to this QING)" % [String(ticket.get("hash", "")).left(12), int(ticket.get("block", 0))])
+			lines.append("ticket %s… verified in block %d (%s to this QING)" % [String(ticket.get("hash", "")).left(12), int(ticket.get("block", 0)), Prices.play_text()])
 		"own tower":
 			lines.append("from your own tower: its height is your Hypobar here")
 		_:

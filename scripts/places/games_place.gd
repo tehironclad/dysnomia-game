@@ -421,7 +421,7 @@ func _cabinet_prompt(c: ArcadeCabinet, title: String) -> String:
 	if not c.playable():
 		return "dive into %s (Maria's cartridge, full-screen CRT, free)" % title
 	var n := ArcadePay.credits(Session.wallet, qing)
-	return "dive into %s · %s a play, to this QING%s" % [title, ArcadePay.fee_text(), (" · %d credit%s" % [n, "" if n == 1 else "s"]) if n > 0 else ""]
+	return "dive into %s · %s, to this QING%s" % [title, Prices.menu_line(), (" · %d play%s left" % [n, "" if n == 1 else "s"]) if n > 0 else ""]
 
 
 func _build_dive() -> void:
@@ -429,6 +429,7 @@ func _build_dive() -> void:
 	dive.name = "ArcadeDive"
 	add_child(dive)
 	dive.pay_pressed.connect(_pay_credit)
+	dive.strip_pressed.connect(_pay_credit.bind(Prices.STRIP_PLAYS))
 	dive.start_pressed.connect(_start_run)
 	dive.leave_pressed.connect(_on_escape)
 	dive.view_pressed.connect(func(): dive.toggle_view())
@@ -462,18 +463,22 @@ func _refresh_play(note: String = "") -> void:
 	var title := String(_cab.entry.get("title", ""))
 	dive.menu_title.text = title.to_upper() + " · " + String(territory.get("name", ""))
 	dive.menu_blurb.text = String(_cab.entry.get("blurb", ""))
-	dive.pay_button.text = "Pay %s for a play" % ArcadePay.fee_text()
+	dive.pay_button.text = "Buy 1 play · %s" % Prices.play_text()
 	dive.pay_button.visible = _cab.playable() and not _running
+	dive.strip_button.text = Prices.strip_button()
+	dive.strip_button.visible = dive.pay_button.visible and blocker == ""
+	dive.strip_button.disabled = _busy
 	# A credit is a plain AFFECTION.transfer from the wallet: no LAU involved, so only
 	# the wallet/chain checks apply (table moves, which are room lines, still need a LAU).
 	# Blocked: the button stays live and shows the steps to pay (AccessSteps) instead of a dead end.
 	dive.pay_button.disabled = _busy
 	if blocker != "":
 		dive.pay_button.text = "How to pay %s for a play →" % ArcadePay.fee_text()
-	dive.start_button.text = "Play (uses a credit) · %s" % ControlsHelp.key_of("arcade_start")
+	dive.start_button.text = ("Play · %d left · %s" % [n, ControlsHelp.key_of("arcade_start")]) if n > 0 else "Play (buy a play first) · %s" % ControlsHelp.key_of("arcade_start")
 	dive.start_button.visible = _cab.playable() and not _running
 	dive.start_button.disabled = _busy or n <= 0
-	var info := "A play costs %s: AFFECTION.transfer to %s's QING contract (its own balance), checked in the receipt on chain before the game starts. Credits here: %d." % [ArcadePay.fee_text(), String(territory.get("name", "")), n]
+	var info := "%s: AFFECTION.transfer to %s's QING contract (its own balance), checked in the receipt on chain before the game starts. A strip is one approval, gas once; each run is seeded by its play (SHA-256 of the strip's tx and the play number). Plays left here: %d." % [
+		Prices.menu_line(), String(territory.get("name", "")), n]
 	if not _cab.playable():
 		info = "This cartridge runs by itself on the Folklore CPU: it shows here for free and takes no credits."
 	if _last_score >= 0:
@@ -500,21 +505,24 @@ func _read_balance() -> void:
 		_refresh_play(("Your Ⓐ: %s (AFFECTION.balanceOf, latest block)." % ArcadePay.fmt(r["balance"])) if r["ok"] else "Your Ⓐ balance could not be read: —")
 
 
-func _pay_credit() -> void:
+## Buys one play (a plain credit) or a strip of `plays` (TicketCode.ARCADE) through ArcadePay.buy.
+func _pay_credit(plays: int = 1) -> void:
 	if _busy:
 		return
 	if ChatController._signer_blocker() != "":
 		_show_access("arcade")
 		return
 	_busy = true
-	_pay_label = "Arcade credit at %s (%s)" % [String(territory.get("name", "")), ArcadePay.fee_text()]
+	var item := TicketCode.GENERAL if plays <= 1 else TicketCode.ARCADE
+	_pay_label = "Arcade %s at %s (%s)" % ["credit" if plays <= 1 else "strip of %d" % plays, String(territory.get("name", "")),
+		Prices.text(Prices.price(item, plays))]
 	_refresh_play("Paying…")
-	var r := await ArcadePay.pay(qing, String(territory.get("name", "")))
+	var r := await ArcadePay.buy(qing, _pay_label, item, plays)
 	_busy = false
 	if r["ok"]:
 		var bal: Variant = r.get("qing_balance", null)
-		_refresh_play("Paid: the Transfer to the QING is in block %d%s. One credit added." % [r["block"],
-			(" · the QING now holds %s" % ArcadePay.fmt(bal)) if bal != null else ""])
+		_refresh_play("Paid: the Transfer to the QING is in block %d%s. %s added." % [r["block"],
+			(" · the QING now holds %s" % ArcadePay.fmt(bal)) if bal != null else "", "One play" if plays <= 1 else "%d plays" % plays])
 	else:
 		_refresh_play("Not paid (%s): %s" % [r.get("stage", "?"), r.get("message", "")])
 		var g := AccessSteps.goal_for_failure(r, "arcade")
@@ -542,14 +550,15 @@ func _start_run() -> void:
 	_run_credit = credit
 	_last_score = -1
 	var cab := _cab
-	var seed := ArcadeWorld.seed_from_tx(String(credit["tx"]))
+	var seed := ArcadeWorld.seed_from_tx(ArcadePay.seed_tx(credit))
 	if dive.world:
 		seed = await dive.world.prepare_run(credit)
 	_busy = false
 	if _cab != cab:
 		return
 	_cab.start_run(seed)
-	dive.set_running(true, "PAID RUN · credit tx %s · block %s · %s to this QING, verified in the receipt" % [ArcadeScores.short(String(credit["tx"])), ArcadeScores.grouped(int(credit.get("block", 0))), ArcadePay.fee_text()])
+	var play := (" · strip play %d of %d · %d left" % [int(credit["index"]) + 1, int(credit["plays"]), int(credit.get("left", 0))]) if int(credit.get("index", -1)) >= 0 else ""
+	dive.set_running(true, "PAID RUN · credit tx %s%s · block %s · paid to this QING, verified in the receipt" % [ArcadeScores.short(String(credit["tx"])), play, ArcadeScores.grouped(int(credit.get("block", 0)))])
 	_refresh_play()
 
 

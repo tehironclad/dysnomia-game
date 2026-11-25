@@ -61,7 +61,7 @@ func build(address: String, accent: Color) -> void:
 	sign.position = Vector3(0.0, 4.6, 0.12)
 	add_child(sign)
 	var sub := Label3D.new()
-	sub.text = "arcade · pool · cards · a drink with Sunny" if is_pub else "1 Ⓐ a play · paid to this QING · pool & cards in the back"
+	sub.text = "arcade · pool · cards · a drink with Sunny" if is_pub else "%s · paid to this QING · pool & cards in the back" % Prices.menu_line()
 	sub.font = DeepFieldTheme.mono_font()
 	sub.font_size = 36
 	sub.pixel_size = 0.01
