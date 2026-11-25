@@ -38,6 +38,7 @@ func test_speaker_colour_is_stable() -> void:
 func test_dock_states_are_distinct() -> void:
 	var r := "RatKing QING"
 	eq(ChatFeedPanel.state_line(false, false, [], -1, true, r, false), "Reading the room's lines from the chain…")
+	check(ChatFeedPanel.state_line(false, false, [], -1, true, r, false, false).contains("could not be read: —"), "a failed first read is not 'reading'")
 	check(ChatFeedPanel.state_line(true, false, [], 100, false, r, false).begins_with("History unavailable: —"))
 	check(ChatFeedPanel.state_line(true, true, [], 100, false, r, false).begins_with("No lines in the scanned range."))
 	var ls := [_line(27787864, "PulsePunk", "Anyone home?")]

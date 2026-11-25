@@ -459,15 +459,17 @@ func _refresh_header() -> void:
 	unread_chip.text = ("@ %d" % mentions) if mentions > 0 and collapsed else "● %d new" % n
 	unread_chip.visible = n > 0 and collapsed and not history.visible
 	sub.text = state_line(_feed.is_loaded(), _feed.history_ok, _feed.lines, _head(), _t < _greet_until,
-		String(_feed.territory.get("name", "")), Session.wallet != "")
+		String(_feed.territory.get("name", "")), Session.wallet != "", _feed.loading)
 	sub.visible = not collapsed and sub.text != ""
 
 
 ## Pure: the line under the dock's header. Loading, unavailable, empty, quiet
-## and talking are different things and say so; `greet` on arrival.
-static func state_line(loaded: bool, history_ok: bool, ls: Array, head: int, greet: bool, room: String, has_wallet: bool) -> String:
+## and talking are different things and say so; `greet` on arrival. `reading`:
+## a history read is under way (else a first read that failed waits to retry).
+static func state_line(loaded: bool, history_ok: bool, ls: Array, head: int, greet: bool, room: String, has_wallet: bool, reading: bool = true) -> String:
 	if not loaded and ls.is_empty():
-		return "Reading the room's lines from the chain…"
+		return "Reading the room's lines from the chain…" if reading \
+			else "The room's history could not be read: — (trying again with the next tail read)."
 	if loaded and ls.is_empty():
 		return "History unavailable: — (the log scan stopped)." if not history_ok \
 			else "No lines in the scanned range. Every QING is a room: say the first word (%s)." % ControlsHelp.key_of("chat")
