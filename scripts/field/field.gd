@@ -433,7 +433,7 @@ func _build_ui() -> void:
 	_search = LineEdit.new()
 	_search.placeholder_text = "Find a QING: name, symbol, #n or 0x…   (%s)" % key("field_search")
 	_search.custom_minimum_size = Vector2(0, 42)
-	_search.add_theme_font_size_override("font_size", 18)
+	_search.add_theme_font_size_override("font_size", DeepFieldTheme.FS_LEAD)
 	_search.clear_button_enabled = true
 	_search.text_changed.connect(func(_t): _refresh_results())
 	_search.text_submitted.connect(func(_t): _choose_highlight())
@@ -482,7 +482,7 @@ func _build_ui() -> void:
 	_results.set_column_custom_minimum_width(2, 84)
 	_results.custom_minimum_size = Vector2(0, 380)
 	_results.add_theme_font_override("font", DeepFieldTheme.body_font())
-	_results.add_theme_font_size_override("font_size", 14)
+	_results.add_theme_font_size_override("font_size", DeepFieldTheme.FS_SMALL)
 	_results.add_theme_stylebox_override("panel", DeepFieldTheme.panel_style(DeepFieldTheme.HAIRLINE))
 	_results.add_theme_color_override("font_color", DeepFieldTheme.INK)
 	_results.add_theme_color_override("title_button_color", DeepFieldTheme.MUTED)
@@ -544,7 +544,7 @@ func _build_ui() -> void:
 	_warp_btn.clip_text = true
 	_warp_btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_warp_btn.add_theme_font_override("font", DeepFieldTheme.display_font())
-	_warp_btn.add_theme_font_size_override("font_size", 16)
+	_warp_btn.add_theme_font_size_override("font_size", DeepFieldTheme.FS_BODY)
 	var wsb := DeepFieldTheme.panel_style(DeepFieldTheme.ICE)
 	wsb.bg_color = Color(0.66, 0.9, 1.0, 0.16)
 	_warp_btn.add_theme_stylebox_override("normal", wsb)

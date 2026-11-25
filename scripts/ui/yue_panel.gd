@@ -94,7 +94,7 @@ func refresh() -> void:
 		b.button_group = group
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.add_theme_font_override("font", DeepFieldTheme.mono_font())
-		b.add_theme_font_size_override("font_size", 12)
+		b.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 		b.text = item_line(it, rated != null, YueExchange.rated_block())
 		b.pressed.connect(_load_pair.bind(i))
 		list.add_child(b)

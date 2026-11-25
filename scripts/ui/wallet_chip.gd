@@ -35,7 +35,7 @@ func _ready() -> void:
 	_chip = Button.new()
 	_chip.flat = false
 	_chip.focus_mode = Control.FOCUS_NONE
-	_chip.add_theme_font_size_override("font_size", 11)
+	_chip.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	_chip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_chip.tooltip_text = "Wallet: click to connect, or to bring back the wallet window. F2 → Test my wallet checks every step."
 	_chip.pressed.connect(func(): Wallet.connect_wallet())
@@ -47,7 +47,7 @@ func _ready() -> void:
 	col.add_child(_toast)
 	_toast_label = Label.new()
 	_toast_label.theme_type_variation = "MonoLabel"
-	_toast_label.add_theme_font_size_override("font_size", 13)
+	_toast_label.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	_toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_toast_label.custom_minimum_size = Vector2(560, 0)
 	_toast.add_child(_toast_label)

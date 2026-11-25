@@ -124,7 +124,7 @@ func _fill_list() -> void:
 		b.button_group = group
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.add_theme_font_override("font", DeepFieldTheme.mono_font())
-		b.add_theme_font_size_override("font_size", 12)
+		b.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 		b.text = list_line(t, qing)
 		b.pressed.connect(_select.bind(i))
 		list.add_child(b)

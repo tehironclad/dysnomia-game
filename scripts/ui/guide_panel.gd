@@ -28,8 +28,8 @@ func _init() -> void:
 	_list.custom_minimum_size = Vector2(500, 0)
 	_list.add_theme_font_override("normal_font", DeepFieldTheme.body_font())
 	_list.add_theme_font_override("mono_font", DeepFieldTheme.mono_font())
-	_list.add_theme_font_size_override("normal_font_size", 13)
-	_list.add_theme_font_size_override("mono_font_size", 12)
+	_list.add_theme_font_size_override("normal_font_size", DeepFieldTheme.FS_CAPTION)
+	_list.add_theme_font_size_override("mono_font_size", DeepFieldTheme.FS_CAPTION)
 	col.add_child(_list)
 
 

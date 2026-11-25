@@ -41,11 +41,11 @@ func _init() -> void:
 	top.add_child(info)
 	_name = Label.new()
 	_name.theme_type_variation = "DisplayLabel"
-	_name.add_theme_font_size_override("font_size", 16)
+	_name.add_theme_font_size_override("font_size", DeepFieldTheme.FS_BODY)
 	info.add_child(_name)
 	_lines = Label.new()
 	_lines.theme_type_variation = "MonoLabel"
-	_lines.add_theme_font_size_override("font_size", 11)
+	_lines.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 	info.add_child(_lines)
 	_state = Label.new()
 	_state.theme_type_variation = "MonoLabel"
@@ -60,12 +60,12 @@ func _init() -> void:
 	for h in HOLDINGS:
 		var l := Label.new()
 		l.theme_type_variation = "MonoLabel"
-		l.add_theme_font_size_override("font_size", 12)
+		l.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 		l.text = "●  " + h[1]
 		grid.add_child(l)
 		var d := Label.new()
 		d.theme_type_variation = "MutedLabel"
-		d.add_theme_font_size_override("font_size", 11)
+		d.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
 		grid.add_child(d)
 		_bodies[h[0]] = {"dot": l, "detail": d}
 	var hrow := HBoxContainer.new()

@@ -34,7 +34,7 @@ func _init() -> void:
 	add_child(col)
 	_title = Label.new()
 	_title.theme_type_variation = "DisplayLabel"
-	_title.add_theme_font_size_override("font_size", 18)
+	_title.add_theme_font_size_override("font_size", DeepFieldTheme.FS_LEAD)
 	col.add_child(_title)
 	_sub = Label.new()
 	_sub.theme_type_variation = "MutedLabel"
@@ -47,7 +47,7 @@ func _init() -> void:
 	_list.custom_minimum_size = Vector2(600, 280)
 	_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_list.add_theme_font_override("normal_font", DeepFieldTheme.mono_font())
-	_list.add_theme_font_size_override("normal_font_size", 12)
+	_list.add_theme_font_size_override("normal_font_size", DeepFieldTheme.FS_CAPTION)
 	col.add_child(_list)
 	_reason = Label.new()
 	_reason.theme_type_variation = "MutedLabel"
