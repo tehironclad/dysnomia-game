@@ -5,7 +5,7 @@ extends SceneTree
 ## under the scene root), plus how many sit inside the camera's frustum.
 ##   xvfb-run … godot --path . -s res://tools/perf_breakdown.gd -- [--qing=0x…] [--view=…] [--scene=…] [--depth=3] [--merge-ids]
 ## --list=<text> also tallies the in-view instances whose path contains <text> by (parent, class, material)
-## (--by-tris: sorted by their triangles).
+## (--by-tris: sorted by their triangles; --list-casters: the sun casters in reach instead).
 ## --merge-ids folds numbered siblings into one row (Visitor362, Visitor363 → Visitor#; @Node3D@881 → @Node3D@#).
 ## Instances past their visibility range don't count as in view. "sun-casters": shadow casters
 ## within the sun's shadow reach of the camera, in or out of view (--by-shadow sorts by them). Also prints the renderer's
@@ -18,6 +18,7 @@ var _cam_pos := Vector3.ZERO
 var _shadow_d := 0.0  ## the sun's shadow reach (0: no sun shadows)
 var _merge_ids := false
 var _list := ""
+var _list_casters := false  ## --list-casters: tally the sun casters in reach instead of what's in view
 var _tally := {}
 var _tris_cache := {}
 var _numbers := RegEx.create_from_string("[0-9]+")
@@ -37,6 +38,8 @@ func _run() -> void:
 			_merge_ids = true
 		elif a.begins_with("--list="):
 			_list = a.substr(7)
+		elif a == "--list-casters":
+			_list_casters = true
 	change_scene_to_file(_scene)
 	for i in 150:
 		await process_frame
@@ -88,13 +91,16 @@ func _walk(n: Node, top: Node, planes: Array[Plane], groups: Dictionary, total: 
 		g[0] += 1
 		total[0] += 1
 		var inside := _in_view(gi, planes)
+		var caster := false
 		if _shadow_d > 0.0 and gi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 			var c := (gi.global_transform * gi.get_aabb()).get_center()
 			var dc := _cam_pos.distance_to(c)
 			if dc < _shadow_d and _in_range(gi, dc):
 				g[4] += 1
 				total[4] += 1
-		if inside and _list != "" and String(gi.get_path()).contains(_list):
+				caster = true
+		var listed := caster if _list_casters else inside
+		if listed and _list != "" and String(gi.get_path()).contains(_list):
 			var mat: Material = gi.material_override
 			if mat == null and gi is MeshInstance3D and (gi as MeshInstance3D).mesh:
 				mat = (gi as MeshInstance3D).mesh.surface_get_material(0)
