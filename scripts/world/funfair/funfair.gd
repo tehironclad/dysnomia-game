@@ -64,7 +64,7 @@ func initialize(seed_value: int, tier: int = 3) -> void:
 	_tier = clampi(tier, 0, 3)
 	_batch.knock = {"Barrel_01": [40.0, "wood"], "Barrel_02": [40.0, "wood"]}  # barrels topple (KnockWorld)
 	# visitors (fewer on light graphics levels: Config.crowd); vendors and the band come on top
-	_npc_cap = Config.crowd([0, 6, 12, 24][_tier], 2 if _tier > 0 else 0)
+	_npc_cap = Shares.crowd([0, 6, 12, 24][_tier], 2 if _tier > 0 else 0)
 	if _tier == 0:
 		_build_survey_lot()
 		await _pace()

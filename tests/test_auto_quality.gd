@@ -135,3 +135,11 @@ func test_relaunch_args() -> void:
 	# the 0.9.0 release closed itself on first launch. Only the editor binary gets it.
 	eq(Config.relaunch_args("gl_compatibility", true, "/p/"), ["--rendering-method", "gl_compatibility"], "exported: no --path")
 	eq(Config.relaunch_args("mobile", false, "/p/"), ["--path", "/p/", "--rendering-method", "mobile"], "from the project: --path")
+
+
+## Shares: the level's crowd/particle counts without naming the Config autoload (-s tools).
+func test_shares_follow_config() -> void:
+	var cfg = (Engine.get_main_loop() as SceneTree).root.get_node("Config")
+	eq(Shares.particles(64), cfg.particles(64))
+	eq(Shares.crowd(40, 3), cfg.crowd(40, 3))
+	check(Shares.particles(0) >= 1, "an emitter always has a particle")

@@ -530,7 +530,7 @@ func _build_gear() -> void:
 	_streaks.top_level = true
 	_streaks.local_coords = false
 	_streaks.emitting = false
-	_streaks.amount = Config.particles(90)
+	_streaks.amount = Shares.particles(90)
 	_streaks.lifetime = 0.7
 	_streaks.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
 	_streaks.emission_sphere_radius = 9.0
