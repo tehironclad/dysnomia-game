@@ -1,7 +1,8 @@
 class_name ChatHud
 extends CanvasLayer
 ## ChatFeed's overlay (it lives in the autoload, so it survives scene changes):
-## the feed and the bar bottom-left, the history panel on the left. Shown in
+## the dock (ChatFeedPanel) and the bar bottom-left, the HUD's chat corner;
+## the history panel in the middle (Y). Shown in
 ## the territory, the arcade and the pub (the feed keeps running there); the
 ## bar works in the territory (places open their own chat panel with T).
 
@@ -19,36 +20,48 @@ func _ready() -> void:
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.theme = DeepFieldTheme.get_theme()
 	add_child(_root)
+	# The dock: bottom-left, the HUD's chat corner (HudLayout). The bar opens
+	# under it and pushes it up; the history opens in the middle of the screen.
 	feed = ChatFeedPanel.new()
 	feed.name = "Feed"
 	_root.add_child(feed)
 	feed.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	feed.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	feed.offset_left = 20
-	feed.offset_bottom = -132
-	feed.offset_top = -132
+	feed.offset_left = HudLayout.MARGIN
+	feed.offset_bottom = -HudLayout.DOCK_BOTTOM
+	feed.offset_top = -HudLayout.DOCK_BOTTOM
 	bar = ChatBar.new()
 	bar.name = "Bar"
 	_root.add_child(bar)
 	bar.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	bar.offset_left = 20
-	bar.offset_bottom = -120
-	bar.offset_top = -120
+	bar.offset_left = HudLayout.MARGIN
+	bar.offset_bottom = -HudLayout.DOCK_BOTTOM
+	bar.offset_top = -HudLayout.DOCK_BOTTOM
 	bar.opened.connect(func():
 		feed.visible = true
-		feed.offset_bottom = -132 - 150  # the feed sits above the open bar
-		feed.offset_top = feed.offset_bottom
+		if feed.collapsed:
+			feed.set_collapsed(false)
+		_place_feed.call_deferred()
 		feed.mark_read())
 	bar.closed.connect(func():
-		feed.offset_bottom = -132
-		feed.offset_top = -132)
+		feed.offset_bottom = -HudLayout.DOCK_BOTTOM
+		feed.offset_top = -HudLayout.DOCK_BOTTOM)
 	var h := feed.history
 	_root.add_child(h)
-	h.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	h.offset_left = 420  # right of the HUD's territory column
-	h.offset_top = -300
+	h.set_anchors_preset(Control.PRESET_CENTER)
+	h.offset_left = -h.custom_minimum_size.x * 0.5
+	h.offset_right = h.custom_minimum_size.x * 0.5
+	h.offset_top = -h.custom_minimum_size.y * 0.5
+	h.offset_bottom = h.custom_minimum_size.y * 0.5
 	_refresh()
+
+
+## The dock sits on top of the open bar.
+func _place_feed() -> void:
+	var y := -HudLayout.DOCK_BOTTOM - bar.size.y - HudLayout.GAP
+	feed.offset_bottom = y
+	feed.offset_top = y
 
 
 func on_scene(_s: Node) -> void:
@@ -79,6 +92,10 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not _root.visible or bar.is_open():
+		return
+	if event.is_action_pressed("chat_dock"):
+		get_viewport().set_input_as_handled()
+		feed.toggle_collapsed()
 		return
 	if event.is_action_pressed("chat_history"):
 		get_viewport().set_input_as_handled()
