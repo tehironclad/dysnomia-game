@@ -134,6 +134,21 @@ func _run() -> void:
 		var prompt: String = fair._hud.prompt.text
 		print("rocket prompt: ", prompt)
 		await _press("interact")
+		if locked:
+			# Locked: the unlock steps pop up, with a footer button for a free practice flight
+			var steps_script = load("res://scripts/ui/access/access_steps.gd")
+			var popup = steps_script._popup_ref.get_ref() if steps_script.popup_open() else null
+			_check(popup != null, "a locked rocket shows the unlock steps")
+			var fly: Button = null
+			if popup != null:
+				for b in popup._extra_btns:
+					if is_instance_valid(b) and String(b.text).begins_with("Fly a free practice flight"):
+						fly = b
+			_check(fly != null, "the steps offer a free practice flight")
+			if fly != null:
+				fly.pressed.emit()
+				for i in 5:
+					await process_frame
 		_check(not fair._paying and (rocket.is_riding() or not locked), "a locked rocket sells no ticket and flies a free practice flight")
 		if rocket.is_riding():
 			rocket.end_ride()
