@@ -12,6 +12,7 @@ extends Control
 ## Keyboard: the arrow keys move between the doors, Enter opens one.
 
 const SETTINGS := preload("res://scripts/ui/settings_menu.gd")
+const RIGHT_W := 680  # the right column (who you are, the sky card): the access steps wrap less
 const SKY := preload("res://assets/shaders/deep_field_sky.gdshader")
 const LAST_PATH := "user://travel.cfg"
 const PANELS := ["summary", "void", "identity", "guide", "opps", "laus"]
@@ -318,8 +319,8 @@ func _set_status(t: String) -> void:
 func _build_right() -> void:
 	_right = VBoxContainer.new()
 	_right.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_right.position = Vector2(-112 - 600, 92)
-	_right.custom_minimum_size = Vector2(600, 0)
+	_right.position = Vector2(-112 - RIGHT_W, 92)
+	_right.custom_minimum_size = Vector2(RIGHT_W, 0)
 	_right.add_theme_constant_override("separation", 10)
 	add_child(_right)
 	_back = Button.new()
@@ -387,7 +388,7 @@ func _build_right() -> void:
 	_panels["summary_id"] = idp
 	_path = AccessSteps.new()
 	_path.compact = true
-	_path.custom_minimum_size = Vector2(600, 0)
+	_path.custom_minimum_size = Vector2(RIGHT_W, 0)
 	_summary.add_child(_path)
 	_path.show_goal("identity", {"title": "Play as yourself", "subtitle": "Reading and exploring need no wallet. To react, talk and play, these come first; each one is checked on chain."},
 		{"void": func(): open_panel("void"), "yue": func(): open_panel("void"), "front_door": func(): open_panel("identity")})
@@ -614,11 +615,11 @@ func _build_bottom() -> void:
 	fc.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	fc.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	fc.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	fc.offset_left = -112 - 600
+	fc.offset_left = -112 - RIGHT_W
 	fc.offset_right = -112
 	fc.offset_top = -112
 	fc.offset_bottom = -112
-	fc.custom_minimum_size = Vector2(600, 0)
+	fc.custom_minimum_size = Vector2(RIGHT_W, 0)
 	add_child(fc)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
@@ -638,7 +639,9 @@ func _build_bottom() -> void:
 	var p := DeepField.for_territory(featured) if not featured.is_empty() else {}
 	var facts := _label("", "MonoLabel", DeepFieldTheme.FS_CAPTION)
 	if not featured.is_empty():
-		facts.text = "%s · %s · reactors %s%s\nThe sky's faint Field marks its c; its Julia set is this picture and its ground." % [
+		facts.tooltip_text = "The sky's faint Field marks its c; its Julia set is this picture and its ground."
+		facts.mouse_filter = Control.MOUSE_FILTER_PASS
+		facts.text = "%s · %s · reactors %s%s" % [
 			String(p["tier"]), FieldIndex.tier_text(featured_row), FieldIndex.reactors_text(featured_row),
 			(" (snapshot block %d)" % int(featured_row["dev_block"])) if int(featured_row["dev_block"]) > 0 else ""]
 		_emblem.apply_params(p, DeepField.describe(p, "QING.Entropy()", String(featured["entropy"]), String(featured["address"])))
