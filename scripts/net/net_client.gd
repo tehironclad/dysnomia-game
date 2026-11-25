@@ -7,6 +7,11 @@ extends Node
 ## Sign-in: `signer` is a Callable(message: String) -> String (0x… signature;
 ## may be a coroutine; "" = refused) for the wallet `signer_wallet`. The Net
 ## autoload passes the browser wallet's personal_sign; tests pass a fake key.
+## The text signed is built HERE (NetProto.login_message: this client's own host,
+## the server's nonce and time, checked for shape), never taken from the server.
+## The session token is kept for the URL that issued it only.
+## Everything a server sends that is shown (names, chat, invites) is cleaned here too:
+## the server is somebody's laptop, not a trusted party.
 
 signal status_changed(status: String)          # offline | connecting | online
 signal welcomed(id: int)
@@ -38,7 +43,9 @@ var wallet := ""        # verified by the server; "" = guest
 var token := ""         # session token from the server (no new signature on reconnect)
 var server_name := ""
 var nonce := ""
-var login_message := ""
+var issued := 0         # the server's unix time for this nonce (the sign-in expires LOGIN_TTL_S later)
+var login_message := ""  # built by this client (see login_for)
+var _token_url := ""     # the URL whose server issued `token`
 var room := ""
 var profile := {"name": "", "head": "bear", "acc": [], "body": "male"}
 var peers := {}         # id → {id, wallet, name, guest, head, acc, body, interp: NetInterp}
@@ -67,6 +74,8 @@ func _now_ms() -> int:
 
 func connect_to(p_url: String) -> bool:
 	close()
+	if p_url != _token_url:
+		token = ""  # a session token goes back only to the server that issued it
 	url = p_url
 	_ws = WebSocketPeer.new()
 	_ws.inbound_buffer_size = 256 * 1024
@@ -191,8 +200,11 @@ func sign_in() -> void:
 	if token != "":
 		_send(NetProto.json_msg(NetProto.C_AUTH, {"token": token}))
 		return
-	if not signer.is_valid() or signer_wallet == "" or login_message == "":
+	if not signer.is_valid() or signer_wallet == "":
 		auth_failed.emit("no wallet to sign with")
+		return
+	if login_message == "":
+		auth_failed.emit("this server sent no valid sign-in nonce and time (an older server?), so nothing was signed")
 		return
 	_signing = true
 	var msg := login_message
@@ -203,7 +215,16 @@ func sign_in() -> void:
 		return
 	if not is_online() or msg != login_message:
 		return  # reconnected meanwhile: the nonce changed
-	_send(NetProto.json_msg(NetProto.C_AUTH, {"wallet": signer_wallet, "sig": String(sig)}))
+	_send(NetProto.json_msg(NetProto.C_AUTH, {"wallet": signer_wallet, "sig": String(sig), "host": NetProto.login_host(url)}))
+
+
+## Pure: the sign-in text for a server at `p_url` that sent (name, nonce, issued), or
+## "" when the nonce or time is malformed. Whatever "login" text a server sends is ignored.
+static func login_for(p_url: String, p_server_name: String, p_nonce: String, p_issued: int) -> String:
+	var host := NetProto.login_host(p_url)
+	if host == "" or not NetProto.valid_nonce(p_nonce) or p_issued <= 1600000000:
+		return ""
+	return NetProto.login_message(p_server_name, host, p_nonce, p_issued)
 
 
 # ── invites and head-to-head games (signed-in only; the server checks) ──────
@@ -321,8 +342,9 @@ func _handle(m: PackedByteArray) -> void:
 			var b := NetProto.json_body(m)
 			my_id = int(b.get("id", -1))
 			nonce = String(b.get("nonce", ""))
-			server_name = String(b.get("server", ""))
-			login_message = String(b.get("login", ""))
+			server_name = NetProto.login_name(String(b.get("server", "")))
+			issued = int(b.get("issued", 0))
+			login_message = login_for(url, server_name, nonce, issued)
 			voice_radius = float(b.get("voice_radius", 40.0))
 			features = b.get("features", []) if b.get("features") is Array else []
 			_set_status("online")
@@ -334,12 +356,15 @@ func _handle(m: PackedByteArray) -> void:
 		NetProto.S_AUTH:
 			var b := NetProto.json_body(m)
 			if bool(b.get("ok", false)):
-				wallet = String(b.get("wallet", ""))
-				token = String(b.get("token", token))
+				wallet = NetProto.clean_wallet(String(b.get("wallet", "")))
+				token = String(b.get("token", token)).left(128)
+				_token_url = url
 				auth_changed.emit(wallet)
 			else:
-				if b.has("login"):
-					login_message = String(b["login"])
+				if b.has("nonce"):
+					nonce = String(b["nonce"])
+					issued = int(b.get("issued", 0))
+					login_message = login_for(url, server_name, nonce, issued)
 				if b.get("token_expired", false):
 					token = ""
 				auth_failed.emit(String(b.get("reason", "refused")))
@@ -354,6 +379,11 @@ func _handle(m: PackedByteArray) -> void:
 				peers[id] = p
 			for k in ["wallet", "name", "guest", "head", "acc", "body"]:
 				p[k] = b.get(k, "")
+			p["wallet"] = NetProto.clean_wallet(String(p["wallet"]))
+			p["name"] = NetProto.clean_text(String(p["name"]), NetProto.NAME_MAX_CHARS)
+			p["head"] = NetProto.clean_text(String(p["head"]), 24)
+			p["body"] = NetProto.clean_text(String(p["body"]), 24)
+			p["acc"] = (p["acc"] as Array).slice(0, 8).map(func(x): return NetProto.clean_text(str(x), 24)) if p["acc"] is Array else []
 			p["id"] = id
 			peer_joined.emit(id, p)
 		NetProto.S_PEER_LEAVE:
@@ -365,10 +395,11 @@ func _handle(m: PackedByteArray) -> void:
 			var b := NetProto.json_body(m)
 			var pa: Array = b.get("pos", []) if b.get("pos") is Array else []
 			var pos := Vector3(float(pa[0]), float(pa[1]), float(pa[2])) if pa.size() == 3 else Vector3.INF
-			chat.emit(int(b.get("id", -1)), String(b.get("wallet", "")), String(b.get("name", "")), String(b.get("text", "")), pos)
+			chat.emit(int(b.get("id", -1)), NetProto.clean_wallet(String(b.get("wallet", ""))), NetProto.clean_text(String(b.get("name", "")), NetProto.NAME_MAX_CHARS),
+				NetProto.clean_text(String(b.get("text", "")), NetProto.CHAT_MAX_CHARS), pos)
 		NetProto.S_NOTICE:
 			var b := NetProto.json_body(m)
-			notice.emit(String(b.get("code", "")), String(b.get("text", "")))
+			notice.emit(NetProto.clean_text(String(b.get("code", "")), 24), NetProto.clean_text(String(b.get("text", "")), 240))
 		NetProto.S_LB:
 			var b := NetProto.json_body(m)
 			var req := int(b.get("req", 0))

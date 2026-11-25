@@ -4,7 +4,10 @@ extends SceneTree
 ## a guest (G) join one QING room and check: sign-in by personal_sign +
 ## ecrecover, presence at 10 Hz (with interpolation), chat, voice frames of a
 ## synthetic tone, guests can't talk, leaderboards, rate limits, size limits,
-## flooding, and session-token reconnects. Prints measured bandwidth.
+## flooding, and session-token reconnects. Sign-in v2 (docs/SECURITY_AUDIT.md): the
+## client builds the text itself; a signature made for another host (a relay by a
+## malicious server) or after its expiry is refused; tokens are stored hashed and are
+## only sent back to the URL that issued them. Prints measured bandwidth.
 ##   godot --headless --path . -s res://tools/net_selftest.gd [-- --url=ws://127.0.0.1:8787]
 ## Without --url it starts its own server in this process (port 18787, data in
 ## user://server_selftest). Exit code 0 = every check passed.
@@ -83,6 +86,8 @@ func _run() -> void:
 		c.connect_to(url)
 	ok(await wait_until(func(): return a.is_online() and b.is_online() and g.is_online(), 8.0), "three clients connected (welcome received)")
 	ok(a.my_id != b.my_id and a.login_message.contains(a.nonce), "distinct ids; login message carries the nonce")
+	ok(a.login_message.begins_with(NetProto.LOGIN_TITLE + "\n") and a.login_message.contains("\nHost: 127.0.0.1\n") and a.login_message.contains("not a transaction"),
+		"the client built the sign-in text itself: title, this host, the nonce, not a transaction")
 
 	# ── sign-in ──
 	var t_auth := Time.get_ticks_msec()
@@ -95,6 +100,30 @@ func _run() -> void:
 	g.auth_failed.connect(func(r): forged[0] = r)
 	g._send(NetProto.json_msg(NetProto.C_AUTH, {"wallet": a.wallet, "sig": EthSign.sign_personal(g.login_message, KEY_B)}))
 	ok(await wait_until(func(): return forged[0] != "", 5.0) and g.wallet == "", "a signature from another key is refused (%s)" % forged[0])
+	# A relay: a malicious server got G to sign ITS text (another host) with this server's
+	# nonce, and replays it here. Refused before any ecrecover.
+	await wait_until(func(): return g.login_message != "", 3.0)
+	forged[0] = ""
+	var relay_text: String = NetClient.login_for("wss://evil.example/", g.server_name, g.nonce, g.issued)
+	g._send(NetProto.json_msg(NetProto.C_AUTH, {"wallet": EthSign.address_of_private(KEY_B), "sig": EthSign.sign_personal(relay_text, KEY_B), "host": "evil.example"}))
+	ok(await wait_until(func(): return forged[0] != "", 5.0) and g.wallet == "" and forged[0].contains("another server"), "a sign-in signed for another host (a relay) is refused (%s)" % forged[0])
+	# The same signature without saying the host: the server checks it against its own host's text
+	await wait_until(func(): return g.login_message != "" and not relay_text.contains(g.nonce), 3.0)
+	forged[0] = ""
+	relay_text = NetClient.login_for("wss://evil.example/", g.server_name, g.nonce, g.issued)
+	g._send(NetProto.json_msg(NetProto.C_AUTH, {"wallet": EthSign.address_of_private(KEY_B), "sig": EthSign.sign_personal(relay_text, KEY_B)}))
+	ok(await wait_until(func(): return forged[0] != "", 5.0) and g.wallet == "", "…and without naming the host, it recovers to nobody here (%s)" % forged[0])
+	# An expired text: the server's clock for this nonce is moved back past the TTL
+	if server:
+		await wait_until(func(): return not relay_text.contains(g.nonce), 3.0)
+		forged[0] = ""
+		var gp = server._peers.get(g.my_id)
+		gp.issued -= NetProto.LOGIN_TTL_S + 5
+		g._send(NetProto.json_msg(NetProto.C_AUTH, {"wallet": EthSign.address_of_private(KEY_B), "sig": EthSign.sign_personal(
+			NetClient.login_for(g.url, g.server_name, g.nonce, gp.issued), KEY_B), "host": "127.0.0.1"}))
+		ok(await wait_until(func(): return forged[0] != "", 5.0) and g.wallet == "" and forged[0].contains("expired"), "an expired sign-in text is refused (%s)" % forged[0])
+		var toks := FileAccess.get_file_as_string("user://server_selftest/tokens.json")
+		ok(toks != "" and not toks.contains(a.token) and not toks.contains(b.token) and toks.contains(a.token.sha256_text()), "the server stores session tokens hashed, never the tokens")
 
 	# ── rooms and presence ──
 	a.join(ROOM, {"name": "Alice", "head": "rat", "acc": ["crown"], "body": "female"})
@@ -286,6 +315,12 @@ func _run() -> void:
 	ok(await wait_until(func(): return a.wallet != "", 8.0) and signed[0] == 0, "A reconnected and signed in by token (no wallet prompt)")
 	ok(await wait_until(func(): return b.peers.values().any(func(p): return p.get("wallet", "") == a.wallet), 5.0), "B sees A back in the room")
 	ok(await wait_until(func(): return _resynced, 5.0), "after the reconnect the server sent A its games again (S_MATCH %s)" % _match_id)
+
+	# A token goes back only to the server that issued it
+	var kept: String = a.token
+	a.connect_to("ws://127.0.0.1:1")
+	ok(kept != "" and a.token == "", "connecting to another server URL drops the session token (it is never sent elsewhere)")
+	a.close()
 
 	if server:
 		print("      server stats: ", JSON.stringify(server.stats))

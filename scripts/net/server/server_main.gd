@@ -2,8 +2,9 @@ extends Node
 ## Entry point of the headless game server (docs/SERVER.md):
 ##   godot --headless --path . res://scenes/net/game_server.tscn -- [--port=8787] [--name=…]
 ## or   godot --headless --path . -- --server [--port=8787]   (the Net autoload switches here)
-## Options: --port=N  --bind=127.0.0.1  --name=<shown in the login message>
+## Options: --port=N  --bind=127.0.0.1  --name=<shown in the sign-in text>
 ##          --max-players=200  --room-cap=64  --voice-radius=40  --data=user://server  --quiet
+##          --public-host=game.example.com[,other.example] (only if the tunnel rewrites Host)
 
 var server: GameServer
 
@@ -24,6 +25,11 @@ func _ready() -> void:
 			"voice-radius": server.voice_radius = clampf(float(v), 5.0, 500.0)
 			"data": server.data_dir = v
 			"quiet": server.quiet = true
+			"public-host":
+				for h in v.split(",", false):
+					var host := NetProto.login_host("wss://" + h.strip_edges())
+					if host != "":
+						server.public_hosts.append(host)
 	add_child(server)
 	if not server.start():
 		get_tree().quit(1)

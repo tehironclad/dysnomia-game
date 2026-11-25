@@ -9,7 +9,7 @@ extends RefCounted
 const VERSION := 1
 
 # client → server
-const C_AUTH := 2       # json {wallet, sig} | {token}
+const C_AUTH := 2       # json {wallet, sig, host} | {token}
 const C_JOIN := 3       # json {room, name, head, acc, body}
 const C_STATE := 4      # binary STATE (t u16 + 16 bytes)
 const C_CHAT := 5       # json {text}
@@ -27,7 +27,7 @@ const C_MOVE := 16      # json {match, op, a: [ints]}: a move in a head-to-head 
 const C_RESULT := 17    # json {match, winner: 0|1|2, digest}: what this machine's replay says
 
 # server → client
-const S_WELCOME := 64      # json {id, nonce, server, v, login}
+const S_WELCOME := 64      # json {id, nonce, issued, server, v, login (old clients only)}
 const S_AUTH := 65         # json {ok, wallet, name, token, reason}
 const S_PEER := 66         # json {id, wallet, name, guest, head, acc, body}
 const S_PEER_LEAVE := 67   # binary: id u16
@@ -80,8 +80,69 @@ const CODEC_ADPCM := 1
 const CODEC_ULAW := 2
 
 
-static func login_message(server_name: String, nonce_hex: String) -> String:
-	return "Dysnomia game server login\nServer: %s\nNonce: %s\nThis signature is free: it is not a transaction and moves nothing." % [server_name, nonce_hex]
+## The sign-in text (EIP-191 personal_sign). The CLIENT builds it from its own facts
+## (the host it connected to) and the server's nonce and time, both checked for shape;
+## it never signs a text the server sends. The server rebuilds the same text and
+## accepts it only for a host it serves (the WebSocket's Host, or --public-host) and
+## before it expires. So a server can't get a player's signature on anything else, and
+## a malicious server can't replay a player's sign-in at another server (relay).
+const LOGIN_TITLE := "Dysnomia game server sign-in"
+const LOGIN_TTL_S := 600
+const LOGIN_NAME_MAX := 40
+
+
+static func login_message(server_name: String, host: String, nonce_hex: String, issued_unix: int) -> String:
+	return ("%s\nServer: %s\nHost: %s\nNonce: %s\nIssued: %s\nExpires: %s\n" +
+		"This signature is free. It is not a transaction: it approves nothing and moves nothing.\n" +
+		"Sign it only in the Dysnomia game, to sign in to this server.") % [LOGIN_TITLE, login_name(server_name), host,
+		nonce_hex, iso_utc(issued_unix), iso_utc(issued_unix + LOGIN_TTL_S)]
+
+
+## A server name as the sign-in text shows it (printable, one line, ≤ 40 characters).
+static func login_name(s: String) -> String:
+	var n := clean_text(s, LOGIN_NAME_MAX)
+	return n if n != "" else "unnamed"
+
+
+## The host part of a ws(s)/http(s) URL, lowercase, without port, user or path
+## ("wss://Game.Example.com:443/x" → "game.example.com"); "" if there is none.
+static func login_host(url: String) -> String:
+	var u := url.strip_edges().to_lower()
+	var scheme := u.find("://")
+	if scheme < 0:
+		return ""
+	u = u.substr(scheme + 3)
+	for sep in ["/", "?", "#"]:
+		var i := u.find(sep)
+		if i >= 0:
+			u = u.left(i)
+	var at := u.rfind("@")
+	if at >= 0:
+		u = u.substr(at + 1)
+	if u.begins_with("["):  # [ipv6]:port
+		var close := u.find("]")
+		return u.substr(0, close + 1) if close > 0 else ""
+	var colon := u.find(":")
+	if colon >= 0:
+		u = u.left(colon)
+	for ch in u:
+		if not (ch.is_valid_identifier() or ch == "-" or ch == "." or (ch >= "0" and ch <= "9")):
+			return ""
+	return u
+
+
+## A server nonce: 32 lowercase hex digits (16 random bytes).
+static func valid_nonce(n: String) -> bool:
+	if n.length() != 32:
+		return false
+	for ch in n:
+		if not ((ch >= "0" and ch <= "9") or (ch >= "a" and ch <= "f")):
+			return false
+	return true
+
+
+static func iso_utc(unix: int) -> String:
+	return Time.get_datetime_string_from_unix_time(unix, false) + "Z"
 
 
 # ── framing ─────────────────────────────────────────────────────────────────

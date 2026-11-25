@@ -51,7 +51,11 @@ func _ready() -> void:
 		return
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--net-key="):  # tests and screenshots only: a throwaway key signs the free sign-in
+			if not OS.is_debug_build():
+				push_warning("[Net] --net-key is ignored: it exists for test runs of the editor build only. Never put a real key on a command line.")
+				continue
 			_test_key = a.substr(10)
+			print("[Net] TEST MODE (--net-key): a throwaway key on the command line signs the server sign-in. Debug builds only; never a real key.")
 	_bind.call_deferred()
 
 

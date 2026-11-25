@@ -45,6 +45,10 @@ var room_cap := 64
 var voice_radius := 40.0
 var data_dir := "user://server"
 var quiet := false
+## Host names players reach this server by, besides the Host of each WebSocket request
+## (a tunnel that rewrites Host needs its public name here: --public-host=a.example,b.example).
+## A sign-in naming any other host is refused: it was signed for another server.
+var public_hosts: PackedStringArray = []
 
 var lb: Leaderboards
 var stats := {"connections": 0, "auths": 0, "auth_failures": 0, "chats": 0, "voice_frames": 0, "states": 0,
@@ -56,7 +60,7 @@ var _tcp := TCPServer.new()
 var _peers := {}               # id → Peer
 var _rooms := {}               # room → {id: true}
 var _next_id := 1
-var _tokens := {}              # token → {wallet, exp}
+var _tokens := {}              # sha256(token) → {wallet, exp}: the tokens themselves are never stored
 var _auth_bucket := TokenBucket.new(4.0, 8.0)
 var _tick := 0.0
 var _stats_at := 0.0
@@ -76,6 +80,9 @@ class Peer:
 	var connected_s := 0.0
 	var last_seen_s := 0.0
 	var nonce := ""
+	var issued := 0                  # unix time the nonce was handed out (the sign-in expires LOGIN_TTL_S later)
+	var host := ""                   # the Host this socket asked for (NetProto.login_host)
+	var auth_message := ""
 	var wallet := ""
 	var name := ""
 	var head := "bear"
@@ -257,10 +264,13 @@ func _poll_peer(p: Peer, now: float) -> void:
 		return
 	if not p.opened:
 		p.opened = true
-		p.nonce = Crypto.new().generate_random_bytes(16).hex_encode()
+		p.host = NetProto.login_host(p.ws.get_requested_url())
+		_new_nonce(p)
 		stats["connections"] += 1
-		_send(p, NetProto.json_msg(NetProto.S_WELCOME, {"id": p.id, "nonce": p.nonce, "server": server_name,
-			"v": NetProto.VERSION, "login": NetProto.login_message(server_name, p.nonce), "voice_radius": voice_radius,
+		# "login" only for clients older than sign-in v2 (they sign what they are sent);
+		# current clients build the text themselves from nonce + issued and their own host.
+		_send(p, NetProto.json_msg(NetProto.S_WELCOME, {"id": p.id, "nonce": p.nonce, "issued": p.issued, "server": NetProto.login_name(server_name),
+			"v": NetProto.VERSION, "login": NetProto.login_message(server_name, p.host, p.nonce, p.issued), "voice_radius": voice_radius,
 			"features": NetProto.FEATURES + NetBump.FEATURES}))
 	var n := 0
 	while p.ws.get_available_packet_count() > 0 and n < 200:
@@ -587,7 +597,7 @@ func _auth(p: Peer, b: Dictionary, now: float) -> void:
 		return
 	var tok := String(b.get("token", ""))
 	if tok != "":
-		var rec: Dictionary = _tokens.get(tok, {})
+		var rec: Dictionary = _tokens.get(tok.sha256_text(), {})
 		if not rec.is_empty() and int(rec["exp"]) > Time.get_unix_time_from_system():
 			_authed(p, String(rec["wallet"]), tok)
 		else:
@@ -605,9 +615,37 @@ func _auth(p: Peer, b: Dictionary, now: float) -> void:
 	if not _auth_bucket.take(now):
 		_send(p, NetProto.json_msg(NetProto.S_AUTH, {"ok": false, "reason": "server busy; try again in a moment"}))
 		return
+	var host := String(b.get("host", p.host)).strip_edges().to_lower()
+	if not host_ok(host, p.host, public_hosts):
+		log_line("peer %d sign-in refused: signed for host '%s', this socket is for '%s'" % [p.id, host.left(80), p.host])
+		_auth_refused(p, "that signature was made for another server (%s); sign in again here" % host.left(80))
+		return
+	if int(Time.get_unix_time_from_system()) > p.issued + NetProto.LOGIN_TTL_S:
+		_auth_refused(p, "the sign-in text expired; sign the new one")
+		return
 	p.auth_claim = claim
-	var message := NetProto.login_message(server_name, p.nonce)
-	p.auth_task = WorkerThreadPool.add_task(_auth_job.bind(p, message, sig), false, "ecrecover")
+	p.auth_message = NetProto.login_message(server_name, host, p.nonce, p.issued)
+	p.auth_task = WorkerThreadPool.add_task(_auth_job.bind(p, p.auth_message, sig), false, "ecrecover")
+
+
+## Pure: may a sign-in name `host`? The Host this socket asked for, or one of the
+## configured public names. Never "" (a request without Host can't be signed for).
+static func host_ok(host: String, socket_host: String, publics: PackedStringArray) -> bool:
+	if host == "":
+		return false
+	return host == socket_host or publics.has(host)
+
+
+func _new_nonce(p: Peer) -> void:
+	p.nonce = Crypto.new().generate_random_bytes(16).hex_encode()
+	p.issued = int(Time.get_unix_time_from_system())
+
+
+func _auth_refused(p: Peer, reason: String) -> void:
+	stats["auth_failures"] += 1
+	_new_nonce(p)
+	_send(p, NetProto.json_msg(NetProto.S_AUTH, {"ok": false, "reason": reason, "nonce": p.nonce, "issued": p.issued,
+		"login": NetProto.login_message(server_name, p.host, p.nonce, p.issued)}))
 
 
 ## Worker thread: pure math, writes only to this peer's auth_result.
@@ -623,17 +661,15 @@ func _finish_auth(p: Peer) -> void:
 	var who := p.auth_result
 	_mutex.unlock()
 	# A fresh nonce either way: a signature is good for one attempt.
-	p.nonce = Crypto.new().generate_random_bytes(16).hex_encode()
 	if who != "" and who == p.auth_claim:
+		_new_nonce(p)
 		var tok := Crypto.new().generate_random_bytes(24).hex_encode()
-		_tokens[tok] = {"wallet": who, "exp": int(Time.get_unix_time_from_system()) + TOKEN_TTL_S}
+		_tokens[tok.sha256_text()] = {"wallet": who, "exp": int(Time.get_unix_time_from_system()) + TOKEN_TTL_S}
 		_save_tokens()
 		_authed(p, who, tok)
 	else:
-		stats["auth_failures"] += 1
 		log_line("peer %d sign-in refused: claimed %s, signature recovers %s" % [p.id, p.auth_claim, who if who != "" else "nothing"])
-		_send(p, NetProto.json_msg(NetProto.S_AUTH, {"ok": false, "reason": "the signature does not match that wallet",
-			"login": NetProto.login_message(server_name, p.nonce), "nonce": p.nonce}))
+		_auth_refused(p, "the signature does not match that wallet")
 
 
 func _authed(p: Peer, wallet: String, tok: String) -> void:
@@ -667,7 +703,10 @@ func _load_tokens() -> void:
 	if j is Dictionary:
 		for t in j:
 			if j[t] is Dictionary and NetProto.clean_wallet(String(j[t].get("wallet", ""))) != "":
-				_tokens[String(t)] = {"wallet": String(j[t]["wallet"]), "exp": int(j[t].get("exp", 0))}
+				var k := String(t)
+				if k.length() != 64:  # a raw token from before the file kept hashes only
+					k = k.sha256_text()
+				_tokens[k] = {"wallet": String(j[t]["wallet"]), "exp": int(j[t].get("exp", 0))}
 
 
 func _save_tokens() -> void:

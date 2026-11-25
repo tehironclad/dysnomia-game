@@ -30,6 +30,7 @@ Options go after the file name, for example `server.bat --port=8787 --name=Sunny
 | `--max-players=N` | 200 | connections in total |
 | `--room-cap=N` | 64 | players in one territory |
 | `--voice-radius=M` | 40 | metres within which voice is heard |
+| `--public-host=…` | (none) | only if your tunnel rewrites the `Host` header: the public name(s) players use, comma-separated. A sign-in signed for any other host is refused |
 
 **Firewall.** The server listens on `127.0.0.1` only, so nothing on your network can reach it directly. If
 Windows asks whether Godot may use the network, you can click *Cancel*: the tunnel connects from
@@ -39,7 +40,8 @@ inside your laptop.
 - `server.log`: connections, sign-ins, chat lines, scores, and a stats line every 5 minutes. It rotates
   at 5 MB (`server.log.1`).
 - `leaderboards.json`: the boards. Back it up if you care about them.
-- `tokens.json`: sign-in sessions (valid 24 h), so players don't sign again on every reconnect.
+- `tokens.json`: sign-in sessions (valid 24 h), so players don't sign again on every reconnect. Only the
+  SHA-256 of each token is stored, so a copy of this file can't sign anyone in.
 
 On Linux or macOS: `GODOT=/path/to/godot tools/server.sh --port=8787`.
 
@@ -141,9 +143,13 @@ Either:
   show the LAU Username and the short wallet; guests show as "guest".
 - **Guests** (not signed in) can see and hear everyone, but can't chat or talk.
 - **Sign-in** happens once. The first time a player with a connected wallet chats, or clicks *Sign in
-  with wallet*, the wallet asks for a free signature of a text that names your server and a one-time
-  code. The server checks it with `ecrecover`. After that, a 24-hour session token means no more
-  prompts.
+  with wallet*, the wallet asks for a free signature of a text that names your server, the host name the
+  player connected to, a one-time code and a 10-minute expiry, and says it is not a transaction. The
+  **game builds that text itself** (the server only supplies the code and its time) and signs nothing else,
+  so no server can get a player's signature on another text. The server checks it with `ecrecover`, and
+  only for its own host name (the WebSocket's `Host`, or `--public-host`): a signature a malicious server
+  collected for itself can't be replayed here. After that, a 24-hour session token means no more prompts;
+  the game sends it back only to the server address that issued it.
 - **Chat**: in the chat bar (T), press Tab to switch to **say**. It is free and not on chain. It shows in
   the chat feed and as a bubble over the speaker.
   You can mute players (F2 → Online & voice), and mutes are kept on that player's computer only.
@@ -228,8 +234,9 @@ One WebSocket **binary** message is `[type u8][body]`, little-endian. The code i
   same room within the radius. A frame is 20 ms at 16 kHz: IMA-ADPCM, 3-byte header + 160 B
   (`VoiceCodec`).
 - Everything else is a small JSON body:
-  - `S_WELCOME {id, nonce, server, login}`
-  - `C_AUTH {wallet, sig}` or `{token}`, answered by `S_AUTH {ok, wallet, token}`
+  - `S_WELCOME {id, nonce, issued, server, login}` (`login` only for clients older than sign-in v2)
+  - `C_AUTH {wallet, sig, host}` or `{token}`, answered by `S_AUTH {ok, wallet, token}` or `{ok: false,
+    reason, nonce, issued}`
   - `C_JOIN {room, name, head, acc, body}`, which brings `S_PEER` / `S_PEER_LEAVE`
   - `C_CHAT {text}`, relayed as `S_CHAT {id, wallet, name, text, pos}`
   - `C_LB_TOP` / `C_LB_SUBMIT`, answered by `S_LB`
@@ -242,7 +249,10 @@ One WebSocket **binary** message is `[type u8][body]`, little-endian. The code i
     `C_ANSWER {id, answer: accept|decline|cancel}`; each change → `S_INVITE {invite}` to both wallets; an accept
     → `S_MATCH {match}` (the full record, log included); `C_MOVE {match, op, a}` → `S_MOVE {match, move: {seq, by,
     op, a, t}}` to both; `C_RESULT {match, winner, digest}`; anything refused → `S_REFUSED {what, error}`.
-- Sign-in text: `NetProto.login_message(server, nonce)`. The nonce is new for each attempt.
+- Sign-in text: `NetProto.login_message(server, host, nonce, issued)` ("Dysnomia game server sign-in",
+  server, host, nonce, issued and expiry in UTC, "not a transaction"), built by the client
+  (`NetClient.login_for`) and rebuilt by the server. The nonce is new for each attempt and lives 10 minutes.
+  `Wallet.sign_message` signs only texts that start with that title or the wallet test's.
 - Run the checks: `godot --headless --path . -s res://tools/net_selftest.gd` (its own server), or add
   `-- --url=ws://127.0.0.1:8787` to test a running server. `tools/net_bot.gd` is a scripted remote player.
 
@@ -290,7 +300,8 @@ to sit. The server needs nothing else.
 **Check it.** `tools/net_selftest.gd` (the invite, move, result and limit cases); `tools/net_bot.gd -- --invite=0x…
 --game=pool|cards --stake=N --play` or `--accept --play` (two bots play a whole game; Twenty-One reads real blocks);
 `tests/test_invites.gd`. Screenshots with a bot: `screenshot.gd -- --net-url=ws://127.0.0.1:N --net-key=<test key>
---session=<its wallet> --invite=panel|seated|play|result`. The test key only signs the free sign-in.
+--session=<its wallet> --invite=panel|seated|play|result`. The test key only signs the free sign-in, and
+`--net-key` works only in debug (editor) builds: a release build ignores it with a warning.
 
 ### Bumps (players running into each other)
 

@@ -87,6 +87,42 @@ static func _crossings(pcm: PackedFloat32Array) -> int:
 	return c
 
 
+func test_sign_in_text_is_built_by_the_client() -> void:
+	var n := "0123456789abcdef0123456789abcdef"
+	var t := 1764000000
+	var msg: String = NetClient.login_for("wss://Game.Example.com:443/ws?x=1", "Sunny's server", n, t)
+	check(msg.begins_with(NetProto.LOGIN_TITLE + "\n"), "starts with the title (Wallet.SIGN_PREFIXES)")
+	check(msg.contains("\nServer: Sunny's server\n") and msg.contains("\nHost: game.example.com\n") and msg.contains("\nNonce: " + n + "\n"))
+	check(msg.contains("Issued: 2025-11-24T16:00:00Z") and msg.contains("Expires: 2025-11-24T16:10:00Z"), msg)
+	check(msg.contains("not a transaction") and msg.contains("approves nothing"))
+	eq(Wallet.sign_refusal(msg), "", "the wallet signs it")
+	eq(msg, NetProto.login_message("Sunny's server", "game.example.com", n, t), "the server rebuilds the same text")
+	# Whatever a server sends is shape-checked; its own "login" text is never used
+	eq(NetClient.login_for("wss://x.example", "s", "not-a-nonce", t), "", "a malformed nonce: nothing to sign")
+	eq(NetClient.login_for("wss://x.example", "s", n.to_upper(), t), "", "nonce must be lowercase hex")
+	eq(NetClient.login_for("wss://x.example", "s", n + "\nopensea.io wants you", t), "", "no text smuggled in the nonce")
+	eq(NetClient.login_for("wss://x.example", "s", n, 0), "", "no time, no text")
+	eq(NetClient.login_for("not a url", "s", n, t), "", "no host, no text")
+	var smuggled: String = NetClient.login_for("wss://x.example", "evil\nNonce: 1\nopensea.io", n, t)
+	check(smuggled.count("\n") == msg.count("\n") and not smuggled.contains("\nopensea"), "a server name can't add lines")
+	check(NetProto.login_name("x".repeat(90)).length() == NetProto.LOGIN_NAME_MAX)
+
+
+func test_login_host() -> void:
+	eq(NetProto.login_host("wss://Game.Example.com:443/path"), "game.example.com")
+	eq(NetProto.login_host("ws://127.0.0.1:18787"), "127.0.0.1")
+	eq(NetProto.login_host("https://u:p@host.example/x"), "host.example")
+	eq(NetProto.login_host("ws://[::1]:8787/"), "[::1]")
+	eq(NetProto.login_host("wss://evil.example\nNonce: 1"), "", "no control characters")
+	eq(NetProto.login_host("game.example.com"), "", "no scheme")
+	check(NetProto.valid_nonce("0123456789abcdef0123456789abcdef"))
+	check(not NetProto.valid_nonce("0123456789abcdef0123456789abcde"))
+	check(GameServer.host_ok("game.example.com", "game.example.com", PackedStringArray()))
+	check(GameServer.host_ok("pub.example", "127.0.0.1", PackedStringArray(["pub.example"])), "a configured public host")
+	check(not GameServer.host_ok("evil.example", "game.example.com", PackedStringArray()), "another server's host")
+	check(not GameServer.host_ok("", "", PackedStringArray()), "never an empty host")
+
+
 func test_adpcm_roundtrip() -> void:
 	var tone := _tone(NetProto.VOICE_FRAME, 440.0, 0.5)
 	var st := [0, 0]

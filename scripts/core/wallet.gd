@@ -44,7 +44,7 @@ const SEL_SET_APPROVAL_FOR_ALL := "0xa22cb465"
 ## The only texts sign_message signs: the game server's sign-in and the wallet test.
 ## Anything else (a login challenge for another site, an order, a permit) is refused
 ## before the wallet sees it, whoever asked for it.
-const SIGN_PREFIXES := ["Dysnomia game server sign-in\n", "Dysnomia game server login\n", "Dysnomia wallet test (free, not a transaction)\n"]
+const SIGN_PREFIXES := ["Dysnomia game server sign-in\n", "Dysnomia wallet test (free, not a transaction)\n"]
 const SIGN_MAX_CHARS := 600
 
 var address := ""
