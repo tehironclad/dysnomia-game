@@ -18,6 +18,11 @@ signal chat(id: int, wallet: String, name: String, text: String, pos: Vector3)
 signal voice(id: int, codec: int, data: PackedByteArray)
 signal notice(code: String, text: String)
 signal room_joined(room: String, count: int)
+signal online_list(ok: bool, rows: Array, error: String)  # S_ONLINE: who is signed in
+signal invite_update(invite: Dictionary)          # S_INVITE: an invite you sent or got, in its new state
+signal match_update(record: Dictionary)           # S_MATCH: a head-to-head game's full record (log included)
+signal match_move(match_id: String, move: Dictionary)  # S_MOVE: one new move {seq, by, op, a, t}
+signal refused(what: String, error: String)       # S_REFUSED: an invite, answer or move the server refused
 
 const STATE_INTERVAL_MS := 100   # 10 Hz
 const STATE_HEARTBEAT_MS := 1000 # resend unchanged state once a second
@@ -39,6 +44,7 @@ var signer: Callable
 var signer_wallet := ""
 var rtt_ms := -1
 var voice_radius := 40.0
+var features: Array = []  # what the server understands beyond v1 (S_WELCOME)
 var counters := {"bytes_in": 0, "bytes_out": 0, "msgs_in": 0, "msgs_out": 0, "state_out": 0, "voice_out": 0,
 	"state_bytes_in": 0, "voice_bytes_in": 0, "voice_bytes_out": 0, "state_bytes_out": 0}
 
@@ -198,6 +204,32 @@ func sign_in() -> void:
 	_send(NetProto.json_msg(NetProto.C_AUTH, {"wallet": signer_wallet, "sig": String(sig)}))
 
 
+# ── invites and head-to-head games (signed-in only; the server checks) ──────
+
+func request_online() -> bool:
+	_req += 1
+	return _send(NetProto.json_msg(NetProto.C_ONLINE, {"req": _req}))
+
+
+## Invites `to` (an online wallet) to `game` (InviteBook.GAMES) at the table behind
+## `door` in territory `room` (a QING address). `stake`: Ⓐ as text, "" for none.
+func invite(to: String, game: String, stake: String, p_room: String, door: String = "arcade") -> bool:
+	return _send(NetProto.json_msg(NetProto.C_INVITE, {"to": to, "game": game, "stake": stake, "room": p_room, "door": door}))
+
+
+## accept | decline (an invite you got) or cancel (one you sent).
+func answer_invite(id: String, what: String) -> bool:
+	return _send(NetProto.json_msg(NetProto.C_ANSWER, {"id": id, "answer": what}))
+
+
+func send_move(match_id: String, op: String, args: Array = []) -> bool:
+	return _send(NetProto.json_msg(NetProto.C_MOVE, {"match": match_id, "op": op, "a": args}))
+
+
+func send_result(match_id: String, winner: int, digest: String) -> bool:
+	return _send(NetProto.json_msg(NetProto.C_RESULT, {"match": match_id, "winner": winner, "digest": digest}))
+
+
 ## {ok, rows} | {ok: false, error}
 func lb_top(board: String, n: int = 10) -> Dictionary:
 	return await _lb_request(NetProto.C_LB_TOP, {"board": board, "n": n})
@@ -290,6 +322,7 @@ func _handle(m: PackedByteArray) -> void:
 			server_name = String(b.get("server", ""))
 			login_message = String(b.get("login", ""))
 			voice_radius = float(b.get("voice_radius", 40.0))
+			features = b.get("features", []) if b.get("features") is Array else []
 			_set_status("online")
 			welcomed.emit(my_id)
 			if token != "":
@@ -342,3 +375,21 @@ func _handle(m: PackedByteArray) -> void:
 		NetProto.S_ROOM:
 			var b := NetProto.json_body(m)
 			room_joined.emit(String(b.get("room", "")), int(b.get("peers", 0)))
+		NetProto.S_ONLINE:
+			var b := NetProto.json_body(m)
+			online_list.emit(bool(b.get("ok", false)), b.get("players", []) if b.get("players") is Array else [], String(b.get("error", "")))
+		NetProto.S_INVITE:
+			var b := NetProto.json_body(m)
+			if b.get("invite") is Dictionary:
+				invite_update.emit(b["invite"])
+		NetProto.S_MATCH:
+			var b := NetProto.json_body(m)
+			if b.get("match") is Dictionary:
+				match_update.emit(b["match"])
+		NetProto.S_MOVE:
+			var b := NetProto.json_body(m)
+			if b.get("move") is Dictionary:
+				match_move.emit(String(b.get("match", "")), b["move"])
+		NetProto.S_REFUSED:
+			var b := NetProto.json_body(m)
+			refused.emit(String(b.get("what", "")), String(b.get("error", "")))
