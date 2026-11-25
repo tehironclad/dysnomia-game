@@ -76,6 +76,7 @@ var _fly_speed := 0.0
 var _fly_pitch := 0.0
 var _seat_clip := ""  ## "" = on foot; else the clip held while seated (a vehicle: "Driving")
 var air_pose := ""  ## base jumping: "" (jetpack) | freefall | wingsuit | canopy
+var drink := 0.0  ## 0..1: the right hand raised to the mouth (a drink at Sunny's bar), over the clip
 var _outfit_mats: Array = []  # ShaderMaterial per outfit surface
 var _skin_mat: StandardMaterial3D
 var _colors := {}  # slot -> Color (Outfits.colors + set_suit_colors overrides)
@@ -581,6 +582,8 @@ func _process(delta: float) -> void:
 		_fly_pose(delta)
 	else:
 		body.transform = Transform3D.IDENTITY
+	if drink > 0.0:
+		_drink_pose(drink)
 	# Lean into turns (yaw rate × speed), like a runner banking.
 	var yaw := global_rotation.y
 	var rate := wrapf(yaw - _last_yaw, -PI, PI) / maxf(delta, 0.0001)
@@ -642,6 +645,20 @@ func _fly_pose(delta: float) -> void:
 	# Pitch the whole body about the hips, banking into turns.
 	var rot := Basis(Vector3.RIGHT, _fly_pitch * w) * Basis(Vector3.BACK, _bank * 1.5 * w)
 	body.transform = Transform3D(rot, FLY_PIVOT - rot * FLY_PIVOT + Vector3(0.0, 0.15 * w, 0.0))
+
+
+## A drink: the right upper arm forward and down, the forearm folded up so the hand (and what
+## it holds, `right_hand()`) reaches the mouth. Over the clip, by w.
+func _drink_pose(w: float) -> void:
+	var up := Basis(Quaternion(Vector3.LEFT, Vector3(-0.3, -0.38, 0.87).normalized()))
+	var fore := Basis(Quaternion(Vector3.LEFT, Vector3(0.5, 0.85, 0.05).normalized()))
+	_set_global("upperarm_r", up, w)
+	_set_global("lowerarm_r", fore, w, "upperarm_r", up)
+
+
+## The right hand's hold point (made on first use): props go here, e.g. a glass at the bar.
+func right_hand() -> Node3D:
+	return _glove_right
 
 
 ## Poses `bone` so its skeleton-space orientation is `delta * rest` (blended

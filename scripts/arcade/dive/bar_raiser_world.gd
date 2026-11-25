@@ -47,6 +47,10 @@ var _nums: Array = []
 var _focus := 2.0
 
 
+func controls_list() -> Array:
+	return [["hold %s" % ControlsHelp.key_of("jump"), "pour and rise"], ["let go", "on the gold ring"]]
+
+
 func controls_hint() -> String:
 	return "hold %s to pour and rise · let go on the gold ring" % ControlsHelp.key_of("jump")
 

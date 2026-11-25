@@ -44,6 +44,12 @@ func controls_remap() -> Dictionary:
 	}
 
 
+func controls_list() -> Array:
+	return [["%s %s" % [ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right")], "steer"],
+		["%s %s" % [ControlsHelp.key_of("move_forward"), ControlsHelp.key_of("move_back")], "surge / brake"],
+		[ControlsHelp.key_of("jump"), "pulse (costs Fornax)"]]
+
+
 func controls_hint() -> String:
 	return "%s / %s steer · %s / %s surge and brake · %s pulse (costs Fornax)" % [ControlsHelp.key_of("move_left"), ControlsHelp.key_of("move_right"), ControlsHelp.key_of("move_forward"), ControlsHelp.key_of("move_back"), ControlsHelp.key_of("jump")]
 

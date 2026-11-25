@@ -49,6 +49,11 @@ func controls_hint() -> String:
 	return ""
 
 
+## The controls in this view as [[key, words]] (GameHowto's card and strip, the dive's menu).
+func controls_list() -> Array:
+	return GameHowto.parse_hint(controls_hint())
+
+
 ## Overlay data: {stats: PackedStringArray, bars: [[label, 0..1, Color]], center: String,
 ## center_color: Color, flash: float, flash_color: Color}.
 func hud() -> Dictionary:

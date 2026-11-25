@@ -9,10 +9,18 @@ extends PanelContainer
 ## has its price (Prices.DRINKS, 1–2 Ⓐ): paid to this QING first (its code in the last wei), then
 ## poured; a drink paid but not poured pours again without paying while the menu is open.
 ## Nothing is shown as done before its receipt is read; a failed read is "—".
+##
+## The pub moves the menu out of the way while an order is out (order_started): it hides it,
+## shows the wallet's progress small (status_changed), plays the pour once the receipt is read
+## (poured / round_bought) and brings the menu back with the result (reveal). The write pipeline
+## is untouched; only where its words are shown changed.
 
 signal closed
 signal poured(drink: Dictionary, result: Dictionary)
 signal round_bought(result: Dictionary)
+signal order_started(drink: Dictionary)          ## Pour / Buy pressed: the wallet takes over
+signal order_failed(drink: Dictionary, result: Dictionary)  ## not poured (any stage): nothing happened
+signal status_changed(text: String, color: Color)  ## every status line, shown or not
 
 const OK := Color("#64e3a8")
 const WARN := Color("#ffd27a")
@@ -184,6 +192,21 @@ func close() -> void:
 	closed.emit()
 
 
+## Shows the menu again as it was (the status and the measured result kept), after the pour.
+func reveal() -> void:
+	visible = true
+	if _sel.is_empty():
+		return
+	for b in _buttons:
+		if b.button_pressed:
+			b.grab_focus()
+
+
+## An order is out (between Pour and its receipt).
+func is_busy() -> bool:
+	return _busy
+
+
 func _select(d: Dictionary) -> void:
 	_sel = d
 	_name.text = String(d["name"]).to_upper()
@@ -257,6 +280,7 @@ func _on_pour() -> void:
 	_pour.disabled = true
 	_result.text = ""
 	var d := _sel
+	order_started.emit(d)
 	if d["id"] == BarTab.ROUND["id"]:
 		_label = "Round for the house at Sunny's (%s)" % Prices.text(Prices.ROUND)
 		var r: Dictionary = await ArcadePay.transfer_to_qing(qing, _label, Prices.drink_wei(String(d["id"])))
@@ -270,6 +294,7 @@ func _on_pour() -> void:
 			Session.refresh()
 		else:
 			_set_status("Not bought (%s): %s" % [r.get("stage", "?"), r.get("message", "")], WARN)
+			order_failed.emit(d, r)
 		_pour.disabled = _blocker() != ""
 		return
 	# The drink's price first (Prices.DRINKS): AFFECTION.transfer to this QING, its code in the last wei
@@ -295,6 +320,7 @@ func _on_pour() -> void:
 		_set_status("Not poured (%s): %s%s" % [res.get("stage", "?"), res.get("message", ""),
 			" · it's paid: pour again without paying" if _paid_tab.has(String(d["id"])) else ""], WARN)
 		_refresh_preview()
+		order_failed.emit(d, res)
 		return
 	var paid_for: Dictionary = _paid_tab.get(String(d["id"]), {})
 	_paid_tab.erase(String(d["id"]))
@@ -307,10 +333,11 @@ func _on_pour() -> void:
 func _set_status(t: String, c: Color) -> void:
 	_status.text = t
 	_status.add_theme_color_override("font_color", c)
+	status_changed.emit(t, c)
 
 
 func _on_stage(label: String, stage: String, info: Dictionary) -> void:
-	if not visible or label != _label:
+	if label != _label or not _busy:  # the menu may be hidden while the order is out: still follow it
 		return
 	match stage:
 		"simulate": _set_status("Simulating from your wallet…", DeepFieldTheme.ICE)
