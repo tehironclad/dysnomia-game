@@ -487,7 +487,7 @@ func _on_voice(id: int, codec: int, data: PackedByteArray) -> void:
 	var p: Dictionary = client.peers.get(id, {})
 	var w := String(p.get("wallet", ""))
 	if w != "":
-		heard[w] = String(p.get("name", ""))
+		heard[w] = names.display(w)  # the chain's name (the mute list), never the claimed one
 	if is_muted(w):
 		return
 	var pcm := VoiceCodec.decode(codec, data)

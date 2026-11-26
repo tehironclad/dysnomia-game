@@ -6,6 +6,7 @@ extends Node
 ## The mic is not opened at all until the player turns it on.
 
 const BUS := "NetMic"
+const CAPTURE_S := 0.5     ## the capture ring: holds this much mic audio between two frames
 
 var talking := false
 var level := 0.0           # last frame's RMS (the local talking meter)
@@ -28,10 +29,12 @@ func _process(_delta: float) -> void:
 	var held := Input.is_action_pressed("push_to_talk") and not _typing() and Net.can_talk()
 	var n := _capture.get_frames_available()
 	if n > 0:
-		var pcm := _rs.push(_capture.get_buffer(n))
-		if held:
-			_buf.append_array(pcm)
+		var frames := _capture.get_buffer(n)
+		if held:  # resampled only while talking (GDScript work per sample)
+			_buf.append_array(_rs.push(frames))
 	if not held:
+		if talking:
+			_rs = VoiceCodec.Resampler.new(AudioServer.get_mix_rate(), NetProto.VOICE_RATE)
 		_buf.clear()
 		_adpcm_state = [0, 0]
 	_set_talking(held)
@@ -70,7 +73,11 @@ func _set_open(on: bool) -> void:
 		AudioServer.add_bus()
 		idx = AudioServer.bus_count - 1
 		AudioServer.set_bus_name(idx, BUS)
-		AudioServer.add_bus_effect(idx, AudioEffectCapture.new())
+		var cap := AudioEffectCapture.new()
+		# The default 0.1 s ring overflows (and drops the voice) whenever a frame takes
+		# longer than that: a loading hitch, or a slow machine. Measured: holes of 170–290 ms.
+		cap.buffer_length = CAPTURE_S
+		AudioServer.add_bus_effect(idx, cap)
 		AudioServer.set_bus_mute(idx, true)  # never hear yourself
 	_capture = AudioServer.get_bus_effect(idx, 0) as AudioEffectCapture
 	apply_device()
