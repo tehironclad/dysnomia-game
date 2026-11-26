@@ -115,6 +115,9 @@ func test_merge_orders_chain_then_say() -> void:
 func test_clean_text() -> void:
 	eq(ChatLines.clean_text("a\nb\tc"), "a b c")
 	eq(ChatLines.clean_text("data:image/webp;base64," + "A".repeat(4096)), "[image · 3.0 kB]")
+	eq(ChatLines.clean_text("[DM:0xc2f4:0xb314:0x8105:abc]"), "(private message)")
+	eq(ChatLines.clean_text("[ENABLE_DM:0xb314:1Te/OQB2=]"), "(turned on private messages)")
+	eq(ChatLines.clean_text("[DM] plain"), "[DM] plain")
 	eq(ChatLines.clean_text("data:audio/webm;codecs=opus;base64,AAAA"), "[audio · 3 B]")
 	var long := ChatLines.clean_text("x".repeat(300), 20)
 	eq(long.length(), 20)

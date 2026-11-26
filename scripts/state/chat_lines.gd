@@ -108,6 +108,12 @@ static func clean_text(text: String, max_chars: int = FEED_CHARS) -> String:
 		var payload := t.length() - (end + 1) if end > 0 else t.length()
 		var bytes := payload * 3 / 4 if head.contains("base64") else payload
 		return "[%s · %s]" % [kind if kind != "" else "data", _size(bytes)]
+	# Encrypted direct messages posted through the room (the site's DM feature): the payload
+	# is ciphertext for someone else, so name it instead of printing the code.
+	if t.begins_with("[DM:"):
+		return "(private message)"
+	if t.begins_with("[ENABLE_DM:"):
+		return "(turned on private messages)"
 	var out := ""
 	for ch in t:
 		var c := ch.unicode_at(0)
