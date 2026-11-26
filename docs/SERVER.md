@@ -145,6 +145,10 @@ Either:
   the short wallet the signature proved: "enteh · 0x18f6…3111". The name a player's game sends is only a
   claim and is never shown. No LAU, or the read failed: the short wallet alone. Guests show as "guest"
   (nobody can carry a name without signing). A LAU switch re-sends the profile; the others re-read the chain.
+- **Inside places.** The arcade, Sunny's Pub and the QING room each have their own room, `<qing>/arcade`,
+  `<qing>/pub`, `<qing>/hall` (the place's own coordinates); the Void is one room for everyone, `<VOID>/void`.
+  Players in the same place see and hear each other, and "say" chat reaches that place. Leaving a place is not
+  a new arrival in the territory.
 - **Guests** (not signed in) can see and hear everyone, but can't chat or talk.
 - **Sign-in** is automatic once a wallet is connected: the game first shows one line ("Sign in to the game
   server so others see your name: one free signature, not a transaction"), then the wallet asks for a free
@@ -205,12 +209,13 @@ signed-in counts per territory, and the boards. That is one extra connection. Pl
 | Limit | Value |
 |---|---|
 | connections | 200 total; 32 still handshaking; 8 per IP when not behind a tunnel |
-| message size | presence 19 B, voice ≤ 700 B, chat ≤ 1 KiB, score ≤ 16 KiB; anything else is refused |
+| message size | presence exactly 19 B, ping 5 B, voice 5–700 B, chat ≤ 1 KiB, score ≤ 16 KiB; anything else is a strike |
+| message content | every JSON field is read by type (`NetProto.str_of`/`int_of`): a wrong type is ignored or refused, never a script error |
 | per connection | 120 messages/s, 48 KB/s (bursts to 96 KB), presence 15/s, voice 60 frames/s, chat 1/s (burst 4), scores 1 every 2 s |
 | abuse | 20 malformed messages, or 400 throttled ones in 20 s, closes the connection |
 | invites | signed-in wallets only; 1 every 5 s (bursts of 3, answers included); 3 waiting per wallet; 90 s to answer; 2 live games per wallet |
 | game moves | signed-in players of that game only; 3/s (burst 8); known moves only (an unknown one is a strike); integer arguments within ±100,000; 600 moves a game; a game with no move for 30 min is abandoned |
-| sign-in | 5 tries per connection; 4 signature checks a second for the whole server (each takes ~0.1 s, on a worker thread) |
+| sign-in | 5 tries per connection; 4 signature checks a second for the whole server (each takes ~0.1 s, on a worker thread); more wait their turn (18 at once: all signed in within 3.2 s) |
 | timeouts | handshake 15 s, idle 75 s (clients ping every 15 s) |
 
 Behind a tunnel, every connection arrives from `127.0.0.1`, so per-IP caps can't tell players apart.
@@ -237,6 +242,11 @@ Your laptop's **upload** is the limit (home upload is often 10–40 Mbit/s). Som
   each come to ≈ **3 Mbit/s**.
 - CPU: the relay is light. A sign-in costs ~0.1 s on a worker thread.
 
+Measured with `tools/net_load.gd` (2026-11-26, 20 players walking in one territory at 10 Hz, 2 talking): one
+listener receives ≈ 20 KB/s (presence 3.3 KB/s, voice 16.9 KB/s), sends 0.2 KB/s; the server sends 386 KB/s
+(≈ 3.1 Mbit/s of payload) in all, at ~5–15 % of one core, memory flat (≈ 350 MB, most of it the project's
+autoloads); a reconnect storm (all 20 drop and return, three times) leaves no ghost connections.
+
 A typical laptop on 20 Mbit/s upload handles about **50–100 players** spread over territories, with a
 handful talking at once. Lower `--voice-radius` or `--room-cap` if the upload saturates.
 
@@ -250,10 +260,14 @@ One WebSocket **binary** message is `[type u8][body]`, little-endian. The code i
   same room within the radius. A frame is 20 ms at 16 kHz: IMA-ADPCM, 3-byte header + 160 B
   (`VoiceCodec`).
 - Everything else is a small JSON body:
-  - `S_WELCOME {id, nonce, issued, server, login}` (`login` only for clients older than sign-in v2)
+  - `S_WELCOME {id, nonce, issued, server, login, boot, voice_radius, features}` (`login` only for clients older than
+    sign-in v2; `boot` is random per server run: a client that sees another one knows the server lost its invites
+    and games, which live in memory only)
   - `C_AUTH {wallet, sig, host}` or `{token}`, answered by `S_AUTH {ok, wallet, token}` or `{ok: false,
     reason, nonce, issued}`
-  - `C_JOIN {room, name, head, acc, body}`, which brings `S_PEER` / `S_PEER_LEAVE`
+  - `C_JOIN {room, name, head, acc, body}`, which brings `S_PEER` / `S_PEER_LEAVE`. A room is a QING address, or
+    `<qing>/<place>` (arcade, pub, hall; `<VOID>/void`). A client with a session token sends `C_AUTH {token}` before its
+    `C_JOIN`, so the room meets it signed in.
   - `C_CHAT {text}`, relayed as `S_CHAT {id, wallet, name, text, pos}`
   - `C_LB_TOP` / `C_LB_SUBMIT`, answered by `S_LB`
   - `C_INFO {req}`, answered by `S_INFO {req, server, v, uptime_s, connections, players, signed_in, guests,
@@ -271,8 +285,10 @@ One WebSocket **binary** message is `[type u8][body]`, little-endian. The code i
   server, host, nonce, issued and expiry in UTC, "not a transaction"), built by the client
   (`NetClient.login_for`) and rebuilt by the server. The nonce is new for each attempt and lives 10 minutes.
   `Wallet.sign_message` signs only texts that start with that title or the wallet test's.
-- Run the checks: `godot --headless --path . -s res://tools/net_selftest.gd` (its own server), or add
-  `-- --url=ws://127.0.0.1:8787` to test a running server. `tools/net_bot.gd` is a scripted remote player.
+- Run the checks: `godot --headless --path . -s res://tools/net_selftest.gd` (its own server; `-- --port=N` if 18787
+  is taken), or add `-- --url=ws://127.0.0.1:8787` to test a running server. `tools/net_bot.gd` is a scripted remote
+  player (`--wander=R`, `--talk=tone:440|wav:FILE`, `--record=FILE.wav` for voice measurements, `--stats`);
+  `tools/net_load.gd -- --url=… --n=20 --talkers=2 --storm=3` is the load check.
 
 ## 8b. Invites and head-to-head games (for developers)
 
@@ -297,6 +313,9 @@ sends the wallet its invites and games again, so the panel and the table resume.
 When the replay ends a game, each machine sends `C_RESULT` with the winner and a fingerprint of its table
 (`NetMatch.digest`). If both match, the server marks the game `over` and agreed. If they differ, it marks it
 `disputed`, and nobody owes anything.
+**A server restart** loses every invite and game (memory only). A client that reconnects and sees another `boot` in the
+welcome (or, from an older server, "No such game." for its move) marks its live games abandoned, says so in the panel,
+and the table lets the players go; nobody owes anything on them.
 
 **Wagers** (`Wager`, pure; the `Invites` autoload does the reads). There is no escrow. The loser pays with
 `TableBook.pay_debt` (`AFFECTION.transfer(winner, stake)` through the write pipeline: simulate, sign, then the
