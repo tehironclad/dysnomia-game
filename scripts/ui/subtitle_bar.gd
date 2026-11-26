@@ -53,8 +53,9 @@ func show_line(who: String, words: String, seconds: float) -> void:
 	_place()
 
 
-## Centred, BOTTOM px above the screen's bottom edge (clear of a controls strip).
-const BOTTOM := 78.0
+## Centred, BOTTOM px above the screen's bottom edge: clear of a controls strip and of the
+## place's prompt line (PlaceBase: 80–110 px up), which it used to cover (audit 2026-11-25).
+const BOTTOM := 118.0
 
 
 func _place() -> void:
