@@ -20,6 +20,8 @@ var _near_exit := false
 var door: PassDoor
 var _spawn := Vector3.ZERO
 var help: ControlsHelp  ## F1 (the hint promises it)
+var activity_feed: ActivityFeed  ## online players' actions (setup_hud)
+var presence: NetPresence  ## the other players here, online (_start_presence)
 
 
 ## Flat floor for the player controller's height queries.
@@ -109,6 +111,7 @@ func setup_hud(title: String) -> void:
 	var feed := ActivityFeed.new()  # online players' actions, under the place's card (HudLayout "activity")
 	root.add_child(feed)
 	feed.follow(where)
+	activity_feed = feed
 	help = ControlsHelp.new()
 	help.position = Vector2(20, 130)
 	root.add_child(help)
@@ -129,6 +132,22 @@ func _announce_place() -> void:
 	var net := get_node_or_null("/root/Net")
 	if place != "" and net and qing != "":
 		net.announce_place(place, qing.to_lower())
+	_start_presence(place, qing)
+
+
+## Online: the other players in this same place see you, and you them (NetPresence on the
+## room "<qing>/<place>"; the Void is one room for everyone, whichever QING they came from).
+## Free chat ("say") and voice reach the players in this place.
+func _start_presence(place: String, qing: String) -> void:
+	if place == "" or player == null or get_node_or_null("/root/Net") == null:
+		return
+	var room := NetProto.clean_room((Contracts.VOID if place == "void" else qing.to_lower()) + "/" + place)
+	if room == "":
+		return
+	presence = NetPresence.new()
+	presence.name = "NetPresence"
+	add_child(presence)
+	presence.setup(room, player, null, activity_feed)
 
 
 ## The place's colour on its HUD: the QING's own hue when the place belongs to one.
