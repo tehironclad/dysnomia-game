@@ -99,8 +99,10 @@ func howto_spec() -> Dictionary:
 		"Hit to draw a card; stand to hold. Over 21 is bust."])
 	match mode:
 		"practice": rules.append("Practice against the house, dealt from the latest block; nothing is posted. A live game starts from the games list (%s)." % ControlsHelp.key_of("table_lobby"))
-		"play": rules.append("Live game %s: each hit or stand is a room line signed in your wallet; the card is that line's block hash." % match_id)
-		_: rules.append("Live game %s: every move replays here from its room line." % match_id)
+		"play": rules.append(("Game %s over the game server: a hit or a stand goes to the server (free, not a transaction); each card is the hash of the first block %d s after the server stamped the move." % [match_id, NetMatch.CARD_MARGIN_S]) if _match().get("net", false)
+			else "Live game %s: each hit or stand is a room line signed in your wallet; the card is that line's block hash." % match_id)
+		_: rules.append(("Game %s over the game server: both machines replay the server's log of moves." % match_id) if _match().get("net", false)
+			else "Live game %s: every move replays here from its room line." % match_id)
 	return {"title": "Twenty-One", "tag": String(place.territory.get("name", "")), "rules": rules,
 		"controls": controls(), "accent": TableSeat.GOLD, "verb": "play", "esc": "stand up"}
 
@@ -142,7 +144,7 @@ func _match() -> Dictionary:
 
 func _pick_mode() -> void:
 	var m: Dictionary = place._latest("cards")
-	var me := Session.wallet
+	var me := Invites.wallet_for(m)
 	match_id = ""
 	mode = "practice"
 	my_seat = 0
@@ -332,14 +334,14 @@ func _on_book() -> void:
 		return
 	if mode == "practice":
 		var m: Dictionary = place._latest("cards")
-		if not m.is_empty() and m["status"] == "playing" and TableBook.player_index(m, Session.wallet) >= 0:
+		if not m.is_empty() and m["status"] == "playing" and TableBook.player_index(m, Invites.wallet_for(m)) >= 0:
 			seat.show_toast("Your game #%s is live: stand up (Esc) and sit again to play it." % m["id"])
 		return
 	var m := _match()
-	if m.is_empty():
+	if m.is_empty() or m.get("abandoned", false):
 		_pick_mode()
 	elif PoolSeat._live(m):
-		var mine := TableBook.player_index(m, Session.wallet)
+		var mine := TableBook.player_index(m, Invites.wallet_for(m))
 		mode = "watch" if mine < 0 else ("play" if TableBook.turn_index(m) == mine else "wait")
 	_show(true)
 
@@ -414,7 +416,10 @@ func _refresh_texts() -> void:
 			seat.set_badge("LIVE GAME #%s · %s vs %s · every hit and stand is a room line; each card is the hash of the block holding the line" % [m.get("id", "—"), book.display(m["players"][0]) if not m.is_empty() else "—", book.display(m["players"][1]) if not m.is_empty() else "—"], true)
 			if not m.is_empty():
 				seat.source.text = "Cards: SHA-256(\"<block hash>:<draw n>\") mod the cards left; the deal is the accept line's block (%d), each hit its own line's block. Who moved = the line's tx.from." % int(m.get("deal_block", m["created_block"]))
-	if d == null or not d.dealt:
+	if mode != "practice" and not m.is_empty() and m["status"] == "over" and not (d != null and d.over()):
+		# ended by a concede or a claim: the hands never finished, the game did
+		seat.headline.text = "PUSH" if m.get("push", false) else ("%s WON" % book.display(String(m["winner"]))).to_upper()
+	elif d == null or not d.dealt:
 		seat.headline.text = "—" if mode == "practice" else "WAITING"
 	elif d.over():
 		seat.headline.text = "%d vs %d" % [you, them]
@@ -429,7 +434,7 @@ func _refresh_texts() -> void:
 		lines.append("cards left in the deck: %d" % d.deck.size())
 	if not m.is_empty() and m.get("net", false):
 		if Wager.code(m) != "none":
-			lines.append(Wager.short(m, Session.wallet))
+			lines.append(Wager.short(m, Invites.wallet_for(m)))
 		if String(m.get("waiting", "")) != "":
 			seat.status.text = "Waiting for %s." % m["waiting"]
 		elif seat.status.text.begins_with("Waiting for"):

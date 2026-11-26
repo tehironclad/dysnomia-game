@@ -311,3 +311,32 @@ func test_offline_says_invites_need_the_server() -> void:
 	check(String(p._online_note.text).contains("game server"), "the panel says invites need the server: %s" % p._online_note.text)
 	p.close()
 	p.free()
+
+
+## The game server restarted (a new boot id in its welcome): it lost every invite and
+## game (they live in its memory). Live games here are marked abandoned, so the table
+## lets the players go and nobody is told they owe; finished games stay as they were.
+func test_a_restarted_server_lost_its_games() -> void:
+	var inv: Node = load("res://scripts/net/invites.gd").new()
+	var live := NetMatch.new(_rec("pool", "", [_e(1, 0, "sit")]))
+	var done := NetMatch.new(_rec("pool", "", []).merged({"id": "n9999999"}, true))
+	done.apply(_e(1, 1, "concede"))
+	inv.matches = {live.id(): live, done.id(): done}
+	inv.invites = {"aa11": {"id": "aa11", "state": "pending"}}
+	inv._on_welcome("0a0a0a")  # the first server we meet
+	check(not live.m.get("abandoned", false), "the first welcome changes nothing")
+	inv._on_welcome("0a0a0a")  # a reconnect to the same run
+	check(not live.m.get("abandoned", false), "a reconnect to the same run changes nothing")
+	inv._on_welcome("0b0b0b")  # a new run
+	check(live.m.get("abandoned", false), "a live game on the old run is abandoned")
+	eq(inv.table_match(ROOM, "pool", A), {}, "the table no longer seats it")
+	check(done.over() and not done.m.get("abandoned", false), "a finished game stays finished")
+	eq(inv.invites["aa11"]["state"], "expired", "a pending invite is gone with it")
+	check(inv.notes.any(func(x): return String(x["text"]).contains("restarted")), "the player is told why")
+	# an older server that doesn't say its boot: the refusal of a move gives it away
+	var other := NetMatch.new(_rec("cards", "", []).merged({"id": "n7777777"}, true))
+	inv.matches[other.id()] = other
+	inv._last_move_match = other.id()
+	inv._on_refused("move", inv.NO_SUCH_GAME)
+	check(other.m.get("abandoned", false), "'No such game.' for our last move: that game is gone too")
+	inv.free()
