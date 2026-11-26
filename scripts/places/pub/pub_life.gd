@@ -339,7 +339,7 @@ func _build_confetti() -> void:
 	_confetti.name = "Confetti"
 	_confetti.emitting = false
 	_confetti.one_shot = true
-	_confetti.amount = Config.particles(140)
+	_confetti.amount = Shares.particles(140)
 	_confetti.lifetime = 4.5
 	_confetti.explosiveness = 0.9
 	_confetti.direction = Vector3(0, -1, 0)

@@ -38,6 +38,10 @@ var chat_life: ChatLife  # room chat in the world: bubbles, echoes, glow, tower 
 var act_loop: ActLoop  # the diegetic loop: act markers, the Steward, the HUD tracker (scripts/world/play/)
 var _settings: PanelContainer
 var _monitor: Control
+## F1/F2/G/O panels sit on their own layer above the chat dock (11) and the wallet chip (12):
+## on the HUD's own layer (10) those drew over them (audit 2026-11-25).
+var _panels: CanvasLayer
+const PANELS_LAYER := 26
 var _near := ""
 var view_mode := ""  # su | room | beat | void | ""
 
@@ -195,13 +199,17 @@ func _ready() -> void:
 	add_child(score)
 	if view == "" or OS.get_cmdline_user_args().has("--score"):
 		score.play_for(String(territory["address"]), terrain.params, String(territory.get("entropy", "1")))
+	_panels = CanvasLayer.new()
+	_panels.name = "Panels"
+	_panels.layer = PANELS_LAYER
+	add_child(_panels)
 	help = ControlsHelp.new()
 	help.position = Vector2(20, 240)
-	hud.add_child(help)
+	_panels.add_child(help)
 	opportunities = OpportunitiesPanel.new()
 	opportunities.set_anchors_preset(Control.PRESET_CENTER)
 	opportunities.position = Vector2(-310, -320)
-	hud.add_child(opportunities)
+	_panels.add_child(opportunities)
 	Session.lead_changed.connect(func(lost, gained, block):
 		for a in lost:
 			hud.ticker("LEAD LOST · %s · someone passed you · block %d" % [String(Registry.get_territory(a).get("name", a)), block], Color("#ff8fa0"), 60.0)
@@ -210,7 +218,7 @@ func _ready() -> void:
 	guide = GuidePanel.new()
 	guide.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	guide.position = Vector2(-560, 130)
-	hud.add_child(guide)
+	_panels.add_child(guide)
 	if view == "":
 		Acts.set_flag("", "arrived")
 	actions.opened.connect(func(): player.process_mode = Node.PROCESS_MODE_DISABLED)
@@ -672,19 +680,42 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("open_field"):
 		get_viewport().set_input_as_handled()
 		Travel.field(get_tree())
+	elif event.is_action_pressed("ui_cancel") and _close_panels():
+		get_viewport().set_input_as_handled()
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	elif event.is_action_pressed("controls_help"):
+		_close_panels(help)
 		help.toggle()
 	elif event.is_action_pressed("guide"):
+		_close_panels(guide)
 		guide.toggle()
 	elif event.is_action_pressed("opportunities"):
+		_close_panels(opportunities)
 		opportunities.toggle()
 		player.process_mode = Node.PROCESS_MODE_DISABLED if opportunities.is_open() else Node.PROCESS_MODE_INHERIT
 		if not opportunities.is_open():
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	elif event.is_action_pressed("settings"):
+		_close_panels(_settings)
 		_toggle_settings()
 	elif event.is_action_pressed("toggle_debug"):
 		_toggle_monitor()
+
+
+## Closes the open F1/F2/G/O panels (but `keep`): one panel at a time, and Esc closes them.
+## True if one was open.
+func _close_panels(keep: Control = null) -> bool:
+	var closed := false
+	for p: Control in [help, guide, opportunities]:
+		if p != null and p != keep and p.visible:
+			p.toggle()
+			closed = true
+	if _settings != null and _settings != keep and _settings.visible:
+		_settings.hide_menu()
+		closed = true
+	if closed:
+		player.process_mode = Node.PROCESS_MODE_INHERIT
+	return closed
 
 
 func _toggle_settings() -> void:
@@ -692,7 +723,7 @@ func _toggle_settings() -> void:
 		_settings = PanelContainer.new()
 		_settings.set_script(load("res://scripts/ui/settings_menu.gd"))
 		_settings.visible = false
-		hud.add_child(_settings)
+		_panels.add_child(_settings)
 		_settings.settings_closed.connect(func():
 			_settings.hide_menu()
 			player.process_mode = Node.PROCESS_MODE_INHERIT

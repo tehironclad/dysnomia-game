@@ -23,6 +23,18 @@ var busy := false
 var _title: Label
 var _sub: Label
 var _label := ""
+var _outer: ScrollContainer
+var _col: VBoxContainer
+const EDGE_PX := 24.0
+
+
+## As tall as the panel, at most the window (then it scrolls).
+func _fit() -> void:
+	if _outer == null or not is_inside_tree():
+		return
+	var h := get_viewport_rect().size.y
+	_outer.custom_minimum_size.y = minf(_col.get_combined_minimum_size().y, maxf(240.0, h - 2.0 * EDGE_PX))
+	reset_size()
 
 
 func _init() -> void:
@@ -33,9 +45,17 @@ func _init() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	custom_minimum_size = Vector2(1040, 0)
+	# Scrolls when taller than the window (720p with the access steps: Swap and Close were
+	# below the bottom edge; audit 2026-11-25).
+	_outer = ScrollContainer.new()
+	_outer.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(_outer)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
-	add_child(col)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_outer.add_child(col)
+	_col = col
+	col.minimum_size_changed.connect(_fit)
 	_title = Label.new()
 	_title.theme_type_variation = "DisplayLabel"
 	_title.add_theme_font_size_override("font_size", 20)
@@ -75,7 +95,7 @@ func _init() -> void:
 ## Call from the subclass after it filled `right`: info, then the shared rows.
 func finish_layout() -> void:
 	right.add_child(info)
-	var col: VBoxContainer = get_child(0)
+	var col := _col
 	col.add_child(status)
 	col.add_child(result)
 	col.add_child(buttons)
@@ -129,6 +149,7 @@ func say(text: String, color: Color = Color(0, 0, 0, 0)) -> void:
 
 func show_panel() -> void:
 	visible = true
+	_fit.call_deferred()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 

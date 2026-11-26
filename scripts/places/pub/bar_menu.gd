@@ -46,6 +46,18 @@ var _ask := 0  # preview generation: a stale preview never overwrites a newer on
 var _label := ""
 var _paid_tab := {}  ## drink id → its verified payment, poured not yet (a failed pour pours again free)
 var _rng := RandomNumberGenerator.new()
+var _scroll: ScrollContainer
+var _col: VBoxContainer
+const EDGE_PX := 24.0  ## kept clear above and below when the window is short
+
+
+## As tall as the menu, at most the window (then it scrolls).
+func _fit() -> void:
+	if _scroll == null or not is_inside_tree():
+		return
+	var h := get_viewport_rect().size.y
+	_scroll.custom_minimum_size.y = minf(_col.get_combined_minimum_size().y, maxf(240.0, h - 2.0 * EDGE_PX))
+	reset_size()
 
 
 func _init() -> void:
@@ -55,9 +67,16 @@ func _init() -> void:
 	add_theme_stylebox_override("panel", sb)
 	visible = false
 	custom_minimum_size = Vector2(940, 0)
+	# Scrolls when taller than the window (720p with the access steps: the Pay row was cut off).
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(_scroll)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
-	add_child(col)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.add_child(col)
+	_col = col
+	col.minimum_size_changed.connect(_fit)
 	var title := Label.new()
 	title.theme_type_variation = "DisplayLabel"
 	title.add_theme_font_size_override("font_size", 20)
@@ -173,6 +192,7 @@ func is_open() -> bool:
 
 func open(preselect: String = "") -> void:
 	visible = true
+	_fit.call_deferred()
 	_result.text = ""
 	_seed.set_value_no_signal(_rng.randi_range(1, BarTab.SEED_MAX))
 	var idx := 0

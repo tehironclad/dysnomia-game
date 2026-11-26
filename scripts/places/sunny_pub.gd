@@ -485,7 +485,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			bar_menu.close()
 		return
-	if event.is_action_pressed("bar_menu") and not _any_open() and not is_walking_up():
+	if event.is_action_pressed("bar_menu") and not _any_open() and not is_walking_up() and not panel_open():
 		get_viewport().set_input_as_handled()
 		if _at_bar():
 			_open_menu()

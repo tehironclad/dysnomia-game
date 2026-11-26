@@ -22,6 +22,7 @@ var _body: StaticBody3D
 var _mesh_thread: Thread
 var _mesh_arrays: Array = []  ## [ground arrays, shadow arrays or []] once computed
 var _mesh_has_shadow := false
+var _thread_step := 0  ## the step the running (or last) mesh thread computed
 var _is_main := false
 
 
@@ -37,7 +38,7 @@ func build(q: Dictionary) -> void:
 	_start_mesh()
 	_build_collider()
 	LoadProfile.mark("collider")
-	var cfg := get_node_or_null("/root/Config")
+	var cfg := _config()
 	if cfg and cfg.has_signal("applied") and not cfg.applied.is_connected(_on_config):
 		cfg.applied.connect(_on_config)
 	Inspector.register(self, "Ground",
@@ -52,7 +53,7 @@ func build(q: Dictionary) -> void:
 func build_distant(q: Dictionary, hf: JuliaHeightfield, centre: Vector3, iterations: int = 40) -> void:
 	params = DeepField.for_territory(q)
 	heightfield = hf
-	var cfg := get_node_or_null("/root/Config")
+	var cfg := _config()
 	mesh_step = int(cfg.preset().get("nb_step", 1)) if cfg else 1  # 181² (4 m), or 91² on Potato/Low
 	_build_material()
 	material.set_shader_parameter("centre", Vector2(centre.x, centre.z))
@@ -122,13 +123,19 @@ func set_activity(glow: float, lit_bands: float) -> void:
 		material.set_shader_parameter("lit_bands", lit_bands)
 
 
+## The Config autoload, also from a node not yet in the tree (tests, tools); null when absent.
+static func _config() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	return tree.root.get_node_or_null("Config") if tree else null
+
+
 func _step_for_level() -> int:
-	var cfg := get_node_or_null("/root/Config")
+	var cfg := _config()
 	return int(cfg.preset().get("mesh_step", 2)) if cfg else 2
 
 
 func _shadow_for_level() -> bool:
-	var cfg := get_node_or_null("/root/Config")
+	var cfg := _config()
 	return bool(cfg.preset().get("shadows", true)) if cfg else true
 
 
@@ -140,6 +147,7 @@ func _start_mesh() -> void:
 	_mesh_has_shadow = _shadow_for_level()
 	var hf := heightfield
 	var step := mesh_step
+	_thread_step = step
 	var shadow := _mesh_has_shadow
 	_mesh_thread = Thread.new()
 	_mesh_thread.start(func() -> Array:
@@ -174,6 +182,11 @@ func _collect_mesh() -> void:
 	var shadow: ArrayMesh = _mesh_from(res[1]) if not (res[1] as Array).is_empty() else null
 	_set_meshes(mesh, shadow)
 	LoadProfile.mark("ground mesh")
+	# The level changed while this mesh was being computed (_start_mesh ignores a second
+	# start): build again at the level now in force.
+	if _is_main and (_thread_step != _step_for_level() or _mesh_has_shadow != _shadow_for_level()):
+		mesh_step = _step_for_level()
+		_start_mesh()
 
 
 ## The level changed: a coarser or finer ground, with or without its shadow proxy.
