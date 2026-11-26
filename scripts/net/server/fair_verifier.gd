@@ -15,24 +15,24 @@ const MIDWAY := "res://scripts/world/funfair/midway_game.gd"
 
 
 static func verify(board: String, entry: Dictionary, wallet: String) -> Dictionary:
-	var game := String(entry.get("game", board.get_slice("fair:", 1)))
-	var tx := String(entry.get("tx", "")).to_lower()
+	var game := NetProto.str_of(entry.get("game", board.get_slice("fair:", 1)))
+	var tx := NetProto.str_of(entry.get("tx", "")).to_lower()
 	var score := Leaderboards.score_of(entry.get("score"))
 	var midway: GDScript = load(MIDWAY)
 	if midway == null or not midway.call("has_game", game):
 		return {"ok": false, "check": "unknown fair game '%s'" % game}
 	if score > MidwaySim.max_score(game):
 		return {"ok": false, "check": "score above the game's maximum"}
-	if not (tx.begins_with("0x") and tx.length() == 66 and tx.substr(2).is_valid_hex_number()):
+	if not (tx.begins_with("0x") and tx.length() == 66 and NetProto.is_hex(tx.substr(2))):
 		return {"ok": false, "check": "a fair score needs its ticket's tx hash"}
 	var notes: PackedStringArray = []
 	var verified := true
 	# The input log is the fair's own v1 text (MidwaySim.encode_log), as in the room's 🎪 lines
-	var log_text := String(entry.get("log", entry.get("inputs", "")))
+	var log_text := NetProto.str_of(entry.get("log", entry.get("inputs", "")))
 	var dec: Dictionary = MidwaySim.decode_log(game, log_text)
 	if not dec.get("ok", false):
 		return {"ok": false, "check": "malformed input log"}
-	var index := int(entry.get("index", -1))  # a ticket strip's play (TicketCode), -1 for a single ticket
+	var index := NetProto.int_of(entry.get("index", -1), -1)  # a ticket strip's play (TicketCode), -1 for a single ticket
 	var replayed := MidwaySim.replay(game, MidwayGame.seed_from_tx(TicketCode.seed_tx(tx, index)), dec["log"])
 	if replayed != score:
 		return {"ok": false, "check": "replay of the input log scores %d, not %d" % [replayed, score]}

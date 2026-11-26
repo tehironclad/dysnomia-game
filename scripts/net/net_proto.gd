@@ -55,6 +55,9 @@ const MAX_SIZE := {
 	C_ONLINE: 64, C_INVITE: 400, C_ANSWER: 160, C_MOVE: 200, C_RESULT: 200,
 }
 const MAX_MESSAGE := 16384
+## Binary messages shorter than their fixed layout are malformed (decoding them reads
+## past the end): a state is exactly 19 bytes, a ping 5, a voice frame has seq + codec + data.
+const MIN_SIZE := {C_STATE: 19, C_PING: 5, C_VOICE: 5}
 
 ## State flags (u8).
 const F_ON_FLOOR := 1
@@ -171,7 +174,40 @@ static func size_ok(msg: PackedByteArray) -> bool:
 		return NetBump.size_ok(msg)  # bumps: their own section (net_bump.gd)
 	if NetEvents.SIZES.has(t):
 		return NetEvents.size_ok(msg)  # the activity feed: its own section (net_events.gd)
-	return MAX_SIZE.has(t) and msg.size() <= int(MAX_SIZE[t])
+	return MAX_SIZE.has(t) and msg.size() <= int(MAX_SIZE[t]) and msg.size() >= int(MIN_SIZE.get(t, 1))
+
+
+# ── typed reads of untrusted JSON ───────────────────────────────────────────
+# A JSON body comes from somebody else's program: a field may be any type. String(x)
+# and int(x) raise a script error on a Dictionary or an Array (the handler stops half
+# way and the log fills), so every read of a field goes through these.
+
+## `v` if it is a String, else "".
+static func str_of(v) -> String:
+	return v if v is String else ""
+
+
+## `v` as a whole number if it is one (int, or a finite float within ±2^53), else `def`.
+static func int_of(v, def: int = 0) -> int:
+	if v is int:
+		return v
+	if v is float and is_finite(v) and absf(v) <= 9007199254740992.0:
+		return int(v)
+	return def
+
+
+## `v` as a number if it is one, else `def`.
+static func num_of(v, def: float = 0.0) -> float:
+	if v is int:
+		return float(v)
+	if v is float and is_finite(v):
+		return v
+	return def
+
+
+## `v` if it is a bool, else false.
+static func flag_of(v) -> bool:
+	return v if v is bool else false
 
 
 # ── presence ────────────────────────────────────────────────────────────────
@@ -292,11 +328,24 @@ static func clean_text(s: String, max_chars: int) -> String:
 	var out := ""
 	for ch in s.strip_edges():
 		var c := ch.unicode_at(0)
-		if c < 32 or (c >= 0x7F and c < 0xA0) or (c >= 0x200B and c <= 0x200F) or (c >= 0x202A and c <= 0x202E) or (c >= 0x2066 and c <= 0x2069):
-			out += " " if c == 10 or c == 9 else ""
+		if c == 10 or c == 9 or c == 13 or c == 0x2028 or c == 0x2029:
+			out += " "  # a line break would draw a second, made-up line under the speaker's
+			continue
+		if hidden_char(c):
 			continue
 		out += ch
 	return out.strip_edges().left(max_chars)
+
+
+## Pure: a character that draws nothing, or moves or reorders what follows: controls
+## (C0, C1), zero-width and joiners, direction marks, overrides and isolates, the
+## invisible operators, the BOM, Hangul fillers (blank "names"), tag characters.
+## Anybody's text loses them: they spoof names ("Sunny" + an invisible) and reverse lines.
+static func hidden_char(c: int) -> bool:
+	return c < 32 or (c >= 0x7F and c < 0xA0) or c == 0xAD or c == 0x34F or c == 0x61C or c == 0x115F or c == 0x1160 \
+		or c == 0x17B4 or c == 0x17B5 or c == 0x180E or (c >= 0x200B and c <= 0x200F) or (c >= 0x202A and c <= 0x202E) \
+		or (c >= 0x2060 and c <= 0x206F) or c == 0x3164 or c == 0xFEFF or c == 0xFFA0 or (c >= 0xFFF0 and c <= 0xFFF8) \
+		or (c >= 0xE0000 and c <= 0xE007F)
 
 
 ## 0x + 40 hex, lowercase; "" otherwise.

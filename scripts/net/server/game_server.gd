@@ -55,6 +55,9 @@ var stats := {"connections": 0, "auths": 0, "auth_failures": 0, "chats": 0, "voi
 	"bytes_in": 0, "bytes_out": 0, "kicked": 0, "throttled": 0, "refused": 0, "invites": 0, "matches": 0, "moves": 0}
 var invites := InviteBook.new()
 var matches := {}             # match id → record (see _open_match)
+## This run of the server (random, in the welcome): invites and games live in memory only,
+## so a client that sees a new boot knows the games it had here are gone.
+var boot_id := ""
 
 var _tcp := TCPServer.new()
 var _peers := {}               # id → Peer
@@ -69,6 +72,7 @@ var _log: FileAccess
 var _started_s := 0.0
 var _house_at := 0.0
 var _mutex := Mutex.new()
+var _orphan_tasks: Array[int] = []   # signature checks whose connection closed before they finished
 
 
 class Peer:
@@ -98,6 +102,7 @@ class Peer:
 	var flood_at := 0.0
 	var auth_task := -1
 	var auth_claim := ""
+	var auth_sig := ""                # a signature waiting for the server's check budget
 	var auth_result := ""
 	var auth_attempts := 0
 	var guest_noticed := false
@@ -128,6 +133,7 @@ func start() -> bool:
 	lb = Leaderboards.new(data_dir.path_join("leaderboards.json"))
 	lb.add_verifier("*fair:*", FairVerifier.verify)
 	_load_tokens()
+	boot_id = Crypto.new().generate_random_bytes(6).hex_encode()
 	var err := _tcp.listen(port, bind_address)
 	if err != OK:
 		log_line("ERROR cannot listen on %s:%d (error %d). Is another server running?" % [bind_address, port, err])
@@ -142,6 +148,12 @@ func stop() -> void:
 	for id in _peers.keys():
 		var p: Peer = _peers[id]
 		p.ws.close(1001, "server stopping")
+		if p.auth_task >= 0:
+			_orphan_tasks.append(p.auth_task)
+			p.auth_task = -1
+	for t in _orphan_tasks:
+		WorkerThreadPool.wait_for_task_completion(t)
+	_orphan_tasks.clear()
 	_tcp.stop()
 	if lb:
 		lb.save()
@@ -272,7 +284,7 @@ func _poll_peer(p: Peer, now: float) -> void:
 		# "login" only for clients older than sign-in v2 (they sign what they are sent);
 		# current clients build the text themselves from nonce + issued and their own host.
 		_send(p, NetProto.json_msg(NetProto.S_WELCOME, {"id": p.id, "nonce": p.nonce, "issued": p.issued, "server": NetProto.login_name(server_name),
-			"v": NetProto.VERSION, "login": NetProto.login_message(server_name, p.host, p.nonce, p.issued), "voice_radius": voice_radius,
+			"v": NetProto.VERSION, "login": NetProto.login_message(server_name, p.host, p.nonce, p.issued), "voice_radius": voice_radius, "boot": boot_id,
 			"features": NetProto.FEATURES + NetBump.FEATURES + NetEvents.FEATURES}))
 	var n := 0
 	while p.ws.get_available_packet_count() > 0 and n < 200:
@@ -292,6 +304,8 @@ func _poll_peer(p: Peer, now: float) -> void:
 		_handle(p, pkt, now)
 		if not _peers.has(p.id):
 			return
+	if p.auth_sig != "":
+		_start_auth(p, now)
 	if p.auth_task >= 0 and WorkerThreadPool.is_task_completed(p.auth_task):
 		WorkerThreadPool.wait_for_task_completion(p.auth_task)
 		p.auth_task = -1
@@ -331,6 +345,9 @@ func _drop(p: Peer, why: String) -> void:
 		log_line("peer %d left (%s) %s" % [p.id, p.wallet if p.wallet != "" else "guest", why])
 	if p.wallet != "" and _peers_of(p.wallet).is_empty():
 		_gone[p.wallet] = {"at": _now(), "n": p.name}  # "went offline" unless back within the grace
+	if p.auth_task >= 0:
+		_orphan_tasks.append(p.auth_task)  # a signature check still running: waited for in housekeeping
+		p.auth_task = -1
 	if p.ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		p.ws.close()
 
@@ -394,9 +411,9 @@ func _handle(p: Peer, msg: PackedByteArray, now: float) -> void:
 				_throttled(p, now)
 				return
 			var b := NetProto.json_body(msg)
-			var board := Leaderboards.clean_board(String(b.get("board", "")))
-			_send(p, NetProto.json_msg(NetProto.S_LB, {"req": int(b.get("req", 0)), "ok": board != "", "board": board,
-				"rows": lb.top(board, int(b.get("n", 10))) if board != "" else [], "error": "" if board != "" else "bad board id"}))
+			var board := Leaderboards.clean_board(NetProto.str_of(b.get("board", "")))
+			_send(p, NetProto.json_msg(NetProto.S_LB, {"req": NetProto.int_of(b.get("req", 0)), "ok": board != "", "board": board,
+				"rows": lb.top(board, NetProto.int_of(b.get("n", 10))) if board != "" else [], "error": "" if board != "" else "bad board id"}))
 		NetProto.C_LB_SUBMIT:
 			_lb_submit(p, NetProto.json_body(msg), now)
 		NetBump.C_BUMP:
@@ -410,7 +427,7 @@ func _handle(p: Peer, msg: PackedByteArray, now: float) -> void:
 				_throttled(p, now)
 				return
 			var b := NetProto.json_body(msg)
-			_send(p, NetProto.json_msg(NetProto.S_INFO, info(int(b.get("req", 0)), now)))
+			_send(p, NetProto.json_msg(NetProto.S_INFO, info(NetProto.int_of(b.get("req", 0)), now)))
 		NetProto.C_ONLINE:
 			if not p.b_ctrl.take(now):
 				_throttled(p, now)
@@ -465,10 +482,10 @@ func info(req: int, now: float) -> Dictionary:
 
 
 func _set_profile(p: Peer, b: Dictionary) -> void:
-	p.name = NetProto.clean_text(String(b.get("name", "")), NetProto.NAME_MAX_CHARS)
-	var head := String(b.get("head", "bear"))
+	p.name = NetProto.clean_text(NetProto.str_of(b.get("name", "")), NetProto.NAME_MAX_CHARS)
+	var head := NetProto.str_of(b.get("head", "bear"))
 	p.head = head if head.is_valid_identifier() and head.length() <= 16 else "bear"
-	var body := String(b.get("body", "male"))
+	var body := NetProto.str_of(b.get("body", "male"))
 	p.body = body if body in ["male", "female"] else "male"
 	p.acc = []
 	if b.get("acc") is Array:
@@ -483,7 +500,7 @@ func _peer_msg(p: Peer) -> PackedByteArray:
 
 
 func _join(p: Peer, b: Dictionary) -> void:
-	var room := NetProto.clean_room(String(b.get("room", "")))
+	var room := NetProto.clean_room(NetProto.str_of(b.get("room", "")))
 	if room == "":
 		_notice(p, "room", "That room is not a QING address.")
 		return
@@ -564,7 +581,7 @@ func _chat(p: Peer, msg: PackedByteArray, now: float) -> void:
 		stats["throttled"] += 1
 		_notice(p, "slow", "Slow down: one message a second.")
 		return
-	var text := NetProto.clean_text(String(NetProto.json_body(msg).get("text", "")), NetProto.CHAT_MAX_CHARS)
+	var text := NetProto.clean_text(NetProto.str_of(NetProto.json_body(msg).get("text", "")), NetProto.CHAT_MAX_CHARS)
 	if text == "":
 		return
 	stats["chats"] += 1
@@ -602,9 +619,9 @@ func _voice(p: Peer, msg: PackedByteArray, now: float) -> void:
 # ── sign-in ────────────────────────────────────────────────────────────────
 
 func _auth(p: Peer, b: Dictionary, now: float) -> void:
-	if p.wallet != "" or p.auth_task >= 0:
+	if p.wallet != "" or p.auth_task >= 0 or p.auth_sig != "":
 		return
-	var tok := String(b.get("token", ""))
+	var tok := NetProto.str_of(b.get("token", ""))
 	if tok != "":
 		var rec: Dictionary = _tokens.get(tok.sha256_text(), {})
 		if not rec.is_empty() and int(rec["exp"]) > Time.get_unix_time_from_system():
@@ -616,15 +633,12 @@ func _auth(p: Peer, b: Dictionary, now: float) -> void:
 	if p.auth_attempts > AUTH_ATTEMPTS:
 		_send(p, NetProto.json_msg(NetProto.S_AUTH, {"ok": false, "reason": "too many attempts; reconnect"}))
 		return
-	var claim := NetProto.clean_wallet(String(b.get("wallet", "")))
-	var sig := String(b.get("sig", ""))
+	var claim := NetProto.clean_wallet(NetProto.str_of(b.get("wallet", "")))
+	var sig := NetProto.str_of(b.get("sig", ""))
 	if claim == "" or sig.length() != 132:
 		_send(p, NetProto.json_msg(NetProto.S_AUTH, {"ok": false, "reason": "malformed sign-in"}))
 		return
-	if not _auth_bucket.take(now):
-		_send(p, NetProto.json_msg(NetProto.S_AUTH, {"ok": false, "reason": "server busy; try again in a moment"}))
-		return
-	var host := String(b.get("host", p.host)).strip_edges().to_lower()
+	var host := NetProto.str_of(b.get("host", p.host)).strip_edges().to_lower()
 	if not host_ok(host, p.host, public_hosts):
 		log_line("peer %d sign-in refused: signed for host '%s', this socket is for '%s'" % [p.id, host.left(80), p.host])
 		_auth_refused(p, "that signature was made for another server (%s); sign in again here" % host.left(80))
@@ -634,6 +648,19 @@ func _auth(p: Peer, b: Dictionary, now: float) -> void:
 		return
 	p.auth_claim = claim
 	p.auth_message = NetProto.login_message(server_name, host, p.nonce, p.issued)
+	p.auth_sig = sig
+	# The check waits its turn (4 a second for the whole server) instead of being refused:
+	# a crowd signing in at once (an event, a server restart without tokens) would otherwise
+	# get "server busy" after approving the signature in their wallet, and stay guests.
+	_start_auth(p, now)
+
+
+## Starts a queued signature check when the server-wide budget allows (each frame).
+func _start_auth(p: Peer, now: float) -> void:
+	if p.auth_sig == "" or p.auth_task >= 0 or not _auth_bucket.take(now):
+		return
+	var sig := p.auth_sig
+	p.auth_sig = ""
 	p.auth_task = WorkerThreadPool.add_task(_auth_job.bind(p, p.auth_message, sig), false, "ecrecover")
 
 
@@ -728,7 +755,7 @@ func _save_tokens() -> void:
 # ── leaderboards ───────────────────────────────────────────────────────────
 
 func _lb_submit(p: Peer, b: Dictionary, now: float) -> void:
-	var req := int(b.get("req", 0))
+	var req := NetProto.int_of(b.get("req", 0))
 	if p.wallet == "":
 		_send(p, NetProto.json_msg(NetProto.S_LB, {"req": req, "ok": false, "error": "sign in to submit a score"}))
 		return
@@ -739,7 +766,7 @@ func _lb_submit(p: Peer, b: Dictionary, now: float) -> void:
 	if not (entry is Dictionary):
 		_send(p, NetProto.json_msg(NetProto.S_LB, {"req": req, "ok": false, "error": "entry must be an object"}))
 		return
-	var board := String(b.get("board", ""))
+	var board := NetProto.str_of(b.get("board", ""))
 	var res: Dictionary = await lb.submit(board, entry, p.wallet, p.name)
 	if not _peers.has(p.id):
 		return
@@ -816,7 +843,7 @@ func online_rows(except_wallet: String) -> Array:
 
 
 func _online(p: Peer, b: Dictionary) -> void:
-	var req := int(b.get("req", 0))
+	var req := NetProto.int_of(b.get("req", 0))
 	if p.wallet == "":
 		_send(p, NetProto.json_msg(NetProto.S_ONLINE, {"req": req, "ok": false, "players": [], "error": "sign in to see who is online"}))
 		return
@@ -827,14 +854,14 @@ func _invite(p: Peer, b: Dictionary) -> void:
 	if p.wallet == "":
 		_refuse(p, "invite", "Sign in with your wallet to invite players (a free signature).")
 		return
-	var to := NetProto.clean_wallet(String(b.get("to", "")))
+	var to := NetProto.clean_wallet(NetProto.str_of(b.get("to", "")))
 	if to == "" or _peers_of(to).is_empty():
 		_refuse(p, "invite", "That player is not online now.")
 		return
 	var id := Crypto.new().generate_random_bytes(4).hex_encode()
 	var now := int(Time.get_unix_time_from_system())
-	var r := invites.create(id, p.wallet, p.name, to, _name_of(to), String(b.get("game", "")), String(b.get("stake", "")),
-		String(b.get("room", "")), String(b.get("door", "")), now)
+	var r := invites.create(id, p.wallet, p.name, to, _name_of(to), NetProto.str_of(b.get("game", "")), NetProto.str_of(b.get("stake", "")),
+		NetProto.str_of(b.get("room", "")), NetProto.str_of(b.get("door", "")), now)
 	if not r["ok"]:
 		_refuse(p, "invite", String(r["error"]))
 		return
@@ -848,8 +875,8 @@ func _answer(p: Peer, b: Dictionary) -> void:
 	if p.wallet == "":
 		_refuse(p, "answer", "Sign in first.")
 		return
-	var id := String(b.get("id", "")).left(16)
-	var what := String(b.get("answer", ""))
+	var id := NetProto.str_of(b.get("id", "")).left(16)
+	var what := NetProto.str_of(b.get("answer", ""))
 	var now := int(Time.get_unix_time_from_system())
 	if what == "accept":
 		var inv0: Dictionary = invites.invites.get(id, {})
@@ -901,9 +928,9 @@ func _move(p: Peer, b: Dictionary) -> void:
 	if p.wallet == "":
 		_refuse(p, "move", "Sign in first.")
 		return
-	var mr: Dictionary = matches.get(String(b.get("match", "")).left(16), {})
+	var mr: Dictionary = matches.get(NetProto.str_of(b.get("match", "")).left(16), {})
 	if mr.is_empty():
-		_refuse(p, "move", "No such game.")
+		_refuse(p, "move", "No such game.")  # the text Invites.NO_SUCH_GAME matches
 		return
 	var who: int = (mr["players"] as Array).find(p.wallet)
 	if who < 0:
@@ -912,7 +939,7 @@ func _move(p: Peer, b: Dictionary) -> void:
 	if mr["status"] != "live":
 		_refuse(p, "move", "That game is %s." % mr["status"])
 		return
-	var op := String(b.get("op", ""))
+	var op := NetProto.str_of(b.get("op", ""))
 	if not InviteBook.ops_for(String(mr["game"])).has(op):
 		_strike(p, "unknown move %s" % op.left(16))
 		return
@@ -941,14 +968,14 @@ func _move(p: Peer, b: Dictionary) -> void:
 ## Each machine reports what its replay says; when both agree the game is over
 ## (or "disputed" if they don't: the tables then say so and no one is told they owe).
 func _result(p: Peer, b: Dictionary) -> void:
-	var mr: Dictionary = matches.get(String(b.get("match", "")).left(16), {})
+	var mr: Dictionary = matches.get(NetProto.str_of(b.get("match", "")).left(16), {})
 	if mr.is_empty() or p.wallet == "":
 		return
 	var who: int = (mr["players"] as Array).find(p.wallet)
 	if who < 0 or mr["status"] != "live":
 		return
-	var w := int(b.get("winner", -1))
-	var digest := String(b.get("digest", "")).left(64)
+	var w := NetProto.int_of(b.get("winner", -1), -1)
+	var digest := NetProto.str_of(b.get("digest", "")).left(64)
 	if w < 0 or w > 2 or digest == "":
 		_strike(p, "bad result")
 		return
@@ -973,6 +1000,12 @@ func _result(p: Peer, b: Dictionary) -> void:
 
 ## Once a second: expire invites, abandon idle games, forget old ones.
 func _housekeeping() -> void:
+	# Signature checks of connections that left meanwhile: a WorkerThreadPool task must be
+	# waited for once done, or the pool keeps it (and complains at exit).
+	for t in _orphan_tasks.duplicate():
+		if WorkerThreadPool.is_task_completed(t):
+			WorkerThreadPool.wait_for_task_completion(t)
+			_orphan_tasks.erase(t)
 	var now := int(Time.get_unix_time_from_system())
 	for inv in invites.expire(now):
 		_to_wallets([inv["from"], inv["to"]], NetProto.json_msg(NetProto.S_INVITE, {"invite": inv}))
@@ -1133,3 +1166,6 @@ func _events_housekeeping(now: float) -> void:
 	for w in _arrived.keys():
 		if now - float(_arrived[w]["at"]) > NetEvents.ARRIVE_REPEAT_S and _peers_of(w).is_empty():
 			_arrived.erase(w)
+	for k in _claimed.keys():  # one claim an hour each: older ones are forgotten (it grew forever)
+		if now - float(_claimed[k]) > 3600.0:
+			_claimed.erase(k)

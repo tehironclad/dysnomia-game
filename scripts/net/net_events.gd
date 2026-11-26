@@ -74,8 +74,8 @@ static func claim_msg(claim: String, room: String) -> PackedByteArray:
 ## The server's check of C_PLACE / C_CLAIM: {place|claim, room (a QING)} or {}.
 static func parse_place(msg: PackedByteArray) -> Dictionary:
 	var b := NetProto.json_body(msg)
-	var place := String(b.get("place", ""))
-	var room := NetProto.clean_room(String(b.get("room", "")))
+	var place := NetProto.str_of(b.get("place", ""))
+	var room := NetProto.clean_room(NetProto.str_of(b.get("room", "")))
 	if not PLACES.has(place) or room == "" or room.contains("/"):
 		return {}
 	return {"place": place, "room": room}
@@ -83,8 +83,8 @@ static func parse_place(msg: PackedByteArray) -> Dictionary:
 
 static func parse_claim(msg: PackedByteArray) -> Dictionary:
 	var b := NetProto.json_body(msg)
-	var claim := String(b.get("claim", ""))
-	var room := NetProto.clean_room(String(b.get("room", "")))
+	var claim := NetProto.str_of(b.get("claim", ""))
+	var room := NetProto.clean_room(NetProto.str_of(b.get("room", "")))
 	if not CLAIMS.has(claim) or room == "" or room.contains("/"):
 		return {}
 	return {"claim": claim, "room": room}

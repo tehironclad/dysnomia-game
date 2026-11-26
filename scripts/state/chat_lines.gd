@@ -111,10 +111,9 @@ static func clean_text(text: String, max_chars: int = FEED_CHARS) -> String:
 	var out := ""
 	for ch in t:
 		var c := ch.unicode_at(0)
-		if c == 10 or c == 13 or c == 9:
-			out += " "
-		elif c < 32 or (c >= 127 and c < 160) or (c >= 0x200B and c <= 0x200F) or (c >= 0x202A and c <= 0x202E) \
-				or (c >= 0x2066 and c <= 0x2069) or c == 0xFEFF:
+		if c == 10 or c == 13 or c == 9 or c == 0x2028 or c == 0x2029:
+			out += " "  # one line: a line/paragraph separator would fake a second speaker's line
+		elif NetProto.hidden_char(c):
 			continue
 		else:
 			out += ch
