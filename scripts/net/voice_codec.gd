@@ -142,7 +142,11 @@ static func level(pcm: PackedFloat32Array) -> float:
 
 
 ## Streaming resampler, stereo frames at `src_rate` → mono floats at `dst_rate`.
-## Box-averages over each output step (a cheap low-pass) then linear-interpolates.
+## A box average over each output step (a cheap low-pass against aliasing), taken at
+## the two input samples around the output instant and linearly interpolated between
+## them, so the timing stays exact (a box at the nearest sample alone shifts each
+## output by up to one input sample: at 3 kHz that alone cost ~15 dB of SNR). Only
+## whole windows are used, so pushing in chunks gives the same output as one push.
 class Resampler:
 	extends RefCounted
 	var ratio := 1.0
@@ -153,27 +157,32 @@ class Resampler:
 		ratio = src_rate / dst_rate
 
 	func push(frames: PackedVector2Array) -> PackedFloat32Array:
-		for f in frames:
-			_pending.append((f.x + f.y) * 0.5)
+		var base := _pending.size()
+		_pending.resize(base + frames.size())
+		for k in frames.size():
+			var f := frames[k]
+			_pending[base + k] = (f.x + f.y) * 0.5
 		var out := PackedFloat32Array()
 		var half := int(ratio * 0.5)
-		while _pos + 1.0 < _pending.size():
+		var size := _pending.size()
+		while _pos + 1.0 + half < size:
 			var i := int(_pos)
 			var fr := _pos - i
-			var a := _pending[i]
-			var b := _pending[i + 1]
-			var v := a + (b - a) * fr
-			if half >= 1:
-				var acc := 0.0
-				var cnt := 0
-				for k in range(maxi(0, i - half), mini(_pending.size(), i + half + 1)):
-					acc += _pending[k]
-					cnt += 1
-				v = acc / cnt
-			out.append(v)
+			var a := _box(i, half)
+			var b := _box(i + 1, half)
+			out.append(a + (b - a) * fr)
 			_pos += ratio
 		var drop := int(_pos) - half - 1
 		if drop > 0:
 			_pending = _pending.slice(drop)
 			_pos -= drop
 		return out
+
+	func _box(i: int, half: int) -> float:
+		if half < 1:
+			return _pending[i]
+		var acc := 0.0
+		var lo := maxi(0, i - half)
+		for k in range(lo, i + half + 1):
+			acc += _pending[k]
+		return acc / (i + half + 1 - lo)

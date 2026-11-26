@@ -925,6 +925,13 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   never wallets or positions. It asks only if the welcome's `features` lists `"info"`. It also reads boards with
   `C_LB_TOP`. The site serves them as `/api/game-live`. The game's Site API setting can point at either address.
 
+- **Audit 2026-11-26** (`docs/AUDIT_NET_2026-11-26.md`): places have presence (`<qing>/arcade|pub|hall`,
+  `<VOID>/void`, PlaceBase). Read every JSON field with `NetProto.str_of/int_of/num_of/flag_of` (String({}) is a
+  script error). The welcome's `boot` tells a restarted server from a reconnect (Invites marks lost games
+  abandoned). A token goes before the join. Voice: the capture ring is 0.5 s, `RemotePlayer` keeps an 80 ms jitter
+  buffer, the resampler interpolates its box filter (exact timing). Measure voice with `net_bot --talk/--record`;
+  a game client's real mic path runs under PulseAudio null sinks (the audit doc says how).
+
 ## 19. Exchanges: the Swap Hall (PulseX) and the YUE Exchange (2026-11-24)
 
 - **PulseX addresses [live, block 28,136,888]** (each has code; each router's `factory()` returns its

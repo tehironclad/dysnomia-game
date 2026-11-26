@@ -19,6 +19,8 @@ var _last_raw := -1
 var _unwrapped := 0
 var _offset := INF            # local − sender, ms
 var _offset_at := 0.0
+var _stale := 0               # snapshots in a row that looked older than the last one
+const STALE_RESYNC := 3
 
 
 ## A snapshot from the wire (t16: sender ms, u16), received at local `now_ms`.
@@ -28,8 +30,18 @@ func push(t16: int, pos: Vector3, yaw: float, flags: int, anim: int, now_ms: flo
 	else:
 		var d := (t16 - _last_raw) & 0xFFFF
 		if d >= 0x8000:
-			return  # older than the last one (out of order): drop
-		_unwrapped += d
+			_stale += 1
+			if _stale < STALE_RESYNC:
+				return  # older than the last one (out of order): drop
+			# Several in a row: the sender's u16 clock moved on by more than half a wrap
+			# (a stall of 33 s or more), not a reorder. Start over from this one instead
+			# of freezing the avatar until the clock comes round again.
+			_snaps.clear()
+			_offset = INF
+			_unwrapped = t16
+		else:
+			_unwrapped += d
+	_stale = 0
 	_last_raw = t16
 	var off := now_ms - _unwrapped
 	if off < _offset:

@@ -1,10 +1,12 @@
 class_name NetPresence
 extends Node3D
-## Online presence in one territory (Net): joins the QING's room, sends the
+## Online presence in one territory, or in one place of it (Net): joins the room
+## (the QING, or "<qing>/arcade|pub|hall", or "<VOID>/void"), sends the
 ## local player's pose at 10 Hz, draws everyone else (RemotePlayer) and plays
 ## their voice, and puts the online status line on the HUD. Chat bubbles over
 ## remote players come from ChatLife (RemotePlayer registers as a speaker).
-## Added by the territory scene with one line; does nothing when offline.
+## Added by the territory scene and by every place (PlaceBase) with one line; does
+## nothing when offline. A place's room has its own coordinates (the place's scene).
 ##   var p := NetPresence.new(); add_child(p); p.setup(qing, player, hud)
 
 var qing := ""
@@ -14,13 +16,13 @@ var feed: NetChatFeed
 var remotes := {}  # peer id → RemotePlayer
 
 
-func setup(p_qing: String, p_player: Node3D, p_hud: CanvasLayer) -> void:
+func setup(p_qing: String, p_player: Node3D, p_hud: CanvasLayer, p_activity: ActivityFeed = null) -> void:
 	qing = p_qing.to_lower()
 	player = p_player
 	hud = p_hud
-	if hud:
+	if hud or p_activity:
 		feed = NetChatFeed.new()
-		var af = hud.get("activity")
+		var af = p_activity if p_activity else hud.get("activity")
 		if af is ActivityFeed:
 			(af as ActivityFeed).slot.add_child(feed)  # the online notices under the activity feed's header
 		else:

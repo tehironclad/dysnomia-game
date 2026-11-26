@@ -10,6 +10,7 @@ extends Node3D
 
 const TAG_Y := 2.02
 const VOICE_RATE := 16000.0
+const PREFILL_S := 0.08  ## voice queued before playback starts (the jitter buffer)
 
 var peer_id := -1
 var wallet := ""
@@ -22,6 +23,10 @@ var tag: Label3D
 var voice: AudioStreamPlayer3D
 var _playback: AudioStreamGeneratorPlayback
 var _voice_t := 0.0
+var _voice_last_ms := -100000
+var _voice_cap := 0
+var _primed := false
+var _prefill := PackedVector2Array()
 var _flag_speaking := false
 var _seated := false
 var _head := ""
@@ -47,7 +52,11 @@ func setup(info: Dictionary) -> void:
 	voice.stream = gen
 	voice.position.y = 1.6
 	voice.unit_size = 8.0
-	voice.max_distance = 45.0
+	# The server relays voice within its radius (the welcome says it; 40 m by default):
+	# heard, fading, all the way out to it.
+	var net := get_node_or_null("/root/Net")
+	var radius: float = net.client.voice_radius if net and net.client else 40.0
+	voice.max_distance = clampf(radius, 5.0, 500.0) + 5.0
 	voice.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
 	add_child(voice)
 	apply_info(info)
@@ -150,21 +159,56 @@ func apply_pose(s: Dictionary) -> void:
 
 
 
+## A decoded 20 ms voice frame. Frames arrive in bursts (the sender's and our frame
+## rate, the network): a small jitter buffer (PREFILL_S) fills before playback starts,
+## and again after the voice ran dry, so a late frame is a short wait instead of a
+## click. Measured on localhost alone: frames 17 ms apart typically, up to 55 ms.
 func play_voice(pcm: PackedFloat32Array, volume: float) -> void:
 	_voice_t = 0.3
-	if not voice.playing:
+	_voice_last_ms = Time.get_ticks_msec()
+	voice.volume_db = linear_to_db(maxf(volume, 0.001))
+	var frames := PackedVector2Array()
+	frames.resize(pcm.size())
+	for i in pcm.size():
+		frames[i] = Vector2(pcm[i], pcm[i])
+	if not _primed:
+		_prefill.append_array(frames)
+		if _prefill.size() < int(PREFILL_S * VOICE_RATE):
+			return
+		_start_voice()
+		return
+	_push_voice(frames)
+
+
+func _start_voice() -> void:
+	if not voice.playing or _playback == null:
 		voice.play()
 		_playback = voice.get_stream_playback()
+		_voice_cap = _playback.get_frames_available() if _playback else 0
+	_primed = true
+	var pre := _prefill
+	_prefill = PackedVector2Array()
+	_push_voice(pre)
+
+
+func _push_voice(frames: PackedVector2Array) -> void:
 	if _playback == null:
 		return
-	voice.volume_db = linear_to_db(maxf(volume, 0.001))
 	var room := _playback.get_frames_available()
-	var n := mini(room, pcm.size())
-	var frames := PackedVector2Array()
-	frames.resize(n)
-	for i in n:
-		frames[i] = Vector2(pcm[i], pcm[i])
-	_playback.push_buffer(frames)
+	_playback.push_buffer(frames if frames.size() <= room else frames.slice(frames.size() - room))  # too far behind: keep the newest
+
+
+## Jitter buffer upkeep (each frame): ran dry → fill again before playing on; a short
+## tail waiting in the prefill is played once no more comes; silent for a while → stop.
+func _voice_tick() -> void:
+	var idle_ms := Time.get_ticks_msec() - _voice_last_ms
+	if not _primed and not _prefill.is_empty() and idle_ms > int(PREFILL_S * 1000.0):
+		_start_voice()  # the end of an utterance shorter than the prefill
+	if _primed and _playback and _playback.get_frames_available() >= _voice_cap:
+		_primed = false  # empty: the next frames fill the buffer again first
+	if voice.playing and not _primed and _prefill.is_empty() and idle_ms > 2000:
+		voice.stop()  # nothing to mix
+		_playback = null
 
 
 var _tag_text := ""
@@ -188,5 +232,6 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
+	_voice_tick()
 	_voice_t = maxf(0.0, _voice_t - delta)
 	_show_speaking(_voice_t > 0.0 or _flag_speaking)

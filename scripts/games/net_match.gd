@@ -36,17 +36,17 @@ func _init(record: Dictionary = {}) -> void:
 	# stake that is not a valid amount of Ⓐ (InviteBook's rule) is no stake at all.
 	players = [NetProto.clean_wallet(String(players[0])), NetProto.clean_wallet(String(players[1]))]
 	names = [NetProto.clean_text(String(names[0]), NetProto.NAME_MAX_CHARS), NetProto.clean_text(String(names[1]), NetProto.NAME_MAX_CHARS)]
-	var stake := InviteBook.clean_stake(String(record.get("stake", "")))
+	var stake := InviteBook.clean_stake(NetProto.str_of(record.get("stake", "")))
 	if stake == "!":
 		stake = ""
-	m = {"id": String(record.get("id", "")), "kind": String(record.get("game", "")), "net": true,
+	m = {"id": NetProto.str_of(record.get("id", "")), "kind": NetProto.str_of(record.get("game", "")), "net": true,
 		"challenger": String(players[0]), "invite": String(players[1]), "stake": stake_wei(stake), "stake_text": stake,
 		"players": [String(players[0]), String(players[1])], "names": [String(names[0]), String(names[1])],
 		"status": "confirm" if stake != "" else "playing", "game": null, "winner": "", "loser": "", "push": false,
 		"created_block": -1, "last_block": -1, "end_block": -1, "deal_block": -1, "events": [], "paid": null,
 		"seated": [false, false], "stake_ok": [false, false], "stake_state": "proposed" if stake != "" else "none",
-		"end_t": -1, "moves": 0, "room": String(record.get("room", "")), "door": String(record.get("door", "arcade"))}
-	_last_move_t = int(record.get("created", 0))
+		"end_t": -1, "moves": 0, "room": NetProto.str_of(record.get("room", "")), "door": NetProto.str_of(record.get("door", "arcade"))}
+	_last_move_t = NetProto.int_of(record.get("created", 0))
 	m["game"] = EightBall.new() if m["kind"] == "pool" else Duel21.new()
 	if m["status"] == "playing":
 		_begin(_last_move_t)
@@ -151,12 +151,12 @@ func needs_block() -> int:
 func deal(block: Dictionary) -> bool:
 	if deal_anchor < 0:
 		return false
-	var h := String(block.get("hash", ""))
+	var h := NetProto.str_of(block.get("hash", ""))
 	if not (h.begins_with("0x") and h.length() == 66):
 		return false
 	(m["game"] as Duel21).deal(h)
 	deal_anchor = -1
-	m["deal_block"] = int(block.get("number", -1))
+	m["deal_block"] = NetProto.int_of(block.get("number", -1))
 	m["created_block"] = m["deal_block"]
 	m["last_block"] = m["deal_block"]
 	m["events"].append("dealt from block %d" % m["deal_block"])
@@ -165,13 +165,13 @@ func deal(block: Dictionary) -> bool:
 
 ## The unix second whose first block draws a card for log entry `e`, or -1 if it draws none.
 func hash_anchor(e: Dictionary) -> int:
-	if m["kind"] != "cards" or m["status"] != "playing" or String(e.get("op", "")) != "hit":
+	if m["kind"] != "cards" or m["status"] != "playing" or NetProto.str_of(e.get("op", "")) != "hit":
 		return -1
 	var d: Duel21 = m["game"]
-	var who := int(e.get("by", -1))
+	var who := NetProto.int_of(e.get("by", -1))
 	if d.over() or not d.dealt or who != d.turn:
 		return -1
-	return anchor_of(int(e.get("t", 0)))
+	return anchor_of(NetProto.int_of(e.get("t", 0)))
 
 
 ## Replays one log entry ({seq, by, op, a, t}). `block` ({hash, number}) when
@@ -179,10 +179,10 @@ func hash_anchor(e: Dictionary) -> int:
 func apply(e: Dictionary, block: Dictionary = {}) -> Dictionary:
 	applied += 1
 	m["moves"] = applied
-	var who := int(e.get("by", -1))
-	var op := String(e.get("op", ""))
+	var who := NetProto.int_of(e.get("by", -1))
+	var op := NetProto.str_of(e.get("op", ""))
 	var a: Array = e.get("a", []) if e.get("a") is Array else []
-	var t := int(e.get("t", 0))
+	var t := NetProto.int_of(e.get("t", 0))
 	if who != 0 and who != 1:
 		return {"ok": false, "why": "not a player"}
 	if deal_anchor >= 0:
@@ -232,21 +232,21 @@ func apply(e: Dictionary, block: Dictionary = {}) -> Dictionary:
 			return {"ok": false, "why": r["why"]}
 		_last_move_t = t
 		m["last_shot"] = {"player": who, "dx": dx, "dy": dy, "power": pw, "block": -1, "before": before,
-			"tx": "net:%s:%d" % [m["id"], int(e.get("seq", applied))]}
+			"tx": "net:%s:%d" % [m["id"], NetProto.int_of(e.get("seq", applied))]}
 		m["events"].append(describe_shot(r))  # as TableBook words it: the tables call it out
 		if g.over():
-			_finish(g.winner, t, String(r.get("result", "")))
+			_finish(g.winner, t, NetProto.str_of(r.get("result", "")))
 		return {"ok": true}
 	if m["kind"] == "cards" and (op == "hit" or op == "stand"):
 		var d: Duel21 = m["game"]
 		var r: Dictionary
 		if op == "hit":
-			var h := String(block.get("hash", ""))
+			var h := NetProto.str_of(block.get("hash", ""))
 			if hash_anchor(e) < 0 or not (h.begins_with("0x") and h.length() == 66):
 				return {"ok": false, "why": "no card block"}
 			r = d.hit(who, h)
 			if r["ok"]:
-				m["last_block"] = int(block.get("number", -1))
+				m["last_block"] = NetProto.int_of(block.get("number", -1))
 		else:
 			r = d.stand(who)
 		if not r["ok"]:

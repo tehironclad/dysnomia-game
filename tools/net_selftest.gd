@@ -12,7 +12,7 @@ extends SceneTree
 ## their agreed results, board records reach the right players (signed-in or the room),
 ## within their limits, and a reconnect inside the grace is not news. "Join me" requests
 ## go through the invite book (no match opened).
-##   godot --headless --path . -s res://tools/net_selftest.gd [-- --url=ws://127.0.0.1:8787]
+##   godot --headless --path . -s res://tools/net_selftest.gd [-- --url=ws://127.0.0.1:8787 | --port=18787]
 ## Without --url it starts its own server in this process (port 18787, data in
 ## user://server_selftest). Exit code 0 = every check passed.
 
@@ -77,19 +77,27 @@ func got_ev(label: String, k: String, w: String = "") -> Array:
 func _run() -> void:
 	Engine.max_fps = 120
 	var url := ""
+	var port := 18787
 	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--port="):  # its own server's port (another run may hold 18787)
+			port = clampi(int(a.substr(7)), 1024, 65535)
 		if a.begins_with("--url="):
 			url = a.substr(6)
 	if url == "":
 		server = load("res://scripts/net/server/game_server.gd").new()
-		server.port = 18787
+		server.port = port
 		server.server_name = "selftest"
 		server.data_dir = "user://server_selftest"
 		server.quiet = true
 		DirAccess.remove_absolute(ProjectSettings.globalize_path("user://server_selftest/leaderboards.json"))
 		root.add_child(server)
-		ok(server.start(), "server listens on 127.0.0.1:18787")
-		url = "ws://127.0.0.1:18787"
+		var up: bool = server.start()
+		ok(up, "server listens on 127.0.0.1:%d" % port)
+		if not up:
+			print("the port is taken (another server or self-test?): try --port=<free port>")
+			quit(1)
+			return
+		url = "ws://127.0.0.1:%d" % port
 	print("server: ", url)
 
 	var a := make_client("A", KEY_A)
@@ -319,6 +327,20 @@ func _run() -> void:
 	ok(await wait_until(func(): return not f.is_online(), 8.0), "a flooding client is disconnected")
 	ok(a.is_online() and b.is_online(), "well-behaved clients stay connected")
 
+	# ── places: "<qing>/arcade" is a room of its own (PlaceBase's presence) ──
+	await _places(a, b, g)
+
+	# ── malformed input from a signed-in client: wrong JSON types, truncated binary ──
+	# Every handler must shrug (refuse, strike or ignore): no script error on the server
+	# (the run's output is checked for "SCRIPT ERROR" by tools/net_audit.sh), no crash,
+	# and the well-behaved players are not disturbed.
+	await _fuzz(url)
+	ok(a.is_online() and b.is_online(), "after the malformed-input barrage A and B are still connected")
+	var probe := make_client("P", "")
+	probe.connect_to(url)
+	ok(await wait_until(func(): return probe.is_online(), 5.0), "the server still welcomes new players")
+	probe.close()
+
 	# ── reconnect with the session token: no new signature ──
 	var tok: String = a.token
 	var signed := [0]
@@ -329,11 +351,19 @@ func _run() -> void:
 	var b_online0 := got_ev("B", "online", a.wallet).size()
 	a.close()
 	ok(await wait_until(func(): return not b.peers.has(a.my_id) or b.peers.size() < 3, 5.0), "B saw A leave")
+	var first_seen := {}  # peer id → the first S_PEER B got for it
+	b.peer_joined.connect(func(id, info):
+		if not first_seen.has(id):
+			first_seen[id] = (info as Dictionary).duplicate())
+	var g_guest0 := got_ev("B", "guest").size() + got_ev("G", "guest").size()
 	a.token = tok
 	a.connect_to(url)
 	a.room = ROOM
 	ok(await wait_until(func(): return a.wallet != "", 8.0) and signed[0] == 0, "A reconnected and signed in by token (no wallet prompt)")
 	ok(await wait_until(func(): return b.peers.values().any(func(p): return p.get("wallet", "") == a.wallet), 5.0), "B sees A back in the room")
+	ok(first_seen.has(a.my_id) and String(first_seen[a.my_id].get("wallet", "")) == a.wallet,
+		"a token reconnect joins the room already signed in (B's first sight of A names its wallet, not 'guest')")
+	ok(got_ev("B", "guest").size() + got_ev("G", "guest").size() == g_guest0, "…and the room is not told 'a guest arrived'")
 	ok(await wait_until(func(): return _resynced, 5.0), "after the reconnect the server sent A its games again (S_MATCH %s)" % _match_id)
 	await wait_s(1.5)
 	ok(got_ev("B", "online", a.wallet).size() == b_online0 and got_ev("B", "offline", a.wallet).is_empty(), "a reconnect inside the grace is not news: no went offline / came online for A")
@@ -344,15 +374,104 @@ func _run() -> void:
 	ok(kept != "" and a.token == "", "connecting to another server URL drops the session token (it is never sent elsewhere)")
 	a.close()
 
-	if server:
-		print("      server stats: ", JSON.stringify(server.stats))
-	print("\n%d checks, %d failed" % [checks, failures])
+	# ── everyone leaves: the server keeps nothing of them (no ghost peers or rooms) ──
 	for c in clients:
 		c.close()
+	if server:
+		ok(await wait_until(func(): return server._peers.is_empty() and server._rooms.is_empty(), 5.0),
+			"everyone left: no peers, no rooms left on the server (%d, %d)" % [server._peers.size(), server._rooms.size()])
+		ok(await wait_until(func(): return server._orphan_tasks.is_empty(), 5.0), "no signature check left waiting")
+		print("      server stats: ", JSON.stringify(server.stats))
+	print("\n%d checks, %d failed" % [checks, failures])
 	await wait_s(0.3)
 	if server:
 		server.stop()
 	quit(1 if failures > 0 else 0)
+
+
+## A and B walk into the arcade of ROOM (room "<ROOM>/arcade"); G stays outside.
+func _places(a: Node, b: Node, g: Node) -> void:
+	var arcade := ROOM + "/arcade"
+	a.join(arcade, a.profile)
+	b.join(arcade, b.profile)
+	ok(await wait_until(func(): return not g.peers.has(a.my_id) and not g.peers.has(b.my_id), 5.0), "G (outside) sees A and B leave into the arcade")
+	a.send_state(Vector3(1, 0, 2), 0.0, NetProto.F_ON_FLOOR, 0, true)
+	b.send_state(Vector3(2, 0, 2), 0.0, NetProto.F_ON_FLOOR, 0, true)
+	ok(await wait_until(func(): return a.peers.has(b.my_id) and b.peers.has(a.my_id) and not a.peers.has(g.my_id), 5.0), "in the arcade A and B see each other, not G")
+	ok(await wait_until(func(): return not b.peer_pose(a.my_id, Time.get_ticks_msec()).is_empty(), 3.0), "B gets A's pose in the arcade")
+	var heard_g := []
+	var heard_b := []
+	g.chat.connect(func(_i, _w, _n, t, _p): heard_g.append(t))
+	b.chat.connect(func(_i, _w, _n, t, _p): heard_b.append(t))
+	await wait_s(1.2)
+	a.send_chat("in the arcade")
+	ok(await wait_until(func(): return heard_b.has("in the arcade"), 3.0) and not heard_g.has("in the arcade"), "say-chat in the arcade reaches the arcade only")
+	var arr0 := got_ev("G", "arrive").size() + got_ev("G", "guest").size()
+	a.join(ROOM, a.profile)
+	b.join(ROOM, b.profile)
+	ok(await wait_until(func(): return g.peers.has(a.my_id) and g.peers.has(b.my_id), 5.0), "back outside: G sees them again")
+	await wait_s(0.5)
+	ok(got_ev("G", "arrive").size() + got_ev("G", "guest").size() == arr0, "coming back out of the arcade is not a new arrival")
+	a.send_state(Vector3(0, 2, 0), 0.0, NetProto.F_ON_FLOOR, 0, true)
+	b.send_state(Vector3(3, 2, 0), 0.0, NetProto.F_ON_FLOOR, 0, true)
+	await wait_s(0.3)
+
+
+const KEY_Z := "0x7e1c3a5b9d2f4e6a8c0b1d3f5e7a9c2b4d6f8e0a1c3b5d7f9e2a4c6b8d0f1e3a"
+
+
+## A signed-in client sends every message type with wrong JSON types and every
+## binary type truncated. A fresh client whenever the server kicks one (strikes).
+func _fuzz(url: String) -> void:
+	var weird := [{}, [], [1, 2], "x", -1, 1e300, true, null, {"a": {}}]
+	var keys := ["req", "room", "name", "head", "acc", "body", "text", "board", "entry", "n", "to", "game", "stake",
+		"door", "id", "answer", "match", "op", "a", "winner", "digest", "token", "wallet", "sig", "host", "place", "claim"]
+	var json_types := [NetProto.C_AUTH, NetProto.C_JOIN, NetProto.C_CHAT, NetProto.C_LB_SUBMIT, NetProto.C_LB_TOP,
+		NetProto.C_PROFILE, NetProto.C_INFO, NetProto.C_ONLINE, NetProto.C_INVITE, NetProto.C_ANSWER, NetProto.C_MOVE,
+		NetProto.C_RESULT, NetEvents.C_PLACE, NetEvents.C_CLAIM]
+	var msgs: Array = []
+	for t in json_types:
+		for w in weird:
+			var body := {}
+			for k in keys:
+				body[k] = w
+			msgs.append(NetProto.json_msg(t, body))
+		msgs.append(NetProto.json_msg(t, {"entry": {"score": {}}, "a": [{}, [], "1"], "acc": [{}, 5, null]}))
+		var raw := PackedByteArray([t])
+		raw.append_array("[1,2,3]".to_utf8_buffer())
+		msgs.append(raw)
+		var bad := PackedByteArray([t, 0xff, 0xfe, 0x00, 0x7b])
+		msgs.append(bad)
+	for t in [NetProto.C_STATE, NetProto.C_PING, NetProto.C_VOICE, NetBump.C_BUMP, NetProto.C_LEAVE]:
+		for n in range(1, 20):
+			var b := PackedByteArray([t])
+			for i in n - 1:
+				b.append(randi() % 256)
+			msgs.append(b)
+	var z: Node = null
+	var sent := 0
+	var kicked := 0
+	for msg in msgs:
+		if z == null or not z.is_online():
+			if z != null:
+				kicked += 1
+				z.close()
+			z = make_client("Z%d" % kicked, KEY_Z)
+			z.connect_to(url)
+			await wait_until(func(): return z.is_online(), 5.0)
+			z.sign_in()
+			await wait_until(func(): return z.wallet != "", 5.0)
+			z.join(ROOM, {"name": "fuzz"})
+			z.send_state(Vector3(1, 2, 3), 0.0, 0, 0, true)
+			await wait_s(0.2)
+		z._send(msg)
+		sent += 1
+		if sent % 6 == 0:
+			await wait_s(0.25)  # under the message and byte buckets: this is about content, not floods
+	await wait_s(0.5)
+	print("      fuzz: %d malformed messages from signed-in clients, %d kicked for strikes" % [sent, kicked])
+	if z:
+		z.close()
 
 
 var _match_id := ""

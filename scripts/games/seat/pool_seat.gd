@@ -108,8 +108,10 @@ func howto_spec() -> Dictionary:
 		"Aim with the mouse: the ghost line is the real sim run ahead. Hold %s for power, let go to strike." % ControlsHelp.key_of("table_shoot")])
 	match mode:
 		"practice": rules.append("Practice: a table on this computer only; nothing is posted. A live game starts from the games list (%s)." % ControlsHelp.key_of("table_lobby"))
-		"play": rules.append("Live game %s: your shot is a room line signed in your wallet; the balls roll once the chain has it." % match_id)
-		_: rules.append("Live game %s: every shot replays here from its room line." % match_id)
+		"play": rules.append(("Game %s over the game server: your shot goes to the server (free, not a transaction) and both machines replay it." % match_id) if _match().get("net", false)
+			else "Live game %s: your shot is a room line signed in your wallet; the balls roll once the chain has it." % match_id)
+		_: rules.append(("Game %s over the game server: every shot replays here from the server's log." % match_id) if _match().get("net", false)
+			else "Live game %s: every shot replays here from its room line." % match_id)
 	return {"title": "Pool · Eight-ball", "tag": String(place.territory.get("name", "")), "rules": rules,
 		"controls": controls(), "accent": TableSeat.ICE, "verb": "play", "esc": "stand up"}
 
@@ -156,12 +158,14 @@ func _match() -> Dictionary:
 
 ## Live: playing, or (a game over the game server) both players confirming its stake.
 static func _live(m: Dictionary) -> bool:
-	return not m.is_empty() and m["game"] != null and (m["status"] == "playing" or (m.get("net", false) and m["status"] == "confirm"))
+	if m.is_empty() or m["game"] == null or m.get("abandoned", false):  # abandoned: idle 30 min, or the server restarted
+		return false
+	return m["status"] == "playing" or (m.get("net", false) and m["status"] == "confirm")
 
 
 func _pick_mode() -> void:
 	var m: Dictionary = place._latest("pool")
-	var me := Session.wallet
+	var me := Invites.wallet_for(m)
 	match_id = ""
 	mode = "practice"
 	if not _live(m):
@@ -350,11 +354,13 @@ func _pick_mode_keep() -> void:
 	if not _live(m):
 		if not m.is_empty() and m["status"] == "over":
 			seat.call_out("%s WON" % book.display(m["winner"]).to_upper() if not m["push"] else "PUSH", TableSeat.GOLD, 4.0)
+		elif not m.is_empty() and m.get("abandoned", false):
+			seat.call_out("GAME ABANDONED · NOBODY OWES", TableSeat.GOLD, 4.0)
 		_pick_mode()
 		if mode == "practice":
 			table.show_sim(practice)
 		return
-	var mine := TableBook.player_index(m, Session.wallet)
+	var mine := TableBook.player_index(m, Invites.wallet_for(m))
 	mode = "watch" if mine < 0 else ("play" if TableBook.turn_index(m) == mine else "wait")
 
 
@@ -364,7 +370,7 @@ func _on_book() -> void:
 	if mode == "practice":
 		# A game started while you practised: say so (stand up and sit again to join it).
 		var m: Dictionary = place._latest("pool")
-		if not m.is_empty() and m["status"] == "playing" and TableBook.player_index(m, Session.wallet) >= 0:
+		if not m.is_empty() and m["status"] == "playing" and TableBook.player_index(m, Invites.wallet_for(m)) >= 0:
 			seat.show_toast("Your game #%s is live: stand up (Esc) and sit again to play it." % m["id"])
 		return
 	var m := _match()
@@ -661,7 +667,7 @@ func _stats_text() -> String:
 	var g: EightBall = m["game"]
 	var out := "#%s · shot %d\nballs on the table: %d" % [m["id"], g.shots + 1, left]
 	if m.get("net", false) and Wager.code(m) != "none":
-		out += "\n" + Wager.short(m, Session.wallet)
+		out += "\n" + Wager.short(m, Invites.wallet_for(m))
 	if g.groups[0] != "":
 		out += "\n%s: %s · %s: %s" % [TableBook.short(m["players"][0]), g.groups[0], TableBook.short(m["players"][1]), g.groups[1]]
 	else:
@@ -698,7 +704,7 @@ func _net_texts(m: Dictionary) -> void:
 	var keys := ControlsHelp.key_of("notifications")
 	if m["status"] == "confirm":
 		seat.headline.text = "CONFIRM THE STAKE"
-		seat.set_badge("GAME #%s OVER THE GAME SERVER · %s · %s · %s: confirm it, or play without a stake" % [m["id"], vs, Wager.text(m, Session.wallet, book.display), keys], true)
+		seat.set_badge("GAME #%s OVER THE GAME SERVER · %s · %s · %s: confirm it, or play without a stake" % [m["id"], vs, Wager.text(m, Invites.wallet_for(m), book.display), keys], true)
 	else:
 		match mode:
 			"play":
@@ -710,7 +716,7 @@ func _net_texts(m: Dictionary) -> void:
 				seat.set_badge("GAME #%s OVER THE GAME SERVER · %s · their shot replays here from the server's log, from behind the cue ball" % [m["id"], vs], true)
 			_:
 				seat.set_badge("GAME #%s OVER THE GAME SERVER · %s" % [m["id"], vs], true)
-	seat.source.text = "Table: replayed from the game server's move log (%d moves, ordered and stamped by the server; PoolSim's integers on both machines, which must agree on the result). Wager: %s." % [int(m.get("moves", 0)), Wager.text(m, Session.wallet, book.display)]
+	seat.source.text = "Table: replayed from the game server's move log (%d moves, ordered and stamped by the server; PoolSim's integers on both machines, which must agree on the result). Wager: %s." % [int(m.get("moves", 0)), Wager.text(m, Invites.wallet_for(m), book.display)]
 
 
 ## Previews (tools/screenshot.gd): "aim" holds a charge with the ghost; "roll" breaks and holds mid-roll.

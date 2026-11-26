@@ -20,6 +20,15 @@ extends SceneTree
 ##       [--accept-join]    accept a join request (reports it; a bot does not travel)
 ##       [--start-delay=S]  wait S seconds before connecting (a later "came online")
 ##       [--after-peer]     place / claim / join-me only once it sees another player in the room
+## Load and voice checks (docs/AUDIT_NET_2026-11-26.md):
+##       [--wander=R]       walk a circle of radius R m (3 m/s) around --at=x,y,z (or the first player it
+##                          sees) instead of walking up to them; sends its pose at 10 Hz whoever is there
+##       [--talk=tone:440 | --talk=wav:/abs/file.wav]  push-to-talk the whole time (real-time 20 ms frames,
+##                          the game's encoder: VoiceCodec.encode_adpcm); a WAV loops (16-bit PCM, any rate)
+##       [--talk-after=S]   start talking S seconds after joining
+##       [--record=/abs/out.wav]  write every voice frame it receives, decoded, to a 16 kHz WAV, and a
+##                          .csv beside it (arrival unix ms, sender id, seq) for latency / loss / jitter
+##       [--stats]          print its byte counters every 10 s and at the end
 ## It prints every event it gets ("[bot] event: …", in the feed's words) and every peer's
 ## name tag as this game would draw it ("[bot] tag: …"): the chain's LAU name for the
 ## verified wallet (read-only), the short wallet, or "guest".
@@ -65,6 +74,12 @@ func _run() -> void:
 	var accept_join := false
 	var start_delay := 0.0
 	var after_peer := false
+	var wander := 0.0
+	var at := Vector3.INF
+	var talk := ""
+	var talk_after := 0.0
+	var record := ""
+	var stats := false
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		var v := kv[1] if kv.size() > 1 else ""
@@ -92,6 +107,15 @@ func _run() -> void:
 			"accept-join": accept_join = true
 			"start-delay": start_delay = float(v)
 			"after-peer": after_peer = true
+			"wander": wander = float(v)
+			"at":
+				var xyz := v.split(",")
+				if xyz.size() == 3:
+					at = Vector3(float(xyz[0]), float(xyz[1]), float(xyz[2]))
+			"talk": talk = v
+			"talk-after": talk_after = float(v)
+			"record": record = v
+			"stats": stats = true
 	c = load("res://scripts/net/net_client.gd").new()
 	root.add_child(c)
 	c.signer_wallet = EthSign.address_of_private(key)
@@ -108,6 +132,8 @@ func _run() -> void:
 		return
 	c.event.connect(_on_event)
 	c.peer_joined.connect(_on_peer)
+	if record != "":
+		c.voice.connect(_on_voice)
 	if guest:
 		print("[bot] staying a guest (no signature)")
 	else:
@@ -152,7 +178,47 @@ func _run() -> void:
 	var said_at := -100000
 	var pos := Vector3.ZERO
 	var yaw := 0.0
+	var talk_pcm := _talk_source(talk)
+	var talk_t0 := -1.0
+	var talk_sent := 0
+	var talk_pos := 0
+	var adpcm := [0, 0]
+	var joined_ms := Time.get_ticks_msec()
+	var stats_at := Time.get_ticks_msec()
+	var phase := randf() * TAU
 	while Time.get_ticks_msec() - t0 < secs * 1000.0:
+		if stats and Time.get_ticks_msec() - stats_at > 10000:
+			stats_at = Time.get_ticks_msec()
+			_print_stats(t0)
+		if wander > 0.0:
+			if at == Vector3.INF:
+				for id in c.peers:
+					var s0: Dictionary = c.peer_pose(id, Time.get_ticks_msec())
+					if not s0.is_empty():
+						at = s0["pos"]
+						break
+			var ctr := at if at != Vector3.INF else Vector3.ZERO
+			var ang := phase + Time.get_ticks_msec() / 1000.0 * 3.0 / wander
+			pos = ctr + Vector3(cos(ang), 0.0, sin(ang)) * wander
+			yaw = -ang
+			c.send_state(pos, yaw, NetProto.F_ON_FLOOR | (NetProto.F_SPEAKING if talk_t0 >= 0.0 else 0), 0)
+		if not talk_pcm.is_empty() and Time.get_ticks_msec() - joined_ms >= talk_after * 1000.0:
+			if talk_t0 < 0.0:
+				talk_t0 = Time.get_ticks_msec()
+				if wander <= 0.0:
+					c.send_state(pos, yaw, NetProto.F_ON_FLOOR | NetProto.F_SPEAKING, 0, true)  # voice needs a position
+				print("[bot] talking (%s), %d samples a loop" % [talk, talk_pcm.size()])
+			# real time: as many 20 ms frames as the clock says, like the mic would give
+			var due := int((Time.get_ticks_msec() - talk_t0) / 20.0)
+			while talk_sent < due:
+				var frame := PackedFloat32Array()
+				frame.resize(NetProto.VOICE_FRAME)
+				for i in NetProto.VOICE_FRAME:
+					frame[i] = talk_pcm[talk_pos]
+					talk_pos = (talk_pos + 1) % talk_pcm.size()
+				c.send_voice(talk_sent & 0xFFFF, NetProto.CODEC_ADPCM, VoiceCodec.encode_adpcm(frame, adpcm))
+				_talk_log.append([int(Time.get_unix_time_from_system() * 1000.0), talk_sent])
+				talk_sent += 1
 		if not invited and Time.get_ticks_msec() - t0 > invite_delay * 1000.0:
 			if online[0]:
 				invited = true
@@ -162,7 +228,7 @@ func _run() -> void:
 				asked_at = Time.get_ticks_msec()
 				c.request_online()
 		var target := {}
-		for id in c.peers:
+		for id in (c.peers if wander <= 0.0 else {}):
 			var s: Dictionary = c.peer_pose(id, Time.get_ticks_msec())
 			if not s.is_empty():
 				target = s
@@ -180,8 +246,110 @@ func _run() -> void:
 					print("[bot] standing at %s, said: %s" % [pos, line])
 				said = true
 		await process_frame
+	if stats:
+		_print_stats(t0)
+	if talk_t0 >= 0.0:
+		print("[bot] talked %d frames (%.1f s)" % [talk_sent, talk_sent * 0.02])
+		_write_csv(record.get_basename() + ".sent.csv" if record != "" else "", _talk_log)
+	if record != "":
+		_write_record(record)
 	c.close()
 	quit(0)
+
+
+# --- load and voice checks --------------------------------------------------------
+
+var _talk_log: Array = []      # [unix ms, seq] per frame sent
+var _rec_pcm := PackedFloat32Array()
+var _rec_log: Array = []       # [unix ms, sender id, seq] per frame received
+
+
+## Mono floats at 16 kHz: "tone:440" (0.5 amplitude, 2 s) or "wav:/abs/path.wav" (16-bit PCM).
+func _talk_source(spec: String) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	if spec.begins_with("tone:"):
+		var hz := float(spec.substr(5))
+		out.resize(NetProto.VOICE_RATE * 2)
+		for i in out.size():
+			out[i] = 0.5 * sin(TAU * hz * i / NetProto.VOICE_RATE)
+	elif spec.begins_with("wav:"):
+		out = read_wav_16k(spec.substr(4))
+		if out.is_empty():
+			print("[bot] can't read ", spec.substr(4))
+	return out
+
+
+## A 16-bit PCM WAV (any rate, mono or stereo) as mono floats at 16 kHz.
+static func read_wav_16k(path: String) -> PackedFloat32Array:
+	var b := FileAccess.get_file_as_bytes(path)
+	if b.size() < 44 or b.slice(0, 4).get_string_from_ascii() != "RIFF":
+		return PackedFloat32Array()
+	var ch := 1
+	var rate := 16000
+	var off := 12
+	while off + 8 <= b.size():
+		var id := b.slice(off, off + 4).get_string_from_ascii()
+		var n := b.decode_u32(off + 4)
+		if id == "fmt ":
+			ch = b.decode_u16(off + 10)
+			rate = b.decode_u32(off + 12)
+		elif id == "data":
+			var frames := PackedVector2Array()
+			var count := n / (2 * ch)
+			frames.resize(count)
+			for i in count:
+				var l := b.decode_s16(off + 8 + i * 2 * ch) / 32768.0
+				var r := b.decode_s16(off + 8 + i * 2 * ch + 2 * (ch - 1)) / 32768.0
+				frames[i] = Vector2(l, r)
+			return VoiceCodec.Resampler.new(rate, NetProto.VOICE_RATE).push(frames)
+		off += 8 + n + (n & 1)
+	return PackedFloat32Array()
+
+
+func _on_voice(id: int, codec: int, data: PackedByteArray) -> void:
+	_rec_pcm.append_array(VoiceCodec.decode(codec, data))
+	_rec_log.append([int(Time.get_unix_time_from_system() * 1000.0), id, c.last_voice_seq])
+
+
+func _write_record(path: String) -> void:
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		print("[bot] can't write ", path)
+		return
+	var n := _rec_pcm.size()
+	f.store_buffer("RIFF".to_ascii_buffer())
+	f.store_32(36 + n * 2)
+	f.store_buffer("WAVEfmt ".to_ascii_buffer())
+	f.store_32(16)
+	f.store_16(1)
+	f.store_16(1)
+	f.store_32(NetProto.VOICE_RATE)
+	f.store_32(NetProto.VOICE_RATE * 2)
+	f.store_16(2)
+	f.store_16(16)
+	f.store_buffer("data".to_ascii_buffer())
+	f.store_32(n * 2)
+	for v in _rec_pcm:
+		f.store_16(clampi(int(round(v * 32767.0)), -32768, 32767) & 0xFFFF)
+	f.close()
+	_write_csv(path.get_basename() + ".csv", _rec_log)
+	print("[bot] recorded %d voice frames (%.1f s) → %s" % [_rec_log.size(), n / float(NetProto.VOICE_RATE), path])
+
+
+static func _write_csv(path: String, rows: Array) -> void:
+	if path == "":
+		return
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f:
+		for r in rows:
+			f.store_line(",".join(r.map(func(x): return str(x))))
+
+
+func _print_stats(t0: int) -> void:
+	var s := maxf(0.001, (Time.get_ticks_msec() - t0) / 1000.0)
+	print("[bot] stats %.0f s: in %.0f B/s (states %.0f, voice %.0f), out %.0f B/s, %d peers, rtt %d ms" % [s,
+		c.counters["bytes_in"] / s, c.counters["state_bytes_in"] / s, c.counters["voice_bytes_in"] / s,
+		c.counters["bytes_out"] / s, c.peers.size(), c.rtt_ms])
 
 
 func _on_match(rec: Dictionary) -> void:

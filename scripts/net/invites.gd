@@ -47,6 +47,10 @@ var _taken := {}
 var _sat := {}
 var _bound := false
 var _test_key := ""
+var _boot := ""              # the server run our games are on (NetClient.boot)
+var _catchup := {}           # match id → log entries it already had when we first heard of it
+var _last_move_match := ""   # the game of the last move sent (a "No such game." refusal names none)
+const NO_SUCH_GAME := "No such game."
 
 
 func _ready() -> void:
@@ -72,13 +76,70 @@ func _bind() -> void:
 	c.match_update.connect(_on_match)
 	c.match_move.connect(_on_move)
 	c.online_list.connect(_on_online)
-	c.refused.connect(func(what, err): _note("refused", "The server refused that %s: %s" % [what, err], "", "", false))
+	c.refused.connect(_on_refused)
 	c.status_changed.connect(_on_status)
+	c.welcomed.connect(func(_id): _on_welcome(c.boot))
+	if net.names:
+		net.names.resolved.connect(_on_name_resolved)
 	c.auth_changed.connect(func(_w): online_changed.emit(); notes_changed.emit())
 	if _test_key != "":
 		c.signer_wallet = EthSign.address_of_private(_test_key)
 		var key := _test_key
 		c.signer = func(message: String) -> String: return EthSign.sign_personal(message, key)
+
+
+func _on_refused(what: String, err: String) -> void:
+	_note("refused", "The server refused that %s: %s" % [what, err], "", "", false)
+	if what == "move" and err == NO_SUCH_GAME and _last_move_match != "":
+		forget_lost([_last_move_match])  # an older server restarted (it doesn't say its boot): that game is gone
+
+
+## The server's welcome: a different run of the server than the one our games were on
+## means it lost them (invites and games live in its memory only).
+func _on_welcome(boot: String) -> void:
+	if boot != "" and _boot != "" and boot != _boot:
+		forget_lost(matches.keys())
+		for id in invites:
+			if String(invites[id].get("state", "")) == "pending":
+				invites[id]["state"] = "expired"
+		notes_changed.emit()
+	if boot != "":
+		_boot = boot
+
+
+## Games the server no longer has (it restarted): live ones can't go on. Each is marked
+## abandoned, nobody owes anything on it, and the table lets the players go.
+func forget_lost(ids: Array) -> void:
+	for id in ids:
+		var nm: NetMatch = matches.get(id)
+		if nm == null or nm.over() or nm.m.get("abandoned", false) or nm.m.get("disputed", false):
+			continue
+		nm.m["abandoned"] = true
+		nm.rec["status"] = "abandoned"
+		if NetProto.str_of(pending_seat.get("match", "")) == String(id):
+			pending_seat = {}
+		_note("result", "#%s can't go on: the game server restarted and no longer has it. Nobody owes anything on it." % id, String(id), nm.m["kind"], false)
+		match_changed.emit(String(id))
+
+
+## The names a game's tables and notes show: each wallet's name read from the chain
+## (Net.names), never the name the server passes on (the player's own claim: anyone can
+## call themselves "Sunny"). "" until it is read: the tables then show the short wallet.
+func _chain_names(nm: NetMatch) -> void:
+	var net := get_node_or_null("/root/Net")
+	var names: LauNames = net.names if net else null
+	for i in 2:
+		var w := String(nm.m["players"][i])
+		var shown := NetNames.shown(w, names.record(w) if names and w != "" else {})
+		nm.m["names"][i] = "" if shown == NetProto.short_wallet(w) or shown == "guest" else shown
+
+
+func _on_name_resolved(w: String) -> void:
+	for id in matches:
+		var nm: NetMatch = matches[id]
+		if nm.index_of(w) >= 0:
+			_chain_names(nm)
+			match_changed.emit(String(id))
 
 
 func _client() -> NetClient:
@@ -103,6 +164,15 @@ func _on_status(s: String) -> void:
 func me() -> String:
 	var c := _client()
 	return c.wallet if c and c.is_online() else ""
+
+
+## The wallet that plays `m` on this machine: for a game over the game server, the one
+## the server verified (it sends the moves; in a test run it has no browser wallet); else
+## the session's (a room-line game is signed in that wallet).
+func wallet_for(m: Dictionary) -> String:
+	if m.get("net", false) and me() != "":
+		return me()
+	return String(get_node("/root/Session").wallet)
 
 
 ## "" when invites work now; otherwise why not, in words.
@@ -152,9 +222,11 @@ static func game_title(game: String) -> String:
 
 
 func place_name(room: String) -> String:
+	if room == Contracts.VOID:
+		return "the Void"  # its presence room (PlaceBase): everyone in the Void, whatever QING they came from
 	var reg := get_node_or_null("/root/Registry")
 	var t: Dictionary = reg.get_territory(room) if reg else {}
-	return String(t.get("name", NetMatch.short(room)))
+	return NetProto.str_of(t.get("name", NetMatch.short(room)))
 
 
 ## A wallet as the panel names it: the chain's name for it (Net.names) and the short
@@ -289,13 +361,13 @@ static func agreed_stake(match_id: String, wallet: String, path: String = AGREED
 ## a valid one that this computer agreed to, and `w` the loser.
 static func pay_refusal(m: Dictionary, w: String, agreed: String) -> String:
 	var players: Array = m.get("players", [])
-	var winner := NetProto.clean_wallet(String(m.get("winner", "")))
-	var loser := NetProto.clean_wallet(String(m.get("loser", "")))
+	var winner := NetProto.clean_wallet(NetProto.str_of(m.get("winner", "")))
+	var loser := NetProto.clean_wallet(NetProto.str_of(m.get("loser", "")))
 	if players.size() != 2 or winner == "" or loser == "" or winner == loser or not players.has(winner) or not players.has(loser):
 		return "the server's record of this game is not two players with a winner and a loser"
 	if w != loser:
 		return "the connected wallet is not the one that lost"
-	var st := InviteBook.clean_stake(String(m.get("stake_text", "")))
+	var st := InviteBook.clean_stake(NetProto.str_of(m.get("stake_text", "")))
 	if st == "" or st == "!" or BigInt.cmp(NetMatch.stake_wei(st), m.get("stake", BigInt.zero())) != 0:
 		return "the stake in the server's record is not a valid amount of Ⓐ"
 	if agreed != st:
@@ -308,31 +380,32 @@ func send_move(match_id: String, op: String, args: Array = []) -> bool:
 	var c := _client()
 	if c == null or not c.is_online() or c.wallet == "":
 		return false
+	_last_move_match = match_id
 	return c.send_move(match_id, op, args)
 
 
 func _on_invite(inv: Dictionary) -> void:
-	var id := String(inv.get("id", ""))
+	var id := NetProto.str_of(inv.get("id", ""))
 	var prev: Dictionary = invites.get(id, {})
 	invites[id] = inv
-	var state := String(inv.get("state", ""))
+	var state := NetProto.str_of(inv.get("state", ""))
 	if not prev.is_empty() and prev.get("state") == state:
 		notes_changed.emit()
 		return
 	var mine := me()
-	var from_me := String(inv.get("from", "")) == mine
-	var them := _who(String(inv["to"]), String(inv.get("to_name", ""))) if from_me else _who(String(inv["from"]), String(inv.get("from_name", "")))
+	var from_me := NetProto.str_of(inv.get("from", "")) == mine
+	var them := _who(String(inv["to"]), NetProto.str_of(inv.get("to_name", ""))) if from_me else _who(String(inv["from"]), NetProto.str_of(inv.get("from_name", "")))
 	var is_join := String(inv["game"]) == InviteBook.JOIN
 	var what := "%s at %s%s" % [game_title(String(inv["game"])), place_name(String(inv["room"])),
-		(" · stake %s Ⓐ (honour-bound)" % inv["stake"]) if String(inv.get("stake", "")) != "" else ""]
+		(" · stake %s Ⓐ (honour-bound)" % inv["stake"]) if NetProto.str_of(inv.get("stake", "")) != "" else ""]
 	if is_join:
-		what = "join them at " + join_where(place_name(String(inv["room"])), String(inv.get("door", "")))
+		what = "join them at " + join_where(place_name(String(inv["room"])), NetProto.str_of(inv.get("door", "")))
 	_feed_invite(inv, state, from_me, them, what)
 	if is_join:
 		match state:
 			"pending":
 				if from_me:
-					_note("sent", "You asked %s to join you (%s)." % [them, join_where(place_name(String(inv["room"])), String(inv.get("door", "")))], id, InviteBook.JOIN, true)
+					_note("sent", "You asked %s to join you (%s)." % [them, join_where(place_name(String(inv["room"])), NetProto.str_of(inv.get("door", "")))], id, InviteBook.JOIN, true)
 				else:
 					_note("invite", "%s asks you to %s." % [them, what], id, InviteBook.JOIN, false)
 			"accepted":
@@ -371,14 +444,14 @@ func _feed_invite(inv: Dictionary, state: String, from_me: bool, _them: String, 
 	if net == null or net.activity == null or not state in ["pending", "accepted"]:
 		return
 	net.activity.add_local({"k": "invite", "w": String(inv["to"] if from_me else inv["from"]), "state": state, "mine": from_me, "what": what,
-		"key": ControlsHelp.key_of("notifications"), "room": String(inv.get("room", "")), "game": String(inv.get("game", "")),
-		"text": String(inv.get("id", "")) + state})
+		"key": ControlsHelp.key_of("notifications"), "room": NetProto.str_of(inv.get("room", "")), "game": NetProto.str_of(inv.get("game", "")),
+		"text": NetProto.str_of(inv.get("id", "")) + state})
 
 
 ## A "Join me" you accepted: there through the normal ways in (a warp to the QING, then its door).
 func go_join(inv: Dictionary) -> void:
 	var room := String(inv["room"]).to_lower()
-	var door := String(inv.get("door", ""))
+	var door := NetProto.str_of(inv.get("door", ""))
 	var tree := get_tree()
 	var reg := get_node("/root/Registry")
 	if not reg.has_territory(room):
@@ -428,7 +501,7 @@ func poll_online() -> void:
 # --- Games --------------------------------------------------------------------------
 
 func _on_match(rec: Dictionary) -> void:
-	var id := String(rec.get("id", ""))
+	var id := NetProto.str_of(rec.get("id", ""))
 	if id == "":
 		return
 	var nm: NetMatch = matches.get(id)
@@ -436,6 +509,11 @@ func _on_match(rec: Dictionary) -> void:
 	if fresh:
 		nm = NetMatch.new(rec.duplicate(true))
 		matches[id] = nm
+		# Moves already in the log when we first hear of a game (a reconnect, a second
+		# window, a game that ended meanwhile) are history: no "sat down" / "confirm the
+		# stake" notes for them, only what happens from now on (and the result).
+		_catchup[id] = (rec.get("log", []) as Array).size() if rec.get("log") is Array else 0
+		_chain_names(nm)
 	else:
 		var mine: Array = nm.rec["log"]
 		var theirs: Array = rec.get("log", [])
@@ -443,19 +521,19 @@ func _on_match(rec: Dictionary) -> void:
 			mine.append(theirs[i])
 		nm.rec["status"] = rec.get("status", "")
 		nm.rec["result"] = rec.get("result", {})
-	var st := String(rec.get("status", ""))
+	var st := NetProto.str_of(rec.get("status", ""))
 	if st == "disputed" and not nm.m.get("disputed", false):
 		nm.m["disputed"] = true
 		_note("result", "#%s: the two tables replayed the game differently, so there is no result and nobody owes anything." % id, id, nm.m["kind"], false)
 	elif st == "abandoned" and not nm.over() and not nm.m.get("abandoned", false):
 		nm.m["abandoned"] = true
 		_note("result", "#%s was abandoned: no move for %d minutes." % [id, GameServer.MATCH_IDLE_S / 60], id, nm.m["kind"], false)
-	elif st == "over" and bool(rec.get("result", {}).get("agreed", false)):
+	elif st == "over" and NetProto.flag_of(rec.get("result", {}).get("agreed", false)):
 		nm.m["agreed"] = true
 	match_changed.emit(id)
 	_replay(id)
 	if fresh and st == "live" and nm.index_of(me()) >= 0:
-		var age := Time.get_unix_time_from_system() * 1000.0 - float(rec.get("created", 0))
+		var age := Time.get_unix_time_from_system() * 1000.0 - NetProto.num_of(rec.get("created", 0))
 		if age < AUTO_TAKE_S * 1000.0 and not _taken.has(id):
 			_taken[id] = true
 			go_to_table.call_deferred(id)
@@ -466,7 +544,7 @@ func _on_move(match_id: String, mv: Dictionary) -> void:
 	if nm == null:
 		return
 	var lg: Array = nm.rec["log"]
-	if int(mv.get("seq", 0)) == lg.size() + 1:
+	if NetProto.int_of(mv.get("seq", 0)) == lg.size() + 1:
 		lg.append(mv)
 		_replay(match_id)
 
@@ -499,7 +577,7 @@ func _replay(id: String) -> void:
 		var anchor := nm.hash_anchor(e)
 		var blk := {}
 		if anchor >= 0:
-			nm.m["waiting"] = "%s hit: the card is the first block at or after %s" % [nm.name_of(int(e.get("by", 0))), Time.get_datetime_string_from_unix_time(anchor, true)]
+			nm.m["waiting"] = "%s hit: the card is the first block at or after %s" % [nm.name_of(NetProto.int_of(e.get("by", 0))), Time.get_datetime_string_from_unix_time(anchor, true)]
 			match_changed.emit(id)
 			blk = await BlockClock.first_at(anchor)
 			if not blk.get("ok", false):
@@ -517,12 +595,14 @@ func _replay(id: String) -> void:
 
 
 func _note_move(nm: NetMatch, e: Dictionary, r: Dictionary, before: String) -> void:
+	if NetProto.int_of(e.get("seq", 0)) <= int(_catchup.get(nm.id(), 0)):
+		return
 	var mine := nm.index_of(me())
-	var by := int(e.get("by", -1))
+	var by := NetProto.int_of(e.get("by", -1))
 	if mine < 0 or by == mine or not r.get("ok", false):
 		return
 	var who := nm.name_of(by)
-	match String(e.get("op", "")):
+	match NetProto.str_of(e.get("op", "")):
 		"sit":
 			_note("joined", "%s sat down at your %s table (#%s)." % [who, game_title(nm.m["kind"]), nm.id()], nm.id(), nm.m["kind"], false)
 		"stake_ok":
@@ -530,7 +610,7 @@ func _note_move(nm: NetMatch, e: Dictionary, r: Dictionary, before: String) -> v
 				_note("stake", "%s confirmed the %s stake for #%s: confirm it too, or play without it." % [who, NetMatch.fmt(nm.m["stake"]), nm.id()], nm.id(), nm.m["kind"], false)
 		"stake_no":
 			_note("stake", "%s chose to play #%s without a stake." % [who, nm.id()], nm.id(), nm.m["kind"], false)
-	if before == "confirm" and nm.m["status"] == "playing" and String(e.get("op", "")) == "stake_ok":
+	if before == "confirm" and nm.m["status"] == "playing" and NetProto.str_of(e.get("op", "")) == "stake_ok":
 		_note("stake", "Stake agreed for #%s: %s, honour-bound." % [nm.id(), NetMatch.fmt(nm.m["stake"])], nm.id(), nm.m["kind"], true)
 
 
@@ -616,7 +696,7 @@ func check_wager(id: String) -> void:
 		return
 	var transfers: Array = []
 	for lg in r["logs"]:
-		transfers.append({"block": String(lg.get("blockNumber", "0x0")).hex_to_int(), "value": BigInt.from_hex(String(lg.get("data", "0x0")))})
+		transfers.append({"block": NetProto.str_of(lg.get("blockNumber", "0x0")).hex_to_int(), "value": BigInt.from_hex(NetProto.str_of(lg.get("data", "0x0")))})
 	var res := TableBook.allocate(list, transfers)
 	for i in list.size():
 		var dm: Dictionary = list[i]["match"]
@@ -631,7 +711,7 @@ func check_wager(id: String) -> void:
 			var net := get_node_or_null("/root/Net")
 			if net and net.activity:  # the chain's Transfer log: a fact this machine read
 				net.activity.add_local({"k": "paid", "w": String(dm["loser"]), "w2": String(dm["winner"]), "stake": NetMatch.fmt(dm["stake"]).trim_suffix(" Ⓐ"),
-					"block": int(dm.get("paid_block", head)), "room": String(dm.get("room", ""))})
+					"block": NetProto.int_of(dm.get("paid_block", head)), "room": NetProto.str_of(dm.get("room", ""))})
 			_check_at.erase(mid)
 		elif was == null and dm["paid"] == false:
 			_note("wager", "#%s: %s · checked to block %d" % [mid, Wager.text(dm, me(), display), head], mid, String(dm["kind"]), dm["winner"] != me() and dm["loser"] != me())

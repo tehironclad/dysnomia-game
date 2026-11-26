@@ -54,8 +54,11 @@ var peers := {}         # id → {id, wallet, name, guest, head, acc, body, inte
 var signer: Callable
 var signer_wallet := ""
 var rtt_ms := -1
+var last_info := {}       # the last S_INFO (the server's counts; tools)
+var last_voice_seq := -1  # the seq of the voice frame being emitted (tools measure loss and order with it)
 var voice_radius := 40.0
 var features: Array = []  # what the server understands beyond v1 (S_WELCOME)
+var boot := ""            # the server run that welcomed us ("" = an older server that doesn't say)
 var counters := {"bytes_in": 0, "bytes_out": 0, "msgs_in": 0, "msgs_out": 0, "state_out": 0, "voice_out": 0,
 	"state_bytes_in": 0, "voice_bytes_in": 0, "voice_bytes_out": 0, "state_bytes_out": 0}
 
@@ -106,9 +109,7 @@ func _reset() -> void:
 	wallet = ""
 	token_pending = false
 	room = ""
-	for id in peers.keys():
-		peers.erase(id)
-		peer_left.emit(id)
+	_clear_peers()
 	for r in _lb_waiting.keys():
 		_lb_waiting[r] = {"ok": false, "error": "—"}
 
@@ -136,7 +137,10 @@ func _send(msg: PackedByteArray) -> bool:
 # ── API ────────────────────────────────────────────────────────────────────
 
 func join(p_room: String, p_profile: Dictionary = {}) -> void:
-	room = NetProto.clean_room(p_room)
+	var to := NetProto.clean_room(p_room)
+	if to != room:
+		_clear_peers()  # the server tells the old room we left, not us that they did
+	room = to
 	if not p_profile.is_empty():
 		profile = p_profile
 	if room != "" and is_online():
@@ -149,6 +153,10 @@ func join(p_room: String, p_profile: Dictionary = {}) -> void:
 func leave() -> void:
 	room = ""
 	_send(PackedByteArray([NetProto.C_LEAVE]))
+	_clear_peers()
+
+
+func _clear_peers() -> void:
 	for id in peers.keys():
 		peers.erase(id)
 		peer_left.emit(id)
@@ -352,45 +360,51 @@ func _handle(m: PackedByteArray) -> void:
 			counters["voice_bytes_in"] += m.size()
 			var v := NetProto.unpack_voice(m)
 			if not v.is_empty() and peers.has(int(v["id"])):
+				last_voice_seq = int(v["seq"])
 				voice.emit(int(v["id"]), int(v["codec"]), v["data"])
 		NetProto.S_PONG:
 			if m.size() >= 5:
 				rtt_ms = (_now_ms() - m.decode_u32(1)) & 0xFFFFFFFF
 		NetProto.S_WELCOME:
 			var b := NetProto.json_body(m)
-			my_id = int(b.get("id", -1))
-			nonce = String(b.get("nonce", ""))
-			server_name = NetProto.login_name(String(b.get("server", "")))
-			issued = int(b.get("issued", 0))
+			my_id = NetProto.int_of(b.get("id", -1))
+			nonce = NetProto.str_of(b.get("nonce", ""))
+			server_name = NetProto.login_name(NetProto.str_of(b.get("server", "")))
+			issued = NetProto.int_of(b.get("issued", 0))
 			login_message = login_for(url, server_name, nonce, issued)
-			voice_radius = float(b.get("voice_radius", 40.0))
+			voice_radius = clampf(NetProto.num_of(b.get("voice_radius", 40.0), 40.0), 5.0, 500.0)
 			features = b.get("features", []) if b.get("features") is Array else []
-			_set_status("online")
-			welcomed.emit(my_id)
+			var bt := NetProto.str_of(b.get("boot", ""))
+			boot = bt if bt.length() <= 32 and NetProto.is_hex(bt) else ""
+			# The token goes BEFORE anything joins a room (Net joins on "online"): the server
+			# answers a token at once, so the room meets a signed-in player, not a "guest" who
+			# signs in a moment later (a "guest arrived" line, the tag flicking guest → name).
 			if token != "":
 				token_pending = true
 				_send(NetProto.json_msg(NetProto.C_AUTH, {"token": token}))
+			_set_status("online")
+			welcomed.emit(my_id)
 			if room != "":
 				join(room)
 		NetProto.S_AUTH:
 			var b := NetProto.json_body(m)
 			token_pending = false
-			if bool(b.get("ok", false)):
-				wallet = NetProto.clean_wallet(String(b.get("wallet", "")))
-				token = String(b.get("token", token)).left(128)
+			if NetProto.flag_of(b.get("ok", false)):
+				wallet = NetProto.clean_wallet(NetProto.str_of(b.get("wallet", "")))
+				token = NetProto.str_of(b.get("token", token)).left(128)
 				_token_url = url
 				auth_changed.emit(wallet)
 			else:
 				if b.has("nonce"):
 					nonce = String(b["nonce"])
-					issued = int(b.get("issued", 0))
+					issued = NetProto.int_of(b.get("issued", 0))
 					login_message = login_for(url, server_name, nonce, issued)
 				if b.get("token_expired", false):
 					token = ""
-				auth_failed.emit(String(b.get("reason", "refused")))
+				auth_failed.emit(NetProto.str_of(b.get("reason", "refused")))
 		NetProto.S_PEER:
 			var b := NetProto.json_body(m)
-			var id := int(b.get("id", -1))
+			var id := NetProto.int_of(b.get("id", -1))
 			if id < 0 or id == my_id:
 				return
 			var p: Dictionary = peers.get(id, {})
@@ -399,10 +413,11 @@ func _handle(m: PackedByteArray) -> void:
 				peers[id] = p
 			for k in ["wallet", "name", "guest", "head", "acc", "body"]:
 				p[k] = b.get(k, "")
-			p["wallet"] = NetProto.clean_wallet(String(p["wallet"]))
-			p["name"] = NetProto.clean_text(String(p["name"]), NetProto.NAME_MAX_CHARS)
-			p["head"] = NetProto.clean_text(String(p["head"]), 24)
-			p["body"] = NetProto.clean_text(String(p["body"]), 24)
+			p["wallet"] = NetProto.clean_wallet(NetProto.str_of(p["wallet"]))
+			p["guest"] = p["guest"] if p["guest"] is bool else p["wallet"] == ""
+			p["name"] = NetProto.clean_text(NetProto.str_of(p["name"]), NetProto.NAME_MAX_CHARS)
+			p["head"] = NetProto.clean_text(NetProto.str_of(p["head"]), 24)
+			p["body"] = NetProto.clean_text(NetProto.str_of(p["body"]), 24)
 			p["acc"] = (p["acc"] as Array).slice(0, 8).map(func(x): return NetProto.clean_text(str(x), 24)) if p["acc"] is Array else []
 			p["id"] = id
 			peer_joined.emit(id, p)
@@ -414,15 +429,15 @@ func _handle(m: PackedByteArray) -> void:
 		NetProto.S_CHAT:
 			var b := NetProto.json_body(m)
 			var pa: Array = b.get("pos", []) if b.get("pos") is Array else []
-			var pos := Vector3(float(pa[0]), float(pa[1]), float(pa[2])) if pa.size() == 3 else Vector3.INF
-			chat.emit(int(b.get("id", -1)), NetProto.clean_wallet(String(b.get("wallet", ""))), NetProto.clean_text(String(b.get("name", "")), NetProto.NAME_MAX_CHARS),
-				NetProto.clean_text(String(b.get("text", "")), NetProto.CHAT_MAX_CHARS), pos)
+			var pos := Vector3(NetProto.num_of(pa[0]), NetProto.num_of(pa[1]), NetProto.num_of(pa[2])) if pa.size() == 3 else Vector3.INF
+			chat.emit(NetProto.int_of(b.get("id", -1)), NetProto.clean_wallet(NetProto.str_of(b.get("wallet", ""))), NetProto.clean_text(NetProto.str_of(b.get("name", "")), NetProto.NAME_MAX_CHARS),
+				NetProto.clean_text(NetProto.str_of(b.get("text", "")), NetProto.CHAT_MAX_CHARS), pos)
 		NetProto.S_NOTICE:
 			var b := NetProto.json_body(m)
-			notice.emit(NetProto.clean_text(String(b.get("code", "")), 24), NetProto.clean_text(String(b.get("text", "")), 240))
+			notice.emit(NetProto.clean_text(NetProto.str_of(b.get("code", "")), 24), NetProto.clean_text(NetProto.str_of(b.get("text", "")), 240))
 		NetProto.S_LB:
 			var b := NetProto.json_body(m)
-			var req := int(b.get("req", 0))
+			var req := NetProto.int_of(b.get("req", 0))
 			if _lb_waiting.has(req):
 				_lb_waiting[req] = b
 		NetEvents.S_EVENT:
@@ -435,14 +450,21 @@ func _handle(m: PackedByteArray) -> void:
 				bump_received.emit(int(d["from"]), int(d["target"]), float(d["dir"]), int(d["level"]))
 		NetProto.S_ROOM:
 			var b := NetProto.json_body(m)
-			room_joined.emit(String(b.get("room", "")), int(b.get("peers", 0)))
+			room_joined.emit(NetProto.str_of(b.get("room", "")), NetProto.int_of(b.get("peers", 0)))
 		NetProto.S_ONLINE:
 			var b := NetProto.json_body(m)
-			online_list.emit(bool(b.get("ok", false)), b.get("players", []) if b.get("players") is Array else [], String(b.get("error", "")))
+			var rows: Array = []
+			for r in (b.get("players", []) if b.get("players") is Array else []).slice(0, 500):
+				var w := NetProto.clean_wallet(NetProto.str_of(r.get("wallet", ""))) if r is Dictionary else ""
+				if w != "":
+					rows.append({"wallet": w, "name": NetProto.clean_text(NetProto.str_of(r.get("name", "")), NetProto.NAME_MAX_CHARS),
+						"room": NetProto.clean_room(NetProto.str_of(r.get("room", ""))).get_slice("/", 0), "busy": NetProto.flag_of(r.get("busy", false))})
+			online_list.emit(NetProto.flag_of(b.get("ok", false)), rows, NetProto.clean_text(NetProto.str_of(b.get("error", "")), 200))
 		NetProto.S_INVITE:
 			var b := NetProto.json_body(m)
-			if b.get("invite") is Dictionary:
-				invite_update.emit(b["invite"])
+			var inv := clean_invite(b.get("invite"))
+			if not inv.is_empty():
+				invite_update.emit(inv)
 		NetProto.S_MATCH:
 			var b := NetProto.json_body(m)
 			if b.get("match") is Dictionary:
@@ -450,11 +472,42 @@ func _handle(m: PackedByteArray) -> void:
 		NetProto.S_MOVE:
 			var b := NetProto.json_body(m)
 			if b.get("move") is Dictionary:
-				match_move.emit(String(b.get("match", "")), b["move"])
+				match_move.emit(NetProto.str_of(b.get("match", "")), b["move"])
+		NetProto.S_INFO:
+			last_info = NetProto.json_body(m)  # counts only (tools/net_load.gd reads it)
 		NetProto.S_REFUSED:
 			var b := NetProto.json_body(m)
-			refused.emit(String(b.get("what", "")), String(b.get("error", "")))
+			refused.emit(NetProto.clean_text(NetProto.str_of(b.get("what", "")), 24), NetProto.clean_text(NetProto.str_of(b.get("error", "")), 200))
 
+
+
+## Pure: an S_INVITE's invite, shape-checked ({} when it isn't one this game knows):
+## the server is somebody's laptop, and these fields end up in notes and on screen.
+static func clean_invite(d) -> Dictionary:
+	if not (d is Dictionary):
+		return {}
+	var id := NetProto.str_of(d.get("id", ""))
+	var from := NetProto.clean_wallet(NetProto.str_of(d.get("from", "")))
+	var to := NetProto.clean_wallet(NetProto.str_of(d.get("to", "")))
+	var game := NetProto.str_of(d.get("game", ""))
+	var state := NetProto.str_of(d.get("state", ""))
+	var door := NetProto.str_of(d.get("door", ""))
+	var room := NetProto.clean_room(NetProto.str_of(d.get("room", "")))
+	if id == "" or id.length() > 16 or not NetProto.is_hex(id) or from == "" or to == "" or not InviteBook.game_ok(game):
+		return {}
+	if not InviteBook.STATES.has(state) or room == "" or not (door in ["", "room", "arcade"]):
+		return {}
+	var stake := InviteBook.clean_stake(NetProto.str_of(d.get("stake", "")))
+	var mid := NetProto.str_of(d.get("match", ""))
+	return {"id": id, "from": from, "from_name": NetProto.clean_text(NetProto.str_of(d.get("from_name", "")), NetProto.NAME_MAX_CHARS),
+		"to": to, "to_name": NetProto.clean_text(NetProto.str_of(d.get("to_name", "")), NetProto.NAME_MAX_CHARS), "game": game,
+		"stake": stake if stake != "!" else "", "room": room, "door": door, "state": state,
+		"created": _num(d.get("created")), "expires": _num(d.get("expires")), "at": _num(d.get("at")),
+		"match": mid if mid.length() <= 16 and mid.is_valid_identifier() else ""}
+
+
+static func _num(v) -> int:
+	return int(v) if (v is float or v is int) else 0
 
 
 # ── bumps (NetBump) ─────────────────────────────────────────────────────────
@@ -468,7 +521,7 @@ func send_bump(target_id: int, yaw: float, level: int) -> bool:
 	if not is_online() or room == "" or not features.has("bump"):
 		return false
 	var now := _now_ms()
-	if now - int(_bump_sent.get(target_id, -100000)) < int(NetBump.CLIENT_COOLDOWN_S * 1000.0):
+	if now - NetProto.int_of(_bump_sent.get(target_id, -100000)) < int(NetBump.CLIENT_COOLDOWN_S * 1000.0):
 		return false
 	_bump_sent[target_id] = now
 	return _send(NetBump.bump_msg(target_id, yaw, level))
@@ -486,7 +539,7 @@ func send_place(place: String, p_room: String) -> bool:
 		return false
 	var key := place + "|" + p_room
 	var now := _now_ms()
-	if now - int(_place_sent.get(key, -1000000)) < int(NetEvents.PLACE_REPEAT_S * 1000.0):
+	if now - NetProto.int_of(_place_sent.get(key, -1000000)) < int(NetEvents.PLACE_REPEAT_S * 1000.0):
 		return false
 	_place_sent[key] = now
 	return _send(NetEvents.place_msg(place, NetProto.clean_room(p_room)))
