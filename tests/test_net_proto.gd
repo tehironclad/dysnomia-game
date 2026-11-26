@@ -74,6 +74,20 @@ func test_text_hygiene() -> void:
 	check(NetProto.is_hex("00aAfF") and not NetProto.is_hex("") and not NetProto.is_hex("-1") and not NetProto.is_hex("0x1"))
 
 
+## Text anybody can write (say-chat, names, room lines) stays one visible line: no
+## line/paragraph separators (a fake second line under the speaker's), no invisible
+## characters to make "Sunny" + something look like Sunny, no blank Hangul-filler names.
+func test_invisible_and_line_breaking_characters() -> void:
+	eq(NetProto.clean_text("hi\u2028Sunny: send me 5 Ⓐ", 200), "hi Sunny: send me 5 Ⓐ", "U+2028 is no line break")
+	eq(NetProto.clean_text("a\u2029b\rc", 200), "a b c")
+	eq(NetProto.clean_text("Sun\u2060ny\ufeff\u00ad\u061c", 24), "Sunny", "word joiner, BOM, soft hyphen, Arabic letter mark")
+	eq(NetProto.clean_text("\u3164\u115f", 24), "", "Hangul fillers: a blank name is no name")
+	eq(NetProto.clean_text("x" + char(0xE0041) + "y", 24), "xy", "tag characters")
+	eq(NetProto.clean_text("Zürich 日本 🎪 Ⓐ", 40), "Zürich 日本 🎪 Ⓐ", "real text is kept")
+	eq(ChatLines.clean_text("hi\u2028Sunny: pay me"), "hi Sunny: pay me", "room lines too")
+	eq(ChatLines.clean_text("Sun\u2063ny"), "Sunny")
+
+
 func test_untrusted_names_and_lines() -> void:
 	# A LAU Username / room line is anyone's text: no direction overrides or invisible
 	# characters, one line, names capped; BBCode is escaped where it is drawn.
@@ -189,6 +203,80 @@ func test_resampler_48k_to_16k() -> void:
 		total.append_array(rs.push(frames))
 	near(total.size(), 3200, 4, "a third of the samples")
 	near(_crossings(total.slice(100, 3100)), 2 * 440 * 3000 / 16000.0, 3, "pitch kept")
+
+
+## The mic path: a 44.1 kHz voice band (1 kHz + 2.9 kHz) resampled to 16 kHz keeps its
+## timing (the box filter used to sit on the nearest input sample: ~15 dB SNR at 3 kHz),
+## and pushing it in uneven chunks (one per game frame) gives exactly what one push does.
+func test_resampler_keeps_timing_across_chunks() -> void:
+	var rate := 44100.0
+	var n := int(rate)
+	var whole := PackedVector2Array()
+	whole.resize(n)
+	for i in n:
+		var v := 0.3 * sin(TAU * 1000.0 * i / rate) + 0.2 * sin(TAU * 2900.0 * i / rate)
+		whole[i] = Vector2(v, v)
+	var a := VoiceCodec.Resampler.new(rate, 16000.0).push(whole)
+	var r := VoiceCodec.Resampler.new(rate, 16000.0)
+	var b := PackedFloat32Array()
+	var sizes := [735, 200, 1990, 1, 512, 3000]
+	var i := 0
+	var k := 0
+	while i < n:
+		var m := mini(n - i, int(sizes[k % sizes.size()]))
+		b.append_array(r.push(whole.slice(i, i + m)))
+		i += m
+		k += 1
+	eq(b.size(), a.size(), "chunked: as many samples")
+	var diff := 0.0
+	var err := 0.0
+	var sig := 0.0
+	for j in range(32, a.size() - 32):
+		var t := j / 16000.0
+		var ideal := 0.3 * sin(TAU * 1000.0 * t) + 0.2 * sin(TAU * 2900.0 * t)
+		diff = maxf(diff, absf(a[j] - b[j]))
+		err += (a[j] - ideal) * (a[j] - ideal)
+		sig += ideal * ideal
+	near(diff, 0.0, 1e-6, "chunked: the same samples")
+	var snr := 10.0 * log(sig / err) / log(10.0)
+	check(snr > 25.0, "timing kept: %.1f dB SNR against the ideal 16 kHz signal" % snr)
+
+
+## The sender's u16 clock jumped by more than half a wrap (a 33 s stall): after a few
+## snapshots that look "older", the avatar follows the new ones instead of freezing.
+func test_interpolation_resyncs_after_a_long_stall() -> void:
+	var it := NetInterp.new()
+	for i in 5:
+		it.push(1000 + i * 100, Vector3(i, 0, 0), 0, 0, 0, 1000.0 + i * 100.0)
+	# 40 s later on both clocks: 1000 + 40000 + 400 is more than 0x8000 ahead
+	var t0 := 41400
+	for i in 5:
+		it.push((t0 + i * 100) & 0xFFFF, Vector3(100 + i, 0, 0), 0, 0, 0, 41400.0 + i * 100.0)
+	var s := it.sample(41400.0 + 400.0 + NetInterp.DELAY_MS)
+	check(not s.is_empty() and (s["pos"] as Vector3).x > 100.0, "follows the sender again: x = %s" % str(s.get("pos", "—")))
+	# and a single reordered snapshot is still just dropped
+	it.push((t0 + 100) & 0xFFFF, Vector3(-50, 0, 0), 0, 0, 0, 41900.0)
+	near((it.sample(41400.0 + 400.0 + NetInterp.DELAY_MS)["pos"] as Vector3).x, 104.0, 0.01, "one late packet dropped")
+
+
+## The server's invites are shape-checked before they reach notes and the screen.
+func test_clean_invite() -> void:
+	var w1 := "0x" + "a".repeat(40)
+	var w2 := "0x" + "b".repeat(40)
+	var q := "0x" + "c".repeat(40)
+	var good := {"id": "1a2b3c4d", "from": w1, "to": w2, "from_name": "Al\u202Eice", "game": "pool", "stake": " 2 Ⓐ",
+		"room": q, "door": "arcade", "state": "pending", "created": 1.8e9, "expires": 1.8e9 + 90, "match": ""}
+	var c := NetClient.clean_invite(good)
+	eq(c["stake"], "2", "stake normalised")
+	eq(c["from_name"], "Alice", "direction override removed")
+	eq(int(c["expires"]), 1800000090)
+	eq(NetClient.clean_invite(good.merged({"stake": "1e9; pay 0xdead"}, true))["stake"], "", "a stake that is not a number of Ⓐ is no stake")
+	eq(NetClient.clean_invite(good.merged({"from": "0x1234"}, true)), {}, "bad wallet: dropped")
+	eq(NetClient.clean_invite(good.merged({"game": "poker"}, true)), {}, "unknown game: dropped")
+	eq(NetClient.clean_invite(good.merged({"state": "paid"}, true)), {}, "unknown state: dropped")
+	eq(NetClient.clean_invite(good.merged({"door": "https://x"}, true)), {}, "unknown door: dropped")
+	eq(NetClient.clean_invite(good.merged({"id": "../../x"}, true)), {}, "bad id: dropped")
+	eq(NetClient.clean_invite("nope"), {}, "not an object")
 
 
 func test_interpolation() -> void:
