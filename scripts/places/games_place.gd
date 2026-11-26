@@ -413,7 +413,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if _any_open():
 		return
-	if event.is_action_pressed("interact") and _near_spot >= 0 and not _near_exit:
+	if event.is_action_pressed("interact") and _near_spot >= 0 and not _near_exit and not panel_open():
 		get_viewport().set_input_as_handled()
 		prompt_label.text = ""
 		use_spot(_near_spot)

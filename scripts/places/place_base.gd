@@ -224,10 +224,10 @@ func _process(_delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if chat_ctl == null or chat_ctl.is_open() or DoorSequence.active_in(self):
 		return
-	if event.is_action_pressed("chat"):
+	if event.is_action_pressed("chat") and not (_settings != null and _settings.visible):
 		get_viewport().set_input_as_handled()
 		chat_ctl.open()
-	elif event.is_action_pressed("interact") and _near_exit:
+	elif event.is_action_pressed("interact") and _near_exit and not panel_open():
 		get_viewport().set_input_as_handled()
 		_leave()
 	elif event.is_action_pressed("controls_help") and help:
@@ -260,6 +260,11 @@ func _toggle_settings() -> void:
 		_settings.settings_closed.connect(_close_settings)
 	_settings.show_menu()
 	player.process_mode = Node.PROCESS_MODE_DISABLED
+
+
+## F2 or F1 is open: Use and the place's own keys wait (Esc/F1/F2 still reach PlaceBase).
+func panel_open() -> bool:
+	return (_settings != null and _settings.visible) or (help != null and help.visible)
 
 
 func _close_settings() -> void:
