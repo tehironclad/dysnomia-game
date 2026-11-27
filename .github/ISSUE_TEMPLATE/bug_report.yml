@@ -1,0 +1,41 @@
+name: Bug report
+description: Something in the game is broken or wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Never paste a seed phrase, private key or anything a wallet asks you to keep secret.
+        Security problems: use Security → Report a vulnerability instead of a public issue.
+  - type: input
+    id: version
+    attributes:
+      label: Game version
+      description: Shown in F2 (Settings) and on the download page, e.g. 0.9.6
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options: [Windows, macOS (Apple silicon), macOS (Intel), Linux, Other]
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: Graphics (F2 shows the GPU, renderer and level)
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Where were you (which QING, building or game), and what did you press?
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log (optional)
+      description: |
+        Windows: %APPDATA%\Godot\app_userdata\Dysnomia\logs\godot.log · macOS: ~/Library/Application Support/Godot/app_userdata/Dysnomia/logs/godot.log · Linux: ~/.local/share/godot/app_userdata/Dysnomia/logs/godot.log
+      render: text

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Download the game
+    url: https://enterdysnomia.com/download
+    about: Builds for Windows, macOS and Linux, with SHA-256 checksums.
+  - name: Report a security problem privately
+    url: https://github.com/tehironclad/dysnomia-game/security/advisories/new
+    about: Please don't post exploit details in a public issue.

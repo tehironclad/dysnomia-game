@@ -1,0 +1,16 @@
+name: Idea or feature
+description: Something you'd like to see in the game
+labels: [idea]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What would you like, and why would it make you open the game?
+    validations:
+      required: true
+  - type: textarea
+    id: chain
+    attributes:
+      label: Anything on the chain it depends on? (optional)
+      description: Contracts, tokens or QINGs involved, with addresses if you know them.

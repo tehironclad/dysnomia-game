@@ -1,0 +1,47 @@
+# Tests: on every push to master and every pull request, import the project, compile every script and
+# shader, run the unit tests (tools/check.sh) and the game server's self-tests. No network, no secrets:
+# the token is read-only and pull requests from forks get nothing else.
+name: tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: "4.6.1"
+  # SHA512-SUMS.txt of https://github.com/godotengine/godot/releases/tag/4.6.1-stable (as in release.yml)
+  GODOT_SHA512: "a76fd0fe1d44a2dd6c065b6f7b434ad75f5593c07bda3d3017f8304f2d069acbcf0f39cb5d0976f0434b56e9ea852032ddbcbdb7e0ce1c75a47e1dacb6794bd7"
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          lfs: true
+          persist-credentials: false
+
+      - name: Godot (checksum pinned)
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -fsSL --proto '=https' --tlsv1.2 -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          echo "${GODOT_SHA512}  godot.zip" | sha512sum -c -
+          unzip -q godot.zip && mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot
+
+      - name: Import, compile, unit tests
+        run: GODOT=./godot tools/check.sh
+
+      - name: Game server self-test (sign-in, chat, invites, events, daily, bumps, abuse)
+        run: timeout 600 ./godot --headless --path . -s res://tools/net_selftest.gd -- --port=18787 2>&1 | tee net.log; grep -q ', 0 failed' net.log
+
+      - name: Telegram bridge self-test (a local mock of the Bot API)
+        run: timeout 600 ./godot --headless --path . -s res://tools/tg_selftest.gd 2>&1 | tee tg.log; grep -q ', 0 failed' tg.log

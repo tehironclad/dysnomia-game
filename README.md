@@ -1,5 +1,7 @@
 # Dysnomia
 
+[![tests](https://github.com/tehironclad/dysnomia-game/actions/workflows/tests.yml/badge.svg)](https://github.com/tehironclad/dysnomia-game/actions/workflows/tests.yml) [![latest release](https://img.shields.io/github/v/release/tehironclad/dysnomia-game)](https://github.com/tehironclad/dysnomia-game/releases/latest) [![licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
 **Free, open source (MIT), and a community project:** not made, endorsed or run by the creator of
 Dysnomia. Download it at **https://enterdysnomia.com/download**, or build it yourself from this code.
 
@@ -10,6 +12,12 @@ Dysnomia. Download it at **https://enterdysnomia.com/download**, or build it you
   [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md); every chain fact in [`docs/LEARNINGS.md`](docs/LEARNINGS.md).
 - **Builds come from this repo.** GitHub Actions builds each release from a commit here
   ([`release.yml`](.github/workflows/release.yml)); the download page lists that commit and each file's SHA-256.
+
+| | |
+|---|---|
+| ![A QING's skyline, one tower per player, built from their real bars](docs/media/skyline.webp) | ![Sunny pours your drink in Sunny's Pub](docs/media/pour.webp) |
+| ![The blacklight rave arcade](docs/media/rave.webp) | ![The Affection Fair and the Upsilon Rocket](docs/media/fair.webp) |
+| ![Seated pool against another player](docs/media/pool.webp) | ![The Field: every QING on PulseChain](docs/media/field.webp) |
 
 ### First launch on a Mac or Windows
 The builds aren't signed with an Apple or Microsoft certificate yet, so the first launch shows a warning.
@@ -34,6 +42,7 @@ xattr -dr com.apple.quarantine /Applications/Dysnomia.app
 1. Install [Godot 4.6.1](https://godotengine.org/download/archive/4.6.1-stable/) (standard, not .NET).
 2. Clone this repo and open `project.godot`, then press F5. Or run `./play.sh` / `play.bat`.
 3. Checks: `GODOT=godot tools/check.sh` (import, compile, unit tests). See [`docs/BUILDING.md`](docs/BUILDING.md).
+4. Want to help? Read [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 A viewport onto a living on-chain organism. Dysnomia renders the Dysnomia contracts on PulseChain (chain
 369) as a world you can walk:
