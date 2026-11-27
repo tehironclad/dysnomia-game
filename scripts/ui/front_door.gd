@@ -316,7 +316,7 @@ func _build_left() -> void:
 	more.add_theme_constant_override("separation", 8)
 	_left.add_child(more)
 	for m in [["The Void · identity", func(): open_panel("void")], ["Opportunities", func(): open_panel("opps")],
-			["Guide", func(): open_panel("guide")], ["Settings", _toggle_settings], ["Quit", func(): get_tree().quit()]]:
+			["Guide", func(): open_panel("guide")], ["Money", func(): open_panel("money")], ["Settings", _toggle_settings], ["Quit", func(): get_tree().quit()]]:
 		var b := Button.new()
 		b.text = m[0]
 		b.custom_minimum_size = Vector2(0, 38)
@@ -454,11 +454,14 @@ func _build_right() -> void:
 		pc.visibility_changed.connect(func(): if not pc.visible and _current == pk: open_panel("summary"))
 
 
-## Shows one panel on the right ("summary" | "void" | "identity" | "guide" | "opps").
+## Shows one panel on the right ("summary" | "void" | "identity" | "guide" | "money" | "opps").
 ## AccessSteps sends players here for the Void and their holdings.
 func open_panel(which: String) -> void:
 	if which == "":
 		which = "summary"
+	if which == "guide" or which == "money":  # one panel, two pages
+		_guide.set_page("money" if which == "money" else "acts")
+		which = "guide"
 	_current = which
 	for k in PANELS:
 		var p: Control = _panels[k]

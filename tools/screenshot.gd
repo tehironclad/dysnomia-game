@@ -4,8 +4,8 @@ extends SceneTree
 ##   godot --path . -s res://tools/screenshot.gd -- --out=/abs/shot.png
 ##       [--scene=<the main scene: the front door>] [--qing=0x…] [--frames=90] [--quality=0..3]
 ##       [--session=0x…] [--open=su|beat|world|steward] (with --view=hud: a move's panel, previewed only)
-##       [--toggle=guide|help] (with --view=hud: show that panel)
-##       (the front door: --open=void|identity|guide|opps shows that panel on the right)
+##       [--toggle=guide|money|help] (with --view=hud: show that panel; money = the Guide's Money page)
+##       (the front door: --open=void|identity|guide|money|opps shows that panel on the right)
 ##       [--update=x.y.z] (the front door: the "new version" notice as if the site named x.y.z, labelled PREVIEW)
 ##       [--daily=card|board|play] (today's challenge: the front door's card, its board panel, or the
 ##       DailyPlay screen with a practice run held mid-play; the seed block and the board are read live)
@@ -232,7 +232,10 @@ func _run() -> void:
 	if _toggle != "":
 		for i in 30:
 			await process_frame  # the scene (and its panels) must exist first
-	if _toggle != "" and current_scene and current_scene.get(_toggle) != null:
+	if _toggle == "money" and current_scene and current_scene.get("guide") != null:
+		current_scene.get("guide").cycle()  # the acts
+		current_scene.get("guide").cycle()  # → Money
+	elif _toggle != "" and current_scene and current_scene.get(_toggle) != null:
 		current_scene.get(_toggle).toggle()
 	if _dive != "":
 		for i in 20:

@@ -688,7 +688,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		help.toggle()
 	elif event.is_action_pressed("guide"):
 		_close_panels(guide)
-		guide.toggle()
+		guide.cycle()  # the acts → Money → closed
 	elif event.is_action_pressed("opportunities"):
 		_close_panels(opportunities)
 		opportunities.toggle()
