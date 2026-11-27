@@ -13,6 +13,11 @@ extends Node2D
 ## replaces the keyboard for tests. A dive-in 3D world may set `input_remap` so the keys match its
 ## camera (e.g. Entropy Drift's chase view steers the 2D field's vertical axis with left/right).
 ## `game_over(score)` is emitted once per credit, never in attract mode (the demo just restarts).
+##
+## Recording (the daily challenge, DailyReplay): with `recording` on, a run keeps the IN_* bits it
+## read at every step (`rec_steps`, after any input_remap) and those held when it started
+## (`rec_start`). Replaying them from the same seed gives the same score: the simulation reads
+## nothing else (no clock, no global random, no scene).
 
 signal game_over(score: int)
 
@@ -52,6 +57,9 @@ var input_remap := {}  ## keyboard IN_* bit → game IN_* bit (a 3D world's cont
 var held := 0  ## IN_* bits held this step
 var pressed := 0  ## IN_* bits that went down this step
 var t := 0.0  ## simulated seconds since start / attract
+var recording := false  ## keep this run's input log (rec_start + one byte of bits per step)
+var rec_start := 0
+var rec_steps := PackedByteArray()
 var rng := RandomNumberGenerator.new()
 var ai_rng := RandomNumberGenerator.new()  ## the demo player's own dice (attract only)
 
@@ -96,6 +104,8 @@ func step(dt: float) -> void:
 	if not (playing or attract_mode):
 		return
 	var now := _read_input()
+	if recording and playing:
+		rec_steps.append(now & 0x1F)
 	pressed = now & ~held
 	held = now
 	t += dt
@@ -184,6 +194,8 @@ func _begin(seed: int) -> void:
 	_reset()
 	# A button still held from spending the credit is not a press.
 	held = 0 if attract_mode else _read_input()
+	rec_start = held & 0x1F
+	rec_steps = PackedByteArray()
 	queue_redraw()
 
 

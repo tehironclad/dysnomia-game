@@ -3,6 +3,7 @@ extends PanelContainer
 ## The compact act tracker on the HUD: the top acts here (as PlayLoop ranks
 ## them, the same ones the beacons mark) and the personal goals, each goal
 ## from chain reads and saying so on hover. Unread values show "—".
+## The last line is today's challenge (DailyRun: the day's game, your tries, time left; local facts).
 
 const SHOW_ACTS := 3
 const SHOW_GOALS := 2  # the rest: the Steward at the Core, and the guide
@@ -10,6 +11,8 @@ const SHOW_GOALS := 2  # the rest: the Steward at the Core, and the guide
 var _acts: VBoxContainer
 var _goals: VBoxContainer
 var _foot: Label
+var _daily: Label
+var _daily_t := 0.0
 
 
 func _ready() -> void:
@@ -37,6 +40,30 @@ func _ready() -> void:
 	_foot.theme_type_variation = "MutedLabel"
 	_foot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(_foot)
+	_daily = Label.new()
+	_daily.theme_type_variation = "MonoLabel"
+	_daily.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
+	_daily.add_theme_color_override("font_color", Color("#ffd36b"))
+	_daily.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_daily.mouse_filter = Control.MOUSE_FILTER_PASS
+	_daily.tooltip_text = "Today's challenge: one arcade game a UTC day, free, the same seed for everyone (the first block after 00:00 UTC). In the arcade's ★ TODAY cabinet, or from the front door."
+	v.add_child(_daily)
+	_show_daily()
+
+
+func _process(delta: float) -> void:
+	_daily_t += delta
+	if _daily_t >= 30.0:
+		_daily_t = 0.0
+		_show_daily()
+
+
+## "★ TODAY · Void Lanes · 3/3 tries · 5 h 12 min left · arcade ★ cabinet"
+func _show_daily() -> void:
+	var st := DailyRun.status()
+	var seed: Dictionary = st["seed"]
+	var tries := "%d/%d tries" % [int(st["left"]), DailyChallenge.ATTEMPTS] if seed["state"] != "failed" else "seed —, practice"
+	_daily.text = "★ TODAY · %s · %s · %s · the arcade's ★ cabinet" % [st["title"], tries, st["left_text"]]
 
 
 static func _clear(box: Container) -> void:

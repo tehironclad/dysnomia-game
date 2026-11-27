@@ -289,6 +289,37 @@ func lb_submit(board: String, entry: Dictionary) -> Dictionary:
 	return await _lb_request(NetProto.C_LB_SUBMIT, {"board": board, "entry": entry})
 
 
+# ── the daily challenge (NetDaily) ─────────────────────────────────────────
+
+## True when this server runs the daily board (its welcome lists "daily").
+func has_daily() -> bool:
+	return is_online() and features.has("daily")
+
+
+## Spends one of today's scored attempts: {ok, attempt, left, seed} | {ok: false, error}.
+func daily_start(day: String) -> Dictionary:
+	if not has_daily():
+		return {"ok": false, "error": "—"}
+	return await _lb_request(NetDaily.C_DAILY_START, {"day": day})
+
+
+## The run's input log (the server replays it): {ok, score, rank, verified, check} | {ok: false, error}.
+func daily_submit(day: String, attempt: int, score: int, log_text: String) -> Dictionary:
+	if not has_daily():
+		return {"ok": false, "error": "—"}
+	return await _lb_request(NetDaily.C_DAILY_SUBMIT, {"day": day, "attempt": attempt, "score": score, "log": log_text})
+
+
+## The day's board, cleaned (NetDaily.clean_board).
+func daily_board(day: String, n: int = DailyChallenge.BOARD_SHOW) -> Dictionary:
+	if not has_daily():
+		return {"ok": false, "error": "—"}
+	var b: Dictionary = await _lb_request(NetDaily.C_DAILY_BOARD, {"day": day, "n": n})
+	if not b.get("ok", false):
+		return {"ok": false, "error": NetProto.clean_text(NetProto.str_of(b.get("error", "—")), 160)}
+	return NetDaily.clean_board(b)
+
+
 func _lb_request(type: int, body: Dictionary) -> Dictionary:
 	if not is_online():
 		return {"ok": false, "error": "—"}
@@ -435,7 +466,7 @@ func _handle(m: PackedByteArray) -> void:
 		NetProto.S_NOTICE:
 			var b := NetProto.json_body(m)
 			notice.emit(NetProto.clean_text(NetProto.str_of(b.get("code", "")), 24), NetProto.clean_text(NetProto.str_of(b.get("text", "")), 240))
-		NetProto.S_LB:
+		NetProto.S_LB, NetDaily.S_DAILY_START, NetDaily.S_DAILY_RESULT, NetDaily.S_DAILY_BOARD:
 			var b := NetProto.json_body(m)
 			var req := NetProto.int_of(b.get("req", 0))
 			if _lb_waiting.has(req):

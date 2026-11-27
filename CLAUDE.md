@@ -235,6 +235,13 @@
   (honour-bound; ✓ paid only from an AFFECTION Transfer log), autoload `Invites` (session notifications, replay, pay via
   `TableBook.pay_debt`), `NotificationPanel` (N; a bell beside the wallet chip). Bots: `net_bot.gd -- --invite=0x… --play` /
   `--accept --play`. Shots: `--net-url=… --net-key=<test key> --session=<its wallet> --invite=panel|seated|play|result`.
+- Daily challenge (`scripts/games/daily/`, `scripts/ui/daily/`, LEARNINGS §23, SERVER.md §8d): one original arcade game a UTC
+  day (`DailyChallenge.game_for`), seeded by the first block ≥ 00:00 UTC (`DailySeed`, a search on block timestamps;
+  "checking…"/"—" → practice only), free, 3 scored tries (spent at start), practice unlimited on another seed. Runs record
+  their input bits (`ArcadeGame.recording`); the server replays them (`DailyReplay`, `DailyServer`, NetDaily C 55–59 /
+  S 115–119, feature `"daily"`, board `daily:<day>`, event `daily_record`). Front door card `DailyCard` → `DailyPlay`
+  (`scenes/ui/daily_play.tscn`), board `DailyBoard`, today's cabinet "★ TODAY ★", a HUD tracker line. Live check:
+  `tools/live_daily.gd`. Shots: `--daily=card|board|play`.
 - Front door (`scripts/ui/front_door.gd`): the title screen over `FieldGlobe` (the moon + every QING; warm halo =
   developed, ice ring = yours, white ring = here; shared with the Field). Four doors (Connect · Explore · Continue to my
   QING · The Field), who-you-are, news + status strip. `open_panel(void|identity|guide|opps)`; shot `--open=`.

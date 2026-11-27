@@ -29,6 +29,11 @@ extends SceneTree
 ##       [--record=/abs/out.wav]  write every voice frame it receives, decoded, to a 16 kHz WAV, and a
 ##                          .csv beside it (arrival unix ms, sender id, seq) for latency / loss / jitter
 ##       [--stats]          print its byte counters every 10 s and at the end
+## The daily challenge (NetDaily, docs/SERVER.md §8d):
+##       [--daily=N]        play N scored tries of today's game on the day's real seed (the first block
+##                          ≥ 00:00 UTC, read from the chain), each with a scripted input pattern (varied by
+##                          the key), waiting out the run's length, then send the input log for the server to
+##                          replay; prints each result and the board. Needs a server that lists "daily".
 ## It prints every event it gets ("[bot] event: …", in the feed's words) and every peer's
 ## name tag as this game would draw it ("[bot] tag: …"): the chain's LAU name for the
 ## verified wallet (read-only), the short wallet, or "guest".
@@ -80,6 +85,7 @@ func _run() -> void:
 	var talk_after := 0.0
 	var record := ""
 	var stats := false
+	var daily := 0
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		var v := kv[1] if kv.size() > 1 else ""
@@ -116,6 +122,7 @@ func _run() -> void:
 			"talk-after": talk_after = float(v)
 			"record": record = v
 			"stats": stats = true
+			"daily": daily = clampi(int(v), 1, 3)
 	c = load("res://scripts/net/net_client.gd").new()
 	root.add_child(c)
 	c.signer_wallet = EthSign.address_of_private(key)
@@ -142,6 +149,8 @@ func _run() -> void:
 			await process_frame
 		print("[bot] signed in as ", c.wallet)
 	c.join(qing, {"name": nm if not guest else "", "head": head, "acc": [], "body": "male"})
+	if daily > 0:
+		await _daily(daily, key)
 	if after_peer:
 		while c.peers.is_empty() and Time.get_ticks_msec() - t0 < secs * 1000.0:
 			await process_frame
@@ -265,6 +274,48 @@ var _rec_log: Array = []       # [unix ms, sender id, seq] per frame received
 
 
 ## Mono floats at 16 kHz: "tone:440" (0.5 amplitude, 2 s) or "wav:/abs/path.wav" (16-bit PCM).
+## Plays `n` scored tries of today's challenge (real seed, scripted inputs) and submits them.
+func _daily(n: int, key: String) -> void:
+	var dc = load("res://scripts/games/daily/daily_challenge.gd")
+	var ds = load("res://scripts/games/daily/daily_seed.gd")
+	ds.use_file = false
+	var day: String = dc.day_of(int(Time.get_unix_time_from_system()))
+	var sd: Dictionary = await ds.find(day)
+	if sd.get("state", "") != "ok":
+		print("[bot] daily: the seed block could not be read: — (%s)" % sd.get("error", ""))
+		return
+	var gid: String = dc.game_for(day)
+	print("[bot] daily %s: %s, seed block %d" % [day, gid, int(sd["block"])])
+	var salt := key.hash()
+	for k in n:
+		var st: Dictionary = await c.daily_start(day)
+		if not st.get("ok", false):
+			print("[bot] daily: no try: ", st.get("error", "—"))
+			return
+		var g = load(dc.script_of(gid)).new()
+		g.recording = true
+		g.scripted_input = 0
+		g.start(int(sd["seed"]))
+		var period := 40 + absi(salt + k * 7) % 50
+		for i in 600:  # at most 10 s of play
+			if not g.playing:
+				break
+			g.scripted_input = (16 if i % period < period / 3 else 0) | (1 if (i / (period + 20)) % 2 == 0 else 2)
+			g.step(1.0 / 60.0)
+		if g.playing:
+			g.end_game()
+		var steps: int = g.rec_steps.size()
+		var log_text: String = dc.encode_log(g.rec_start, g.rec_steps)
+		var score: int = g.score
+		g.free()
+		await create_timer(steps / 60.0 + 0.5).timeout  # a run can't arrive before it could have been played
+		var r: Dictionary = await c.daily_submit(day, int(st["attempt"]), score, log_text)
+		print("[bot] daily try %d: %d → %s" % [int(st["attempt"]), score, ("rank %d · %s" % [int(r.get("rank", 0)), r.get("check", "")]) if r.get("ok", false) else "refused: %s" % r.get("error", "")])
+	var b: Dictionary = await c.daily_board(day)
+	for row in b.get("rows", []):
+		print("[bot] board: %s %d %s" % [row["wallet"], int(row["score"]), "✓" if row["verified"] else ""])
+
+
 func _talk_source(spec: String) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	if spec.begins_with("tone:"):

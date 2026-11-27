@@ -360,6 +360,7 @@ HUD's stack; HudLayout slot `"activity"`, top-left under the territory card), `l
 | `result` | both machines' replays agreed on a game (never a disputed one); `push` for a draw | signed-in players |
 | `record` | a board row took #1 (`verified` as the board checked it) | signed-in players |
 | `claim` | a player claims a chain fact (`rocket`: every fair game paid at that QING), once an hour | signed-in players |
+| `daily_record` | a replayed daily-challenge run took #1 on today's board `daily:<day>` (§8d; `game`, `score`, `verified`) | signed-in players |
 
 Fields: `w`/`n` (the player's wallet and their game's claimed name), `w2`/`n2` (the other player), `room` (a QING),
 `place`, `game`, `stake`, `board`, `score`, `verified`, `push`, `claim`, `t` (server unix time).
@@ -383,6 +384,43 @@ for the notification panel's ONLINE ACTIVITY.
 Screenshot: a local server, bots, then `screenshot.gd -- --net-url=ws://127.0.0.1:N --net-key=<test key>
 --session=<its wallet> --activity=4` (waits for 4 lines; debug builds: `--net-lau-of=<bot wallet>=<real wallet>` draws
 a bot with a real wallet's LAU name, marked "(test)").
+
+## 8d. The daily challenge (for developers)
+
+One arcade game a UTC day, the same run for everyone (`DailyChallenge`, LEARNINGS §23). Its own message numbers
+(`scripts/net/net_daily.gd`, `NetDaily`: C 55–59, S 115–119; 58, 59, 118, 119 are free for it). A client sends them only
+when the welcome's `features` lists `"daily"`. The server side is `scripts/net/server/daily_server.gd` (`DailyServer`).
+
+- `C_DAILY_START` (55) `{req, day}` → `S_DAILY_START` (115) `{req, ok, day, game, attempt, left, seed: {state, block,
+  hash}, error}`. Signed-in wallets only, `day` must be today (UTC). The server must have read the day's seed block
+  itself (`DailySeed`: the first block with timestamp ≥ 00:00 UTC, found by a search on block timestamps); if it can't,
+  no scored tries (practice only). **The try is spent here**, not when a score arrives: 3 a day (`DailyBook`), so a
+  player can't play many runs and send only the best one.
+- `C_DAILY_SUBMIT` (56) `{req, day, attempt, score, log}` → `S_DAILY_RESULT` (116) `{req, ok, day, score, rank, best,
+  verified, check, kept, error}`. `log` is the run's input log (`DailyChallenge.encode_log`: one byte of IN_* bits per
+  60 Hz step, run-length + base64, ≤ 12,000 characters). The server **replays it** on the day's seed
+  (`DailyReplay`, 1,500 steps a frame so a long run never stalls it; ≤ 72,000 steps; a queue of 16, one per wallet) and
+  the replay's score is the score. Refused: a claimed score the replay doesn't give ("forged"), a log that runs on past
+  the game's end, a try never started or already scored, a run longer than the time since its try started (+3 s), a
+  day other than today (yesterday's runs are taken for 10 minutes after midnight). A good run goes on the board
+  `daily:<day>` (Leaderboards rows: one per wallet, its best; tie → the earlier run), `verified: true`, `check:
+  "verified: replayed on the day's seed (block N, S steps)"`. Taking #1 sends the event `daily_record` (§8c) to every
+  signed-in player (the Telegram bridge can forward this kind).
+- `C_DAILY_BOARD` (57) `{req, day, n}` → `S_DAILY_BOARD` (117) `{req, ok, day, game, seed, rows (top n ≤ 50), me:
+  {signed, rank, score, used, streak, best_streak}, yesterday: {day, game, winner}, left_s}`. Guests may ask.
+  `C_LB_TOP` reads `daily:<day>` too; a plain `C_LB_SUBMIT` to a daily board is refused (a verifier).
+- **Reset:** the board is keyed by the UTC day, so 00:00 UTC starts a new one (and new tries). Boards older than 7
+  days and tries older than 3 are dropped. The book (tries, each wallet's streak of days played) is `daily.json` in the
+  server's data folder.
+- **Limits:** `C_DAILY_*` one every 2 s per connection (burst 5; over it: "slow down", not a strike); a malformed day is
+  a strike.
+- **Trust:** the replay proves the score follows from the game's rules on the day's seed and that input log. It can't
+  prove a person played it: the seed is public at 00:00 UTC, so a modified client could rehearse it offline or search
+  for an input log. The 3-try limit binds honest clients.
+- **Check it:** `tools/net_selftest.gd` (the daily block: the welcome, a guest refused, a try, a too-early run, a
+  forged score refused by the replay, the true one verified #1, the event, the 4th try refused, a plain score refused,
+  `C_LB_TOP`, the rate limit, the reset to tomorrow with yesterday's winner and streak 2; its seed block is a fixture
+  so the test needs no network), `tests/test_daily.gd`, `tools/live_daily.gd` (finds today's block on the chain).
 
 ### Bumps (players running into each other)
 

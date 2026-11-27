@@ -531,6 +531,38 @@ func submit(board: String, entry: Dictionary) -> Dictionary:
 	return await client.lb_submit(board, entry)
 
 
+# ── the daily challenge (NetDaily; DailyRun calls these) ───────────────────
+
+## True when a server answering here runs the daily board (online and its welcome lists "daily").
+func has_daily() -> bool:
+	return client != null and client.has_daily()
+
+
+## The wallet the server's sign-in proved ("" = a guest, or offline).
+func signed_wallet() -> String:
+	return client.wallet if client != null and is_online() else ""
+
+
+func daily_start(day: String) -> Dictionary:
+	if not has_daily():
+		return {"ok": false, "error": "—"}
+	if client.wallet == "":
+		return {"ok": false, "error": "sign in to play for the board"}
+	return await client.daily_start(day)
+
+
+func daily_submit(day: String, attempt: int, score: int, log_text: String) -> Dictionary:
+	if not has_daily():
+		return {"ok": false, "error": "—"}
+	return await client.daily_submit(day, attempt, score, log_text)
+
+
+func daily_board(day: String) -> Dictionary:
+	if not has_daily():
+		return {"ok": false, "error": "—"}
+	return await client.daily_board(day)
+
+
 # ── settings ───────────────────────────────────────────────────────────────
 
 func _load_settings() -> void:

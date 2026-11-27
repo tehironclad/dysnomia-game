@@ -7,6 +7,8 @@ extends SceneTree
 ##       [--toggle=guide|help] (with --view=hud: show that panel)
 ##       (the front door: --open=void|identity|guide|opps shows that panel on the right)
 ##       [--update=x.y.z] (the front door: the "new version" notice as if the site named x.y.z, labelled PREVIEW)
+##       [--daily=card|board|play] (today's challenge: the front door's card, its board panel, or the
+##       DailyPlay screen with a practice run held mid-play; the seed block and the board are read live)
 ##       [--dive=<arcade catalog id> --dive-phase=push|warp|inside|menu --classic] (an arcade place:
 ##       dive into that cabinet; the attract demo plays, nothing is paid)
 ##       [--seat=pool|cards --seat-phase=aim|roll|overhead|seated|enter] (an arcade place or the pub:
@@ -70,6 +72,7 @@ var _move := ""  # dolly | orbit | crane | pan: a camera move over the last --fr
 var _move_amt := 0.0
 var _move_pivot := 30.0
 var _hide_ui := false
+var _daily := ""  # card | board | play: today's challenge (DailyCard, DailyBoard, DailyPlay)
 var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
@@ -120,6 +123,10 @@ func _initialize() -> void:
 			_activity = int(a.substr(11))
 		elif a.begins_with("--invite="):
 			_invite = a.substr(9)
+		elif a.begins_with("--daily="):
+			_daily = a.substr(8)
+			if _daily == "play":
+				_scene = "res://scenes/ui/daily_play.tscn"
 		elif a.begins_with("--update="):
 			_update = a.substr(9)
 		elif a.begins_with("--access-fee="):
@@ -265,6 +272,8 @@ func _run() -> void:
 		await _invite_preview()
 	if _activity > 0:
 		await _activity_preview()
+	if _daily != "":
+		await _daily_preview()
 	if _update != "":
 		for i in 10:
 			await process_frame
@@ -320,6 +329,24 @@ func _hide_layers(n: Node) -> void:
 			c.visible = false
 		else:
 			_hide_layers(c)
+
+
+## Today's challenge: waits for the day's seed block to be read (or fail), then shows the card,
+## the board panel or a practice run in DailyPlay. Nothing is submitted.
+func _daily_preview() -> void:
+	for i in 10:
+		await process_frame
+	var day: String = load("res://scripts/games/daily/daily_run.gd").today()
+	var seed_script = load("res://scripts/games/daily/daily_seed.gd")
+	var t0 := Time.get_ticks_msec()
+	while seed_script.peek(day)["state"] == "checking" and Time.get_ticks_msec() - t0 < 90000:
+		await process_frame
+	print("[shot] daily %s: %s" % [day, seed_script.peek(day)])
+	if _daily == "play" and current_scene and current_scene.has_method("preview_play"):
+		current_scene.preview_play()
+	elif current_scene and current_scene.has_method("preview_daily"):
+		current_scene.preview_daily(_daily)
+	await create_timer(3.0).timeout
 
 
 ## The room chat (ChatFeed): waits for the feed, replays the last real lines

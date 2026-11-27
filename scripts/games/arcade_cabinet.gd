@@ -23,6 +23,7 @@ var _awake := true
 var marquee_label: Label3D
 var near_title: Label3D
 var near_sub: Label3D
+var today_badge: Label3D  ## "TODAY": this cabinet runs today's challenge (DailyChallenge), free
 var _near := 0.0
 var _near_on := false
 
@@ -98,6 +99,7 @@ func setup(p_entry: Dictionary, accent: Color) -> void:
 	add_child(screen)
 	_build_bezel(screen.transform, accent)
 	_build_near_label(accent)
+	mark_today(is_today())
 	var body := StaticBody3D.new()
 	add_child(body)
 	var cs := CollisionShape3D.new()
@@ -247,13 +249,39 @@ func _build_near_label(accent: Color) -> void:
 func near_text() -> String:
 	if not playable():
 		return "free to watch"
+	if is_today():
+		return "TODAY'S CHALLENGE: free · " + Prices.menu_line()
 	return Prices.menu_line()
+
+
+## True when this cabinet runs today's challenge game (the same for everyone, by the UTC date).
+func is_today() -> bool:
+	return entry.get("kind", "game") == "game" and String(entry.get("id", "")) == DailyChallenge.game_for(DailyChallenge.day_of(int(Time.get_unix_time_from_system())))
+
+
+## The gold "TODAY" over the marquee (a new UTC day moves it: GamesPlace calls this).
+func mark_today(on: bool) -> void:
+	if on and today_badge == null:
+		today_badge = Label3D.new()
+		today_badge.name = "TodayBadge"
+		today_badge.text = "★ TODAY ★"
+		today_badge.font = DeepFieldTheme.display_font()
+		today_badge.font_size = 64
+		today_badge.pixel_size = 0.004
+		today_badge.modulate = Color(1.0, 0.83, 0.42)
+		today_badge.outline_size = 12
+		today_badge.outline_modulate = Color(0.08, 0.04, 0.0, 0.9)
+		today_badge.position = Vector3(0, MARQUEE_Y + MARQUEE.y * 0.5 + 0.13, 0.3)
+		add_child(today_badge)
+	if today_badge:
+		today_badge.visible = on
 
 
 ## Shows the floating title (fades in/out). GamesPlace calls it for the nearest cabinet.
 func set_near(on: bool) -> void:
 	_near_on = on
 	if on and near_title and not near_title.visible:
+		mark_today(is_today())
 		near_sub.text = near_text()
 		near_title.visible = true
 		near_sub.visible = true
@@ -269,6 +297,9 @@ func _process(delta: float) -> void:
 	near_sub.modulate.a = _near
 	near_title.outline_modulate.a = _near * 0.9
 	near_sub.outline_modulate.a = _near * 0.9
+	if today_badge:  # the floating title says it then (its line starts "TODAY'S CHALLENGE")
+		today_badge.modulate.a = 1.0 - _near
+		today_badge.outline_modulate.a = 0.9 * (1.0 - _near)
 	if _near <= 0.0 and not _near_on:
 		near_title.visible = false
 		near_sub.visible = false
