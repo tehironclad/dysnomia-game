@@ -1,13 +1,9 @@
 # Release: on a version tag (v1.2.3), check → export Windows/Linux/macOS with release
 # templates → zip, plus a Windows installer (NSIS, installer/windows/dysnomia.nsi) → SHA-256 →
-# upload to the public download bucket (Cloudflare R2) → update latest.json, which the site
-# (https://enterdysnomia.com/download, and /api/download-manifest that the game's update notice reads) reads.
-#
-# Repository secrets (Settings → Secrets and variables → Actions):
-#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY  — an R2 API token scoped to the bucket only
-#   R2_BUCKET            — e.g. dysnomia-downloads
-#   R2_PUBLIC_BASE_URL   — the bucket's public URL, e.g. https://pub-xxxx.r2.dev or https://dl.systm0.app
-# The source stays private; only the built zips, the installer, SHA256SUMS and latest.json are public.
+# a GitHub Release v<version> on this repo with the zips, the installer, SHA256SUMS and latest.json.
+# The site (https://enterdysnomia.com/download, and /api/download-manifest that the game's update
+# notice reads) reads latest.json from this repo's latest release. No secrets: the workflow's own
+# token creates the release.
 # The installer is unsigned: Windows SmartScreen warns on first run (More info → Run anyway) until
 # release signing lands (docs/SECURITY_AUDIT.md).
 #
@@ -15,7 +11,8 @@
 # (the tag in the comment); Godot and its export templates are checked against SHA-512
 # sums pinned here (from the 4.6.1-stable release's SHA512-SUMS.txt) before they run;
 # NSIS, ImageMagick and librsvg come from Ubuntu's signed apt archive (makensis must be 3.x);
-# the workflow token is read-only and secrets reach only the upload step, as env vars;
+# the workflow token can write releases only (contents: write) and the only triggers are a v* tag
+# or a manual run by someone with write access (never a pull request);
 # inputs never reach a shell through ${{ }}.
 
 name: release
@@ -29,17 +26,12 @@ on:
         description: "Version to build (e.g. 0.9.0)"
         required: true
       publish:
-        description: "Upload to the public download bucket (else build only: the zips stay a private artifact)"
+        description: "Publish a GitHub Release v<version> (else build only: the files stay a workflow artifact)"
         type: boolean
         default: false
-      host:
-        description: "Where players download the files: r2 (Cloudflare bucket) or github (a GitHub Release on this repo; the repo must be public). latest.json always goes to R2, where the site reads it."
-        type: choice
-        options: [r2, github]
-        default: r2
 
 permissions:
-  contents: write  # a GitHub Release when host = github (runs only from a v* tag or a manual run by someone with write access)
+  contents: write  # the GitHub Release (runs only from a v* tag or a manual run by someone with write access)
 
 env:
   GODOT_VERSION: "4.6.1"
@@ -126,13 +118,9 @@ jobs:
       - name: Manifest
         env:
           V: ${{ steps.v.outputs.version }}
-          PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE_URL }}
-          HOST: ${{ inputs.host || 'r2' }}
         run: |
-          case "$PUBLIC_BASE" in https://*) ;; *) echo "R2_PUBLIC_BASE_URL must be https://"; exit 1;; esac
-          # Files live at <base>/<name>: the bucket's releases/<v>/ folder, or this repo's release v<v>
-          if [ "$HOST" = github ]; then FILES="https://github.com/$GITHUB_REPOSITORY/releases/download/v$V"
-          else FILES="${PUBLIC_BASE%/}/releases/$V"; fi
+          # The files live on this repo's release v<v>
+          FILES="https://github.com/$GITHUB_REPOSITORY/releases/download/v$V"
           python3 - "$V" "$FILES" "$GITHUB_SHA" <<'EOF'
           import hashlib, json, os, sys, datetime
           v, base, sha = sys.argv[1], sys.argv[2].rstrip("/"), sys.argv[3]
@@ -160,31 +148,18 @@ jobs:
           name: dysnomia-${{ steps.v.outputs.version }}
           path: dist/
 
-      - name: GitHub Release (host = github; the repo must be public, or players couldn't download)
-        if: (inputs.host || 'r2') == 'github' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && inputs.publish))
+      - name: GitHub Release (a v* tag, or a manual run from master with publish ticked)
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && inputs.publish)
         env:
           GH_TOKEN: ${{ github.token }}
           V: ${{ steps.v.outputs.version }}
         run: |
-          [ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" = "false" ] || { echo "The repo is private: make it public first, or publish with host = r2"; exit 1; }
-          gh release create "v$V" dist/*.zip dist/*.exe dist/SHA256SUMS dist/latest.json \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Dysnomia $V" \
-            --notes "Download: https://enterdysnomia.com/download (checks the SHA-256 for you). Built by this workflow from commit $GITHUB_SHA. A community project: not made, endorsed or run by the creator of Dysnomia."
-
-      - name: Upload to R2 (a v* tag, or a manual run from master with publish ticked)
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && inputs.publish)
-        env:
-          HOST: ${{ inputs.host || 'r2' }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          V: ${{ steps.v.outputs.version }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          B: ${{ secrets.R2_BUCKET }}
-        run: |
-          EP="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          # host = github: the files are on the GitHub Release; R2 keeps only latest.json (the site reads it there)
-          [ "$HOST" = github ] || aws s3 cp dist/ "s3://$B/releases/$V/" --recursive --exclude latest.json --endpoint-url "$EP"
-          # latest.json last, so the site never points at files that aren't there yet
-          aws s3 cp dist/latest.json "s3://$B/latest.json" --endpoint-url "$EP" \
-            --cache-control "no-cache" --content-type "application/json"
+          [ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" = "false" ] || { echo "The repo is private: players couldn't download a release"; exit 1; }
+          notes="Download: https://enterdysnomia.com/download (checks the SHA-256 for you). Built by this workflow from commit $GITHUB_SHA. A community project: not made, endorsed or run by the creator of Dysnomia."
+          if gh release view "v$V" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Re-publishing a version (e.g. a rebuild): replace its files, keep the release
+            gh release upload "v$V" dist/*.zip dist/*.exe dist/SHA256SUMS dist/latest.json --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "v$V" dist/*.zip dist/*.exe dist/SHA256SUMS dist/latest.json \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Dysnomia $V" --latest --notes "$notes"
+          fi
