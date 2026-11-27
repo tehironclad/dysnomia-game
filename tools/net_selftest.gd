@@ -12,6 +12,10 @@ extends SceneTree
 ## their agreed results, board records reach the right players (signed-in or the room),
 ## within their limits, and a reconnect inside the grace is not news. "Join me" requests
 ## go through the invite book (no match opened).
+## The daily challenge (NetDaily): attempts start only signed in, a run is scored by the server's
+## replay of its input log (a forged score and a too-early run are refused), three tries a day, the
+## rate limit, plain scores can't reach a daily board, a #1 is a daily_record event, and the next
+## UTC day is a new board with yesterday's winner. Its seed block comes from a fixture here (no network).
 ##   godot --headless --path . -s res://tools/net_selftest.gd [-- --url=ws://127.0.0.1:8787 | --port=18787]
 ## Without --url it starts its own server in this process (port 18787, data in
 ## user://server_selftest). Exit code 0 = every check passed.
@@ -90,6 +94,7 @@ func _run() -> void:
 		server.data_dir = "user://server_selftest"
 		server.quiet = true
 		DirAccess.remove_absolute(ProjectSettings.globalize_path("user://server_selftest/leaderboards.json"))
+		DirAccess.remove_absolute(ProjectSettings.globalize_path("user://server_selftest/daily.json"))
 		root.add_child(server)
 		var up: bool = server.start()
 		ok(up, "server listens on 127.0.0.1:%d" % port)
@@ -253,6 +258,7 @@ func _run() -> void:
 		var rec: Dictionary = got_ev("B", "record", a.wallet)[0]
 		ok(int(rec["score"]) == 4200 and rec["board"] == board and not rec["verified"], "…with the score, the board and its check: %s" % NetEvents.format(rec))
 	ok(got_ev("G", "record").is_empty(), "a guest is not sent signed-in players' events")
+	await _daily(a, b, g)
 
 	# ── server info (what the site's pulse node reads): counts only ──
 	if server:
@@ -425,10 +431,11 @@ const KEY_Z := "0x7e1c3a5b9d2f4e6a8c0b1d3f5e7a9c2b4d6f8e0a1c3b5d7f9e2a4c6b8d0f1e
 func _fuzz(url: String) -> void:
 	var weird := [{}, [], [1, 2], "x", -1, 1e300, true, null, {"a": {}}]
 	var keys := ["req", "room", "name", "head", "acc", "body", "text", "board", "entry", "n", "to", "game", "stake",
-		"door", "id", "answer", "match", "op", "a", "winner", "digest", "token", "wallet", "sig", "host", "place", "claim"]
+		"door", "id", "answer", "match", "op", "a", "winner", "digest", "token", "wallet", "sig", "host", "place", "claim",
+		"day", "attempt", "score", "log"]
 	var json_types := [NetProto.C_AUTH, NetProto.C_JOIN, NetProto.C_CHAT, NetProto.C_LB_SUBMIT, NetProto.C_LB_TOP,
 		NetProto.C_PROFILE, NetProto.C_INFO, NetProto.C_ONLINE, NetProto.C_INVITE, NetProto.C_ANSWER, NetProto.C_MOVE,
-		NetProto.C_RESULT, NetEvents.C_PLACE, NetEvents.C_CLAIM]
+		NetProto.C_RESULT, NetEvents.C_PLACE, NetEvents.C_CLAIM, NetDaily.C_DAILY_START, NetDaily.C_DAILY_SUBMIT, NetDaily.C_DAILY_BOARD]
 	var msgs: Array = []
 	for t in json_types:
 		for w in weird:
@@ -472,6 +479,102 @@ func _fuzz(url: String) -> void:
 	print("      fuzz: %d malformed messages from signed-in clients, %d kicked for strikes" % [sent, kicked])
 	if z:
 		z.close()
+
+
+## The daily challenge over this server (needs the in-process server: its clock moves the day).
+func _daily(a: Node, b: Node, g: Node) -> void:
+	if server == null:
+		print("      daily: skipped (needs the in-process server)")
+		return
+	# A fixture for the chain: the self-test runs without a network. Never used by the game.
+	var fixture := "0x" + "5e".repeat(32)
+	DailySeed.use_file = false
+	DailySeed.clear()
+	DailySeed.override = func(_d): return {"ok": true, "block": 28000000, "hash": fixture, "timestamp": 0}
+	var base := int(Time.get_unix_time_from_system())
+	var off := [0]
+	server.daily.clock = func(): return base + off[0]
+	var day: String = server.daily.today()
+	ok(a.features.has("daily") and a.has_daily(), "the welcome lists \"daily\"")
+	var empty: Dictionary = await b.daily_board(day)
+	ok(empty.get("ok", false) and (empty["rows"] as Array).is_empty() and empty["game"] == DailyChallenge.game_for(day), "today's board starts empty, for %s" % empty.get("game"))
+	var gs: Dictionary = await g.daily_start(day)
+	ok(not gs.get("ok", true) and String(gs.get("error", "")).contains("sign in"), "a guest can't start a scored try (%s)" % gs.get("error"))
+	var st: Dictionary = await a.daily_start(day)
+	ok(st.get("ok", false) and int(st.get("attempt", 0)) == 1 and int(st.get("left", -1)) == 2, "A starts try 1 of 3: %s" % st)
+	server._peers[a.my_id].b_daily = TokenBucket.new(100.0, 100.0)  # the rate limit is checked with G below
+	# A real run of the day's game on the day's seed, recorded (as a client records it).
+	var gid := DailyChallenge.game_for(day)
+	var seed := DailyChallenge.seed_from_hash(day, fixture)
+	var gm = load(DailyChallenge.script_of(gid)).new()
+	gm.recording = true
+	gm.scripted_input = 0
+	gm.start(seed)
+	for i in 1800:
+		if not gm.playing:
+			break
+		gm.scripted_input = (ArcadeGame.IN_FIRE if i % 50 < 20 else 0) | (ArcadeGame.IN_LEFT if (i / 90) % 2 == 0 else ArcadeGame.IN_RIGHT)
+		gm.step(ArcadeGame.DT)
+	if gm.playing:
+		gm.end_game()
+	var score: int = gm.score
+	var log_text := DailyChallenge.encode_log(gm.rec_start, gm.rec_steps)
+	var secs: float = gm.rec_steps.size() / 60.0
+	gm.free()
+	var early: Dictionary = await a.daily_submit(day, 1, score, log_text)
+	ok(secs < 5.0 or (not early.get("ok", true) and String(early.get("error", "")).contains("longer than the time")), "a %.0f s run sent at once is refused (%s)" % [secs, early.get("error")])
+	off[0] = 120
+	var forged: Dictionary = await a.daily_submit(day, 1, score + 500, log_text)
+	ok(not forged.get("ok", true) and String(forged.get("error", "")).contains("replay") and int(forged.get("score", -1)) == score,
+		"a forged score is refused by the replay (%s)" % forged.get("error"))
+	var good: Dictionary = await a.daily_submit(day, 1, score, log_text)
+	ok(good.get("ok", false) and int(good.get("score", -1)) == score and int(good.get("rank", 0)) == 1 and good.get("verified", false),
+		"the true score is replayed, verified, #1: %d (%s)" % [score, good.get("check", good.get("error"))])
+	var again: Dictionary = await a.daily_submit(day, 1, score, log_text)
+	ok(not again.get("ok", true) and String(again.get("error", "")).contains("already"), "one score per try (%s)" % again.get("error"))
+	var never: Dictionary = await a.daily_submit(day, 3, score, log_text)
+	ok(not never.get("ok", true) and String(never.get("error", "")).contains("never started"), "a try that was never started takes no score")
+	ok(await wait_until(func(): return not got_ev("B", "daily_record", a.wallet).is_empty(), 3.0), "B is told A took #1 (daily_record event)")
+	if not got_ev("B", "daily_record", a.wallet).is_empty():
+		var ev: Dictionary = got_ev("B", "daily_record", a.wallet)[0]
+		ok(ev["board"] == DailyChallenge.board_id(day) and int(ev["score"]) == score and ev["game"] == gid, "…%s" % NetEvents.format(ev))
+	ok(got_ev("G", "daily_record").is_empty(), "a guest is not sent it")
+	var s2: Dictionary = await a.daily_start(day)
+	var s3: Dictionary = await a.daily_start(day)
+	var s4: Dictionary = await a.daily_start(day)
+	ok(s2.get("ok", false) and s3.get("ok", false) and not s4.get("ok", true) and String(s4.get("error", "")).contains("no scored attempts left"),
+		"three tries a day: the 4th is refused (%s)" % s4.get("error"))
+	var plain: Dictionary = await a.lb_submit(DailyChallenge.board_id(day), {"score": 999999})
+	ok(not plain.get("ok", true), "a plain score can't reach a daily board (%s)" % plain.get("error"))
+	var lbt: Dictionary = await b.lb_top(DailyChallenge.board_id(day), 10)
+	ok(lbt.get("ok", false) and (lbt["rows"] as Array).size() == 1 and lbt["rows"][0]["wallet"] == a.wallet, "C_LB_TOP reads the daily board too")
+	var ab: Dictionary = await a.daily_board(day)
+	ok(ab.get("ok", false) and int(ab["me"]["rank"]) == 1 and int(ab["me"]["used"]) == 3 and int(ab["me"]["streak"]) == 1 and ab["seed"]["state"] == "ok",
+		"A's board: #1, 3 tries used, streak 1, the seed block: %s" % ab.get("me"))
+	var bb: Dictionary = await b.daily_board(day)
+	ok(bb.get("ok", false) and int(bb["me"]["rank"]) == 0 and bb["rows"][0]["wallet"] == a.wallet and bb["rows"][0]["verified"], "B sees A's verified row, and no rank of its own")
+	# The rate limit: a guest asking for the board in a burst
+	var slow := 0
+	for i in 8:
+		var r: Dictionary = await g.daily_board(day)
+		if not r.get("ok", false) and String(r.get("error", "")).contains("slow down"):
+			slow += 1
+	ok(slow > 0, "the daily messages are rate-limited (%d of 8 refused)" % slow)
+	# 00:00 UTC: a new day, a new board and new tries; yesterday's winner is A
+	off[0] = DailyChallenge.seconds_left(base) + 30 + DailyChallenge.GRACE_S
+	var day2: String = server.daily.today()
+	var nb: Dictionary = await b.daily_board(day2)
+	ok(day2 != day and nb.get("ok", false) and (nb["rows"] as Array).is_empty() and nb["yesterday"]["winner"].get("wallet", "") == a.wallet,
+		"the reset: %s's board is empty, yesterday's winner is A" % day2)
+	var old: Dictionary = await a.daily_submit(day, 2, 0, "v1:0:")
+	ok(not old.get("ok", true) and String(old.get("error", "")).contains("closed"), "yesterday's board is closed (%s)" % old.get("error"))
+	var n1: Dictionary = await a.daily_start(day2)
+	ok(n1.get("ok", false) and int(n1.get("attempt", 0)) == 1, "a new day's first try starts")
+	var ab2: Dictionary = await a.daily_board(day2)
+	ok(int(ab2.get("me", {}).get("streak", 0)) == 2, "two days in a row: streak 2")
+	server.daily.clock = Callable()
+	DailySeed.override = Callable()
+	DailySeed.clear()
 
 
 var _match_id := ""

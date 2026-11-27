@@ -20,6 +20,8 @@ signal strip_pressed  ## buy a ticket strip (Prices.STRIP_PLAYS plays, one appro
 signal start_pressed
 signal leave_pressed
 signal view_pressed
+signal daily_pressed  ## today's challenge: a free scored try (DailyRun)
+signal daily_practice_pressed  ## today's challenge: free practice on another seed
 signal entered
 signal exited
 
@@ -55,6 +57,9 @@ var strip_button: Button
 var start_button: Button
 var view_button: Button
 var leave_button: Button
+var daily_row: HBoxContainer  ## shown in the cabinet that runs today's challenge
+var daily_button: Button
+var daily_practice_button: Button
 var scores_title: Label
 var scores_label: Label
 
@@ -621,6 +626,12 @@ func _build_menu(root: Control) -> void:
 	col.add_child(row2)
 	view_button = _button(row2, "Classic screen", view_pressed)
 	leave_button = _button(row2, "Leave the cabinet (Esc)", leave_pressed)
+	daily_row = HBoxContainer.new()
+	daily_row.add_theme_constant_override("separation", 10)
+	daily_row.visible = false
+	col.add_child(daily_row)
+	daily_button = _button(daily_row, "Today's challenge", daily_pressed)
+	daily_practice_button = _button(daily_row, "Practice", daily_practice_pressed)
 	col.add_child(HSeparator.new())
 	scores_title = Label.new()
 	scores_title.theme_type_variation = "MutedLabel"

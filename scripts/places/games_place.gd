@@ -28,6 +28,9 @@ var _running := false
 var _busy := false
 var _pay_label := ""
 var _run_credit: Dictionary = {}
+var _daily_run: Dictionary = {}  ## a daily-challenge run in this cabinet (DailyRun.begin), {} when none
+var _daily_note := ""
+var _daily_seed_wait := false
 var _last_score := -1
 var _last_rank := 0
 var _animated_tx := ""
@@ -405,6 +408,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.is_action_pressed("arcade_start"):
 			get_viewport().set_input_as_handled()
 			_start_run()
+		elif event.is_action_pressed("daily_practice") and _cab and _cab.is_today():
+			get_viewport().set_input_as_handled()
+			_start_daily(true)
 		return
 	if not _walk_up.is_empty():
 		if event.is_action_pressed("ui_cancel"):
@@ -554,6 +560,8 @@ func _build_dive() -> void:
 	dive.start_pressed.connect(_start_run)
 	dive.leave_pressed.connect(_on_escape)
 	dive.view_pressed.connect(func(): dive.toggle_view())
+	dive.daily_pressed.connect(_start_daily.bind(false))
+	dive.daily_practice_pressed.connect(_start_daily.bind(true))
 	dive.entered.connect(func():
 		if not _running:
 			dive.show_menu())
@@ -609,6 +617,7 @@ func _refresh_play(note: String = "") -> void:
 	if note != "":
 		info += "\n" + note
 	dive.menu_info.text = info
+	_refresh_daily()
 	var playable := _cab.playable()
 	dive.scores_title.visible = playable
 	dive.scores_label.visible = playable
@@ -683,8 +692,81 @@ func _start_run() -> void:
 	_refresh_play()
 
 
+## Today's challenge in its cabinet: free, the day's seed from the chain (DailyRun). The buttons show
+## only in the cabinet running today's game; scored tries go to the game server's board when signed in.
+func _refresh_daily() -> void:
+	var on := _cab != null and _cab.is_today() and not _running
+	dive.daily_row.visible = on
+	if not on:
+		return
+	var st := DailyRun.status()
+	var seed: Dictionary = st["seed"]
+	var seed_ok: bool = seed["state"] == "ok"
+	dive.daily_button.disabled = _busy or not seed_ok or int(st["left"]) <= 0
+	dive.daily_button.text = ("★ Today's challenge · free · %d/%d tries" % [int(st["left"]), DailyChallenge.ATTEMPTS]) if seed_ok \
+		else ("★ Today's challenge · seed %s" % ("checking…" if seed["state"] == "checking" else "— (practice only)"))
+	dive.daily_practice_button.text = "Practice · %s" % ControlsHelp.key_of("daily_practice")
+	dive.daily_practice_button.disabled = _busy
+	if _daily_note != "":
+		dive.menu_info.text += "\n" + _daily_note
+	if seed["state"] == "checking" and not _daily_seed_wait:
+		_await_daily_seed(st["day"])
+
+
+func _await_daily_seed(day: String) -> void:
+	_daily_seed_wait = true
+	await DailySeed.find(day)
+	_daily_seed_wait = false
+	if dive and dive.is_active() and not _running:
+		_refresh_play()
+
+
+func _start_daily(practice: bool) -> void:
+	if _cab == null or _running or _busy or not dive.is_inside() or not _cab.is_today():
+		return
+	_busy = true
+	_daily_note = ""
+	_refresh_play("Starting today's challenge…")
+	var cab := _cab
+	var r: Dictionary = await DailyRun.begin(practice)
+	_busy = false
+	if _cab != cab:
+		return
+	if not r.get("ok", false):
+		_daily_note = String(r.get("error", "—"))
+		_refresh_play()
+		return
+	_running = true
+	_daily_run = r
+	_last_score = -1
+	_cab.game.recording = not practice
+	_cab.start_run(int(r["seed"]))
+	dive.set_running(true, "TODAY'S CHALLENGE · " + String(r["label"]))
+	_refresh_play()
+
+
+func _finish_daily(score: int) -> void:
+	_running = false
+	_last_score = score
+	_last_rank = 0
+	var run := _daily_run
+	_daily_run = {}
+	dive.set_running(false)
+	_daily_note = "Sending your run to the game server to replay…" if run.get("board", false) else ""
+	_refresh_play()
+	var res: Dictionary = await DailyRun.finish(run, _cab.game)
+	if _cab:
+		_cab.game.recording = false
+	_daily_note = String(res.get("text", ""))
+	if dive.is_active() and not _running:
+		_refresh_play()
+
+
 func _on_game_over(score: int) -> void:
 	if not _running:
+		return
+	if not _daily_run.is_empty():
+		_finish_daily(score)
 		return
 	_running = false
 	_last_score = score

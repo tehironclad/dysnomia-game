@@ -1084,3 +1084,40 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
 - **Check:** `tools/e2e_wallet.sh` (rebinding, cross-origin page, unlimited approve, foreign text, tampered tx),
   `tools/net_selftest.gd` (relayed and expired sign-ins, hashed tokens), `tests/test_wallet_path.gd`,
   `tests/test_net_proto.gd`, `tests/test_invites.gd`, `tests/test_exchanges.gd`.
+
+## 23. The daily challenge (2026-11-27)
+
+- **One game a UTC day, the same run for everyone.** The day is the UTC date; the game is
+  `DailyChallenge.GAMES[days since 1970-01-01 % 6]` (the six original arcade games, never a cartridge; 2026-11-27 =
+  Entropy Drift). The seed is the chain's: the **first PulseChain block whose timestamp is ≥ 00:00 UTC**, and
+  seed = the first 12 hex digits of SHA-256(`"daily:<day>:<block hash>"`). Anyone can recompute both.
+- **Finding the block:** `DailyChallenge.Search` (pure) alternates an interpolation step (blocks are ~10 s) and halving
+  between a block known to be before midnight and one at or after it; `DailySeed` drives it with `BlockClock.read`
+  (`eth_getBlockByNumber`, one request at a time, never a batch) and caches the found block (session +
+  `user://daily.cfg`). [live 2026-11-27] block 28,159,591 at 00:00:15Z (the one before: 23:59:55Z), found in ~4 s;
+  2026-11-26 = block 28,151,393. Until it is read: "checking…"; if it can't be: "—" and **practice only**
+  (practice never uses the day's seed, so it can't rehearse the scored run).
+- **Free.** No Ⓐ ticket. 3 scored tries a day, best counts; practice unlimited. A try is spent when it **starts**. For a
+  wallet signed in to the game server the server counts (and keeps a streak of days played); for guests and offline
+  this computer counts (`DailyLocal`), and those runs say "this computer only".
+- **Scores are replayed, every game is verified.** All six games are deterministic from (seed, input bits per 60 Hz
+  step): they read no clock, no global random, no scene, only `rng`/`ai_rng` seeded by `start(seed)`, and step at a
+  fixed `ArcadeGame.DT`. `ArcadeGame.recording` keeps the bits each step read (after a 3D world's `input_remap`) and
+  those held at the start; `DailyReplay` feeds them back and the score is the game's at its game over or where the log
+  ends (Esc = quit, the score so far stands). A log that runs past the game's end is refused. `tests/test_daily.gd`
+  replays a recorded run of each of the six games to the same score. So no daily game is "unverified".
+  **Caveats:** float maths in GDScript is double precision; the server runs the same game scripts, but a Windows client
+  and a Linux server use different C maths libraries, so a `sin`/`cos` that differs in the last bit could, rarely,
+  make a replay diverge: the run is then refused, never re-scored. And the replay proves the rules were followed on the
+  day's seed, not that a person played: the seed is public, so a modified client could rehearse it or search inputs.
+- **Where:** the front door's "Today's challenge" card under the doors (game, top score, time left, tries, streak;
+  Play → `DailyPlay`, `scenes/ui/daily_play.tscn`; Board → the board in the right column), the cabinet of today's game
+  in every arcade (a gold "★ TODAY ★" over the marquee; inside, "Today's challenge" and Practice buttons), and a line
+  under the HUD act tracker. Keys: `arcade_start` (Enter) plays a scored try in DailyPlay, `daily_practice` (J)
+  practices there and in today's cabinet.
+- **The board** is the game server's (SERVER.md §8d): `daily:<day>`, top 10, your rank, yesterday's winner, time left;
+  a #1 is a `daily_record` event in the activity feed. Names are the chain's (`Net.names`). Guests and wallets that are
+  not signed in see "Not on the board yet" and a button to the AccessSteps goal `daily_board` (a wallet, the server,
+  its free sign-in). No server: "—", and everything else still works single-player.
+- **Check:** `tests/test_daily.gd`, `tools/net_selftest.gd` (the daily block), `tools/live_daily.gd` (read-only, today's
+  and yesterday's blocks, and the block before each), screenshots `screenshot.gd -- --daily=card|board|play`.

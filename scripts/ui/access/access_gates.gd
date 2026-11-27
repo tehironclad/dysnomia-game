@@ -44,6 +44,7 @@ const GOALS := {
 	"arcade": {"title": "Buy an arcade play or strip", "gates": ["wallet", "window", "chain", "affection"]},
 	"fair_ticket": {"title": "Buy a fair ticket or strip", "gates": ["wallet", "window", "chain", "affection"]},
 	"fair_post": {"title": "Post your score to the room", "gates": ["wallet", "window", "chain", "lau", "unbanned", "room"]},
+	"daily_board": {"title": "Put your daily runs on the board", "gates": ["wallet", "window", "chain"]},
 	"rocket": {"title": "Launch the Upsilon Rocket", "gates": ["wallet", "window", "chain", "fair", "affection"]},
 	"drink": {"title": "Buy a round at the bar", "gates": ["wallet", "window", "chain", "affection"]},
 	"border": {"title": "Cross the border", "gates": ["wallet", "window", "chain", "lau", "unbanned", "border"]},

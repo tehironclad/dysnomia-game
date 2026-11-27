@@ -11,13 +11,16 @@ extends Control
 ## status strip (chain block, QINGs, WORLD, online players when the Net server is up, this
 ## build's version). Top: a dismissible "Dysnomia x.y.z is out" notice when the site's download
 ## manifest names a newer release (UpdateCheck; read once per launch, never in dev builds).
+## Under the doors, "Today's challenge" (DailyCard: the day's arcade game, its top score, time
+## left, Play → DailyPlay; Board → the full board on the right, DailyBoard).
 ## Keyboard: the arrow keys move between the doors, Enter opens one.
 
 const SETTINGS := preload("res://scripts/ui/settings_menu.gd")
 const RIGHT_W := 680  # the right column (who you are, the sky card): the access steps wrap less
 const SKY := preload("res://assets/shaders/deep_field_sky.gdshader")
 const LAST_PATH := "user://travel.cfg"
-const PANELS := ["summary", "void", "identity", "guide", "opps", "laus"]
+const PANELS := ["summary", "void", "identity", "guide", "opps", "laus", "daily"]
+const DAILY_SCENE := "res://scenes/ui/daily_play.tscn"
 
 var rows: Array = []
 var featured := {}           ## the QING in the sky (a developed one when the snapshot has some)
@@ -59,6 +62,9 @@ var _update: PanelContainer  ## the "new version" notice (hidden until UpdateChe
 var _update_text: Label
 var _update_ver := ""
 var _update_preview := false
+var _daily_card: DailyCard
+var _daily_board: DailyBoard
+var _featured_card: PanelContainer
 
 
 func _ready() -> void:
@@ -87,6 +93,7 @@ func _ready() -> void:
 		Net.status_changed.connect(func(_s): _refresh_strip())
 	_read_head()
 	_check_update()
+	_start_net_soon()
 	# Arrival: fade the doors in; a step elsewhere may have asked for a panel
 	_left.modulate.a = 0.0
 	create_tween().tween_property(_left, "modulate:a", 1.0, 0.7).set_delay(0.15)
@@ -215,7 +222,7 @@ func _label(text: String, variation: String, size: int, wrap: bool = true) -> La
 
 func _door(key: String, title: String, sub: String, call: Callable) -> Button:
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(620, 66)
+	b.custom_minimum_size = Vector2(620, 58)  # 58 (was 66): room for today's challenge under the doors
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.text = "   " + title
 	b.add_theme_font_override("font", DeepFieldTheme.display_font())
@@ -279,6 +286,10 @@ func _build_left() -> void:
 	_left.add_child(_door("explore", "EXPLORE WITHOUT A WALLET", "", _explore))
 	_left.add_child(_door("continue", "CONTINUE TO MY QING", "", _continue))
 	_left.add_child(_door("field", "THE FIELD", "%d QINGs · search · filters" % Registry.count(), func(): Travel.field(get_tree())))
+	_daily_card = DailyCard.new()
+	_daily_card.play_pressed.connect(_play_daily)
+	_daily_card.board_pressed.connect(func(): open_panel("daily"))
+	_left.add_child(_daily_card)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	_left.add_child(row)
@@ -311,6 +322,7 @@ func _build_left() -> void:
 	_status = _label("", "MonoLabel", DeepFieldTheme.FS_CAPTION)
 	_status.custom_minimum_size = Vector2(600, 0)
 	_status.add_theme_color_override("font_color", DeepFieldTheme.ICE)
+	_status.visible = false
 	_left.add_child(_status)
 
 
@@ -320,6 +332,7 @@ func _primary_button() -> Button:
 
 func _set_status(t: String) -> void:
 	_status.text = t
+	_status.visible = t != ""  # an empty line would still take a row from the news
 
 
 # --- Right: who you are -------------------------------------------------------------
@@ -420,6 +433,13 @@ func _build_right() -> void:
 	_opps = OpportunitiesPanel.new()
 	_right.add_child(_opps)
 	_panels["opps"] = _opps
+	_daily_board = DailyBoard.new()
+	_daily_board.visible = false
+	_daily_board.custom_minimum_size = Vector2(RIGHT_W, 0)
+	_daily_board.play_pressed.connect(_play_daily)
+	_daily_board.practice_pressed.connect(_play_daily)
+	_right.add_child(_daily_board)
+	_panels["daily"] = _daily_board
 	# Their own Close buttons: back to the summary, not an empty column with "← Back".
 	for pk in ["guide", "opps"]:
 		var pc: Control = _panels[pk]
@@ -442,6 +462,10 @@ func open_panel(which: String) -> void:
 			p.visible = on
 	if which == "laus":
 		_laus.refresh()
+	if which == "daily":
+		_daily_board.refresh()
+	if _featured_card:
+		_featured_card.visible = which != "daily"  # the board needs the column's height
 	_back.visible = which != "summary"
 	if which == "summary":
 		_refresh_identity()
@@ -532,6 +556,27 @@ func _fill_qings(top: Array) -> void:
 
 
 # --- The doors' actions -------------------------------------------------------------
+
+## Today's challenge, full screen (DailyPlay).
+func _play_daily() -> void:
+	get_tree().change_scene_to_file(DAILY_SCENE)
+
+
+## The daily board lives on the game server: ask for it here too (quiet when none answers).
+func _start_net_soon() -> void:
+	await get_tree().create_timer(1.0).timeout
+	if is_inside_tree() and Net.online_enabled and not Net.is_online():
+		Net.start()
+	await get_tree().create_timer(6.0).timeout
+	if is_inside_tree() and _daily_card:
+		_daily_card.refresh()
+
+
+## Screenshots (--daily=card|board): the card is always there; "board" opens the board panel.
+func preview_daily(which: String) -> void:
+	if which == "board":
+		open_panel("daily")
+
 
 func _explore() -> void:
 	if featured.is_empty():
@@ -701,6 +746,7 @@ func _build_bottom() -> void:
 	fc.offset_bottom = -124
 	fc.custom_minimum_size = Vector2(RIGHT_W, 0)
 	add_child(fc)
+	_featured_card = fc
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
 	fc.add_child(row)
@@ -819,7 +865,9 @@ func _refresh_news() -> void:
 			FieldIndex.reactors_text(top), dev.size(), rows.size(), TokenFormat.group(str(DevelopmentSnapshot.shipped_block()))])
 	if _lead_news != "":
 		parts.append(_lead_news)
-	_news.text = "NEWS\n" + "\n".join(parts)
+	_news.text = "NEWS  ·  " + "\n".join(parts)
+	_news.tooltip_text = "\n".join(parts)
+	_news.mouse_filter = Control.MOUSE_FILTER_PASS
 
 
 func _on_leads(lost: Array, gained: Array, block: int) -> void:
@@ -832,6 +880,20 @@ func _on_leads(lost: Array, gained: Array, block: int) -> void:
 	_refresh_news()
 
 
+## The news grows up from the strip; the doors (and today's challenge) grow down from the top.
+## On a short canvas the news keeps only the lines that fit under them.
+func _fit_news() -> void:
+	if _news == null or _left == null:
+		return
+	var line_h := maxf(1.0, float(_news.get_line_height()))
+	var bottom := size.y + _news.offset_bottom  # anchored to the bottom: its lowest line stays here
+	var room := bottom - (_left.position.y + _left.get_combined_minimum_size().y) - 8.0
+	var lines := int(floor(room / line_h))
+	_news.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_news.max_lines_visible = lines if lines < _news.get_line_count() else -1
+	_news.visible = lines >= 1
+
+
 func _read_head() -> void:
 	await Chain.refresh_head()
 	_refresh_strip()
@@ -839,6 +901,7 @@ func _read_head() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	_fit_news()
 	if _globe:
 		_globe.rotation.y = _t * 0.025
 	_head_timer += delta

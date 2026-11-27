@@ -31,7 +31,7 @@ const FEATURES := ["events"]
 const SIZES := {C_PLACE: 160, C_CLAIM: 160}
 
 ## What the server sends.
-const SERVER_KINDS := ["online", "offline", "arrive", "guest", "place", "match", "join", "result", "record", "claim"]
+const SERVER_KINDS := ["online", "offline", "arrive", "guest", "place", "match", "join", "result", "record", "claim", "daily_record"]
 ## What a machine adds from its own chain reads (shown to that player only).
 const LOCAL_KINDS := ["fair", "hypobar", "paid", "rocket", "invite"]
 ## Places a player can say they walked into (PlaceBase kinds) and how a line names them.
@@ -231,6 +231,9 @@ static func format(ev: Dictionary, ctx: Dictionary = {}) -> String:
 			return "%s set a new #1 on %s: %s%s" % [a, bt, grouped(int(ev.get("score", 0))), " ✓" if ev.get("verified", false) else ""]
 		"claim", "rocket":
 			return "%s unlocked the Upsilon Rocket at %s" % [a, where.call(room)]
+		"daily_record":  # NetDaily: a replayed run took #1 on today's board
+			return "%s took #1 in the daily challenge (%s): %s%s" % [a, DailyChallenge.title_of(String(ev.get("game", ""))),
+				grouped(int(ev.get("score", 0))), " ✓ replayed" if ev.get("verified", false) else ""]
 		"fair":
 			return "%s posted %s at %s" % [a, grouped(int(ev.get("score", 0))), game.call(String(ev.get("game", "")))]
 		"hypobar":
@@ -269,7 +272,7 @@ static func color_of(k: String) -> Color:
 			return Color("#c9d8ee")
 		"match", "result", "paid", "join", "invite":
 			return Color("#ffd27a")
-		"record", "fair":
+		"record", "fair", "daily_record":
 			return Color("#ff9be6")
 		"claim", "rocket":
 			return Color("#ffb46b")

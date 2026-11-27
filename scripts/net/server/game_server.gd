@@ -51,6 +51,7 @@ var quiet := false
 var public_hosts: PackedStringArray = []
 
 var lb: Leaderboards
+var daily: DailyServer         # the daily challenge (NetDaily): attempts, replays, its boards
 var stats := {"connections": 0, "auths": 0, "auth_failures": 0, "chats": 0, "voice_frames": 0, "states": 0,
 	"bytes_in": 0, "bytes_out": 0, "kicked": 0, "throttled": 0, "refused": 0, "invites": 0, "matches": 0, "moves": 0}
 var invites := InviteBook.new()
@@ -118,6 +119,7 @@ class Peer:
 	var b_bump := TokenBucket.new(NetBump.SENDER_RATE, NetBump.SENDER_BURST)  # bumps (NetBump)
 	var bumped_at := -100.0
 	var b_event := TokenBucket.new(NetEvents.SENDER_RATE, NetEvents.SENDER_BURST)  # C_PLACE / C_CLAIM (NetEvents)
+	var b_daily := TokenBucket.new(NetDaily.SENDER_RATE, NetDaily.SENDER_BURST)  # C_DAILY_* (NetDaily)
 
 
 func _now() -> float:
@@ -132,6 +134,8 @@ func start() -> bool:
 	Secp256k1._setup()
 	lb = Leaderboards.new(data_dir.path_join("leaderboards.json"))
 	lb.add_verifier("*fair:*", FairVerifier.verify)
+	lb.add_verifier("daily:*", DailyServer.refuse_plain)
+	daily = DailyServer.new(self, data_dir.path_join("daily.json"))
 	_load_tokens()
 	boot_id = Crypto.new().generate_random_bytes(6).hex_encode()
 	var err := _tcp.listen(port, bind_address)
@@ -155,6 +159,8 @@ func stop() -> void:
 		WorkerThreadPool.wait_for_task_completion(t)
 	_orphan_tasks.clear()
 	_tcp.stop()
+	if daily:
+		daily.stop()
 	if lb:
 		lb.save()
 	_save_tokens()
@@ -208,6 +214,8 @@ func _process(delta: float) -> void:
 	if _tick >= TICK_S:
 		_tick = 0.0
 		_broadcast_states()
+	if daily:
+		daily.process(now)
 	if now - _save_at > 10.0:
 		_save_at = now
 		lb.save()
@@ -285,7 +293,7 @@ func _poll_peer(p: Peer, now: float) -> void:
 		# current clients build the text themselves from nonce + issued and their own host.
 		_send(p, NetProto.json_msg(NetProto.S_WELCOME, {"id": p.id, "nonce": p.nonce, "issued": p.issued, "server": NetProto.login_name(server_name),
 			"v": NetProto.VERSION, "login": NetProto.login_message(server_name, p.host, p.nonce, p.issued), "voice_radius": voice_radius, "boot": boot_id,
-			"features": NetProto.FEATURES + NetBump.FEATURES + NetEvents.FEATURES}))
+			"features": NetProto.FEATURES + NetBump.FEATURES + NetEvents.FEATURES + NetDaily.FEATURES}))
 	var n := 0
 	while p.ws.get_available_packet_count() > 0 and n < 200:
 		n += 1
@@ -422,6 +430,8 @@ func _handle(p: Peer, msg: PackedByteArray, now: float) -> void:
 			_place(p, msg, now)
 		NetEvents.C_CLAIM:
 			_claim(p, msg, now)
+		NetDaily.C_DAILY_START, NetDaily.C_DAILY_SUBMIT, NetDaily.C_DAILY_BOARD:
+			daily.handle(p, msg, now)
 		NetProto.C_INFO:
 			if not p.b_ctrl.take(now):
 				_throttled(p, now)
@@ -1073,7 +1083,7 @@ func _event(ev: Dictionary, scope: String, room: String = "", except_id: int = -
 		_ev_wallet[subject] = b
 	# Games, results, records and joins have their own limits (invites, moves, scores): the
 	# per-subject bucket is for comings and goings, which a player could otherwise repeat.
-	var chatty := not String(ev.get("k", "")) in ["match", "result", "record", "join"]
+	var chatty := not String(ev.get("k", "")) in ["match", "result", "record", "join", "daily_record"]
 	if not _ev_server.take(now) or (chatty and not b.take(now)):
 		stats["events_dropped"] = int(stats.get("events_dropped", 0)) + 1
 		return false

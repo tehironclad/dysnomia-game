@@ -174,6 +174,8 @@ static func size_ok(msg: PackedByteArray) -> bool:
 		return NetBump.size_ok(msg)  # bumps: their own section (net_bump.gd)
 	if NetEvents.SIZES.has(t):
 		return NetEvents.size_ok(msg)  # the activity feed: its own section (net_events.gd)
+	if NetDaily.SIZES.has(t):
+		return NetDaily.size_ok(msg)  # the daily challenge: its own section (net_daily.gd)
 	return MAX_SIZE.has(t) and msg.size() <= int(MAX_SIZE[t]) and msg.size() >= int(MIN_SIZE.get(t, 1))
 
 
