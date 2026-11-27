@@ -1,5 +1,21 @@
 # Dysnomia
 
+**Free, open source (MIT), and a community project:** not made, endorsed or run by the creator of
+Dysnomia. Download it at **https://enterdysnomia.com/download**, or build it yourself from this code.
+
+- **Your keys never touch the game.** No seed phrase or private-key field exists. A small page in your
+  browser hands each transaction to your wallet extension, and you approve every one.
+- **Explore without a wallet.** Every QING can be visited with nothing connected.
+- **Read what it does:** wallet rules in [`SECURITY.md`](SECURITY.md) and
+  [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md); every chain fact in [`docs/LEARNINGS.md`](docs/LEARNINGS.md).
+- **Builds come from this repo.** GitHub Actions builds each release from a commit here
+  ([`release.yml`](.github/workflows/release.yml)); the download page lists that commit and each file's SHA-256.
+
+### Build it yourself
+1. Install [Godot 4.6.1](https://godotengine.org/download/archive/4.6.1-stable/) (standard, not .NET).
+2. Clone this repo and open `project.godot`, then press F5. Or run `./play.sh` / `play.bat`.
+3. Checks: `GODOT=godot tools/check.sh` (import, compile, unit tests). See [`docs/BUILDING.md`](docs/BUILDING.md).
+
 A viewport onto a living on-chain organism. Dysnomia renders the Dysnomia contracts on PulseChain (chain
 369) as a world you can walk:
 - every territory's ground is its own Julia set;
@@ -123,3 +139,9 @@ These rules are kept in short:
   wired WORLD is verified on chain.
 
 For building, tests and tools, see [`docs/BUILDING.md`](docs/BUILDING.md).
+
+## Licence
+
+Code: [MIT](LICENSE). Assets keep their own licences (CC0 models and textures from Quaternius and
+Poly Haven, OFL fonts; see [`assets/CREDITS.md`](assets/CREDITS.md)). The Folklore cartridges in
+`assets/arcade/cartridges/` are Maria's original work, included with credit.
