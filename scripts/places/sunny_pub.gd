@@ -550,7 +550,7 @@ func _preview_order(view: String) -> void:
 		_on_order_status("Waiting for your signature in the browser wallet…", DeepFieldTheme.ICE)
 		return
 	_wait_chip.visible = false
-	_play_pour(d["look"], 1, "· PREVIEW: nothing was ordered", float(PREVIEW_POUR[view]))
+	_play_pour(d["look"], 1, "· PREVIEW: nothing was ordered", float(PREVIEW_POUR.get(view, -1.0)))  # pour_run: the whole timeline (trailers)
 
 
 func _apply_view() -> void:
@@ -566,7 +566,7 @@ func _apply_view() -> void:
 		if view == "menu":
 			_open_menu.call_deferred("alpha_sour")
 		return
-	if view == "waiting" or PREVIEW_POUR.has(view):
+	if view == "waiting" or view == "pour_run" or PREVIEW_POUR.has(view):
 		_greeted = true
 		player.position = PubRoom.order_spot() + Vector3(0.3, 0.1, 0.4)
 		player.rotation.y = 0.0

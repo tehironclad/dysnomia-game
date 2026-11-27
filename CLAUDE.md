@@ -111,7 +111,7 @@
   The pub's room, regulars and bar menu are `scripts/places/pub/` (`PubRoom`, `PubLife`, `PubKit`,
   `BarMenu`; drinks = `scripts/games/bar_tab.gd`). Render it with
   `--scene=res://scenes/places/sunny_pub.tscn --view=street|bar|lounge|room|games|stools|menu`. An order hides the
-  menu and, once its receipt is read, `PourScene` films the pour and the drink (`--view=waiting|pour|slide|handover|drink|cheers`,
+  menu and, once its receipt is read, `PourScene` films the pour and the drink (`--view=waiting|pour|slide|handover|drink|cheers`, or `pour_run` for the whole timeline,
   previews: nothing ordered). Sunny speaks through `VoiceLines` (`scripts/audio/voice_lines.gd`): recordings go in
   `assets/audio/voices/sunny/<line id>.ogg` (list + tips in its README); subtitles always show.
 - Game instructions (`scripts/ui/game_howto.gd`, `GameHowto`): every game a player starts (midway games, arcade dives,
@@ -208,6 +208,9 @@
   - It renders on the CPU (lavapipe) in about 20 s. Look at the PNG with the Read tool.
   - `--view=aerial|ground|core|sky|hud` gives a fixed camera. With no `--view` you see the player's own
     third-person camera.
+  - Trailer clips: add `--write-movie <abs dir>/f.png --fixed-fps 30` before `-s` (Movie Maker: fixed frame rate
+    however slow lavapipe is, ~1.5 s a frame) and keep the last `--frames` PNGs. `--move=dolly|orbit|crane|pan
+    --move-amt=<m|deg> [--move-pivot=<m>]` moves the view's camera over those frames; `--hide-ui` hides every 2D layer.
 
 - Online play (`scripts/net/`, `docs/SERVER.md`, LEARNINGS §18): `server.bat` / `tools/server.sh` run the
   headless game server (laptop + free tunnel). The `Net` autoload API (`send_chat`, `chat_received`,

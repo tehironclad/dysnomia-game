@@ -29,6 +29,11 @@ extends SceneTree
 ##       [--activity=N] (online play, with --net-url: wait for N activity feed lines (bots make them) and the remote
 ##       players' name tags to be read from the chain; prints them. Debug builds: --net-lau-of=<test wallet>=<real wallet>
 ##       shows a test bot with a real wallet's LAU name, marked "(test)")
+##       [--move=dolly|orbit|crane|pan --move-amt=<m or deg> --move-pivot=<m>] (the last --frames frames: move
+##       the active 3D camera from where the view put it: dolly = forward by amt m, orbit = amt degrees around
+##       the point --move-pivot m ahead, crane = up by amt m still facing that point, pan = turn amt degrees.
+##       Linear. For trailers: run with --write-movie <abs dir>/f.png --fixed-fps 30 and keep the last --frames)
+##       [--hide-ui] (hide every 2D layer while the frames run: a clean picture for a trailer)
 ## With --qing, the territory is loaded from the chain first (read-only).
 
 var _out := ""
@@ -61,6 +66,10 @@ var _access_fee := ""
 var _invite := ""  # panel | seated | result
 var _activity := 0  # wait for this many activity feed lines (online play: --net-url + bots)
 var _update := ""  # the front door: preview the update notice for this version
+var _move := ""  # dolly | orbit | crane | pan: a camera move over the last --frames frames
+var _move_amt := 0.0
+var _move_pivot := 30.0
+var _hide_ui := false
 var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
@@ -115,6 +124,14 @@ func _initialize() -> void:
 			_update = a.substr(9)
 		elif a.begins_with("--access-fee="):
 			_access_fee = a.substr(13)
+		elif a.begins_with("--move="):
+			_move = a.substr(7)
+		elif a.begins_with("--move-amt="):
+			_move_amt = float(a.substr(11))
+		elif a.begins_with("--move-pivot="):
+			_move_pivot = float(a.substr(13))
+		elif a == "--hide-ui":
+			_hide_ui = true
 		elif a == "--classic":
 			_classic = true
 		elif a == "--flashlight":
@@ -253,13 +270,56 @@ func _run() -> void:
 			await process_frame
 		if current_scene and current_scene.has_method("preview_update"):
 			current_scene.preview_update(_update)
+	var cam: Camera3D = null
+	var from := Transform3D()
 	for i in _frames:
+		if _move != "":
+			var c := root.get_viewport().get_camera_3d()
+			if c != cam:
+				cam = c  # the view's camera (or one a scene made current since)
+				from = c.global_transform if c else Transform3D()
+			if cam:
+				cam.global_transform = _moved(from, float(i) / float(maxi(1, _frames - 1)))
+		if _hide_ui:
+			_hide_layers(root)
 		await process_frame
 	await RenderingServer.frame_post_draw
 	var img := root.get_viewport().get_texture().get_image()
 	img.save_png(_out)
 	print("saved %s (%dx%d)" % [_out, img.get_width(), img.get_height()])
 	quit()
+
+
+## --move: the camera's transform at t (0..1, linear) of the move from `from`.
+func _moved(from: Transform3D, t: float) -> Transform3D:
+	var e := t  # linear: a trailer cuts mid-move
+	var fwd := -from.basis.z
+	var pivot := from.origin + fwd * _move_pivot
+	match _move:
+		"dolly":
+			return Transform3D(from.basis, from.origin + fwd * _move_amt * e)
+		"orbit":
+			var r := Basis(Vector3.UP, deg_to_rad(_move_amt) * e)
+			return Transform3D(r * from.basis, pivot + r * (from.origin - pivot))
+		"crane":
+			var o := from.origin + Vector3.UP * _move_amt * e
+			return Transform3D(Basis.looking_at(pivot - o, Vector3.UP), o)
+		"pan":
+			return Transform3D(Basis(Vector3.UP, deg_to_rad(_move_amt) * e) * from.basis, from.origin)
+	return from
+
+
+## --hide-ui: every CanvasLayer off (some are made late, so this runs each frame).
+func _hide_layers(n: Node) -> void:
+	for c in n.get_children():
+		if c is Viewport:
+			continue  # a cabinet's screen or a picture in the world: its own 2D stays
+		if c is CanvasLayer:
+			c.visible = false
+		elif c is Control and c.get_parent() == root:
+			c.visible = false
+		else:
+			_hide_layers(c)
 
 
 ## The room chat (ChatFeed): waits for the feed, replays the last real lines
