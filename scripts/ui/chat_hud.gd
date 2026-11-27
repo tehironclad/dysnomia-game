@@ -107,6 +107,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		feed.toggle_history()
 		return
+	if event.is_action_pressed("chat_source") and feed.telegram_shown():
+		get_viewport().set_input_as_handled()
+		feed.toggle_source()  # the room's lines ⇄ the server's Telegram group
+		return
 	if feed.is_history_open() and event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
 		feed.toggle_history()

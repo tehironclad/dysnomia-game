@@ -11,6 +11,8 @@ var _mic: CheckBox
 var _device: OptionButton
 var _volume: HSlider
 var _mute_all: CheckBox
+var _tg_moments: CheckBox
+var _tg_label: Label
 var _people: VBoxContainer
 
 
@@ -55,6 +57,12 @@ func _ready() -> void:
 	_row(grid, "Voice volume", _volume)
 	_mute_all = CheckBox.new()
 	_row(grid, "Mute everyone else", _mute_all)
+	_tg_moments = CheckBox.new()
+	_tg_moments.tooltip_text = "When this game server bridges %s on Telegram, its bot may post your wins, records and arrivals there (with your chain name). Off: nothing about you is posted. Guests are never posted." % NetTg.GROUP
+	_tg_label = _row(grid, "Post my game moments to %s on Telegram" % NetTg.GROUP, _tg_moments)
+	_tg_moments.toggled.connect(func(on: bool):
+		if on != Net.tg_moments:
+			Net.set_tg_moments(on))
 	var note := Label.new()
 	note.theme_type_variation = "MutedLabel"
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -82,13 +90,14 @@ func _ready() -> void:
 	_load()
 
 
-func _row(grid: GridContainer, label: String, control: Control) -> void:
+func _row(grid: GridContainer, label: String, control: Control) -> Label:
 	var l := Label.new()
 	l.theme_type_variation = "MutedLabel"
 	l.text = label
 	grid.add_child(l)
 	control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_child(control)
+	return l
 
 
 func _load() -> void:
@@ -109,6 +118,7 @@ func _load() -> void:
 func _refresh() -> void:
 	_status.text = Net.status_text()
 	_sign.disabled = not Net.can_sign_in()
+	_refresh_tg()
 	for c in _people.get_children():
 		c.queue_free()
 	var shown := {}
@@ -163,3 +173,12 @@ func _process(delta: float) -> void:
 		_t = 0.0
 		_status.text = Net.status_text()
 		_sign.disabled = not Net.can_sign_in()
+		_refresh_tg()
+
+
+## The Telegram choice shows only when the server bridges a group (else quietly absent).
+func _refresh_tg() -> void:
+	var shown := Net.telegram_available()
+	_tg_moments.visible = shown
+	_tg_label.visible = shown
+	_tg_moments.set_pressed_no_signal(Net.tg_moments)  # kept on this computer; sent to the server at each sign-in

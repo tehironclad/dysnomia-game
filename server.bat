@@ -13,6 +13,9 @@ if not exist "%GODOT%" (
   pause
   exit /b 1
 )
+rem Private settings, e.g. the Telegram bridge (docs\SERVER.md 5c): put "set TELEGRAM_BOT_TOKEN=..." and
+rem "set TELEGRAM_CHAT_ID=..." lines in server.local.bat next to this file. git ignores it; never share it.
+if exist "%~dp0server.local.bat" call "%~dp0server.local.bat"
 echo Importing new or changed files...
 "%GODOT%" --headless --path "%~dp0." --import
 :loop

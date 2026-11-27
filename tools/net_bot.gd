@@ -29,6 +29,9 @@ extends SceneTree
 ##       [--record=/abs/out.wav]  write every voice frame it receives, decoded, to a 16 kHz WAV, and a
 ##                          .csv beside it (arrival unix ms, sender id, seq) for latency / loss / jitter
 ##       [--stats]          print its byte counters every 10 s and at the end
+## Telegram (a server with the bridge, docs/SERVER.md §8d):
+##       [--tg-say="…"]     after signing in, send one line to the server's Telegram group (C_TG)
+##       [--tg-delay=S]     …S seconds after joining (default 1); it prints every Telegram line it gets
 ## It prints every event it gets ("[bot] event: …", in the feed's words) and every peer's
 ## name tag as this game would draw it ("[bot] tag: …"): the chain's LAU name for the
 ## verified wallet (read-only), the short wallet, or "guest".
@@ -80,6 +83,8 @@ func _run() -> void:
 	var talk_after := 0.0
 	var record := ""
 	var stats := false
+	var tg_say := ""
+	var tg_delay := 1.0
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		var v := kv[1] if kv.size() > 1 else ""
@@ -116,6 +121,8 @@ func _run() -> void:
 			"talk-after": talk_after = float(v)
 			"record": record = v
 			"stats": stats = true
+			"tg-say": tg_say = v
+			"tg-delay": tg_delay = float(v)
 	c = load("res://scripts/net/net_client.gd").new()
 	root.add_child(c)
 	c.signer_wallet = EthSign.address_of_private(key)
@@ -146,6 +153,11 @@ func _run() -> void:
 		while c.peers.is_empty() and Time.get_ticks_msec() - t0 < secs * 1000.0:
 			await process_frame
 		print("[bot] a player is here: acting")
+	if tg_say != "":
+		c.tg_status.connect(func(d): print("[bot] telegram %s: %s" % [d["what"], "ok" if d["ok"] else d["error"]]))
+		c.tg_line.connect(func(l): print("[bot] telegram line: %s: %s" % [NetTg.speaker(l), l["text"]]))
+		await create_timer(tg_delay).timeout
+		print("[bot] telegram: %s" % ("sent" if c.send_tg(tg_say) else "not sent (a server without the Telegram bridge)"))
 	if place != "" or claim != "":
 		await create_timer(1.5).timeout
 		if place != "":

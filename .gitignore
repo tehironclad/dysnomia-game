@@ -10,6 +10,9 @@ node_modules/
 
 # Local config
 .claude/
+# The game server's private settings (the Telegram bot token): docs/SERVER.md 5c
+server.local.bat
+server.local.env
 
 # OS junk
 Thumbs.db

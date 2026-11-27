@@ -165,6 +165,12 @@ func _bind_net() -> void:
 	if n.has_signal("chat_received"):
 		n.connect("chat_received", _on_net_chat)
 		_net_bound = true
+	if n.has_signal("telegram_changed"):
+		n.connect("telegram_changed", func():
+			if mode == "telegram" and not can_telegram_mode():
+				set_mode("post")  # the server went, or stopped bridging: quietly back
+			else:
+				note_changed.emit())
 
 
 func _on_net_chat(wallet, uname, text, world_pos = null) -> void:
@@ -189,13 +195,32 @@ func _said_recently(text: String) -> bool:
 	return false
 
 
+## The server bridges a Telegram group (Net.telegram_available): the bar offers a
+## Telegram mode (signed-in players write; a guest is shown the sign-in steps).
+func can_telegram_mode() -> bool:
+	var n := net()
+	return n != null and n.has_method("telegram_available") and n.telegram_available()
+
+
+## The bar's modes in Tab order: say (free) · telegram (free, when bridged) · post (on chain).
+func modes() -> Array:
+	var m: Array = []
+	if can_say():
+		m.append("say")
+	if can_telegram_mode():
+		m.append("telegram")
+	m.append("post")
+	return m
+
+
 func set_mode(m: String) -> void:
-	mode = "say" if m == "say" and can_say() else "post"
+	mode = m if m in modes() else "post"
 	mode_changed.emit(mode)
 
 
 func toggle_mode() -> void:
-	set_mode("post" if mode == "say" else "say")
+	var ms := modes()
+	set_mode(ms[(ms.find(mode) + 1) % ms.size()])
 
 
 ## What posting does here, for the bar.
@@ -211,6 +236,20 @@ func say_note() -> String:
 	return "SAY · free · not on chain (presence server) · adds nothing to the territory"
 
 
+func telegram_note() -> String:
+	var n := net()
+	if n != null and n.has_method("can_telegram") and not n.can_telegram():
+		return "TELEGRAM · %s · read-only until you sign in to the game server (one free signature, not a transaction): Enter shows the steps" % NetTg.GROUP
+	return "TELEGRAM · free · not on chain · to %s on Telegram as \"you (in game)\" · links and @mentions are defanged · 1 line / 10 s" % NetTg.GROUP
+
+
+## The steps to write to Telegram (a guest: connect a wallet, sign in to the server).
+func show_telegram_access() -> void:
+	var host := get_tree().current_scene
+	if host != null:
+		AccessSteps.popup(host, "telegram", {})
+
+
 # --- Sending ---------------------------------------------------------------------------
 
 ## Sends a line in the current mode. Returns "" or why nothing was sent (the
@@ -222,6 +261,15 @@ func submit(text: String) -> String:
 	if why != "":
 		return why.capitalize() + "."
 	text = text.strip_edges()
+	if mode == "telegram" and can_telegram_mode():
+		var r: String = net().call("send_telegram", text)
+		if r == "guest":
+			show_telegram_access()
+			return "Sign in to the game server first (a free signature, not a transaction): the steps are open."
+		if r != "":
+			return r
+		draft.remember(text)
+		return ""
 	if mode == "say" and can_say():
 		draft.remember(text)
 		net().call("send_chat", text)

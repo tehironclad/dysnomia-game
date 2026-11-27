@@ -31,6 +31,9 @@ signal refused(what: String, error: String)       # S_REFUSED: an invite, answer
 
 signal bump_received(from_id: int, target_id: int, yaw: float, level: int)  # NetBump
 signal event(ev: Dictionary)                      # NetEvents.S_EVENT, cleaned (the activity feed)
+signal tg_line(line: Dictionary)                  # NetTg.S_TG: one Telegram line (an edit replaces its id), cleaned
+signal tg_history(lines: Array)                   # NetTg.S_TG_HISTORY: the last lines, after the welcome
+signal tg_status(d: Dictionary)                   # NetTg.S_TG_STATUS: {what: send|prefs, ok, error, retry_s, moments}
 
 const STATE_INTERVAL_MS := 100   # 10 Hz
 const STATE_HEARTBEAT_MS := 1000 # resend unchanged state once a second
@@ -444,6 +447,28 @@ func _handle(m: PackedByteArray) -> void:
 			var ev := NetEvents.clean_event(NetProto.json_body(m).get("ev"))
 			if not ev.is_empty():
 				event.emit(ev)
+		NetTg.S_TG:
+			var l := NetTg.clean_line(NetProto.json_body(m).get("line"))
+			if not l.is_empty():
+				tg_line.emit(l)
+		NetTg.S_TG_HISTORY:
+			var raw = NetProto.json_body(m).get("lines", [])
+			var ls: Array = []
+			var got: Array = []
+			if raw is Array:
+				got = (raw as Array).slice(-NetTg.HISTORY)
+			for d in got:
+				var l := NetTg.clean_line(d)
+				if not l.is_empty():
+					ls = NetTg.merge(ls, l)
+			tg_history.emit(ls)
+		NetTg.S_TG_STATUS:
+			var b := NetProto.json_body(m)
+			var what := NetProto.str_of(b.get("what", ""))
+			if what in ["send", "prefs"]:
+				tg_status.emit({"what": what, "ok": NetProto.flag_of(b.get("ok", false)), "error": NetProto.clean_text(NetProto.str_of(b.get("error", "")), 200),
+					"retry_s": clampi(NetProto.int_of(b.get("retry_s", 0)), 0, 3600), "code": NetProto.clean_text(NetProto.str_of(b.get("code", "")), 16),
+					"moments": NetProto.flag_of(b.get("moments", true)) if b.get("moments") is bool else true})
 		NetBump.S_BUMP:
 			var d := NetBump.unpack_relay(m)
 			if not d.is_empty():
@@ -543,6 +568,26 @@ func send_place(place: String, p_room: String) -> bool:
 		return false
 	_place_sent[key] = now
 	return _send(NetEvents.place_msg(place, NetProto.clean_room(p_room)))
+
+
+## True when this server bridges a Telegram group (S_WELCOME "telegram").
+func has_telegram() -> bool:
+	return is_online() and features.has(NetTg.FEATURE)
+
+
+## A line to the server's Telegram group (signed-in players only: the server checks).
+func send_tg(text: String) -> bool:
+	text = NetProto.clean_text(text, NetTg.OUT_MAX)
+	if text == "" or not has_telegram():
+		return false
+	return _send(NetTg.send_msg(text))
+
+
+## Whether the server may post this player's game moments to Telegram.
+func send_tg_prefs(moments: bool) -> bool:
+	if not has_telegram() or wallet == "":
+		return false
+	return _send(NetTg.prefs_msg(moments))
 
 
 ## A claim the server relays to everyone; each receiver checks it on the chain before showing it.

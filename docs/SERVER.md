@@ -42,6 +42,9 @@ inside your laptop.
 - `leaderboards.json`: the boards. Back it up if you care about them.
 - `tokens.json`: sign-in sessions (valid 24 h), so players don't sign again on every reconnect. Only the
   SHA-256 of each token is stored, so a copy of this file can't sign anyone in.
+- With the Telegram bridge (§5c): `telegram_history.json` (the last 50 lines, for players who join later),
+  `telegram_prefs.json` (wallets that opted out of moments), `telegram_mute.txt` (yours to write: muted Telegram ids).
+  The bot token is never written to any of them, nor to the log.
 
 On Linux or macOS: `GODOT=/path/to/godot tools/server.sh --port=8787`.
 
@@ -204,6 +207,71 @@ It connects as a guest (it never joins a room, so nobody sees it), sends `C_INFO
 signed-in counts per territory, and the boards. That is one extra connection. Players' game settings
 (F2 → Chain → Site API) can point at the node's address as well as at the site.
 
+## 5c. Telegram: bridge Sunny's Pub to the game
+
+The game server can bridge **one Telegram group** (Sunny's Pub) both ways: the group's lines show in the game
+(the chat dock's Telegram tab, J; the TV in Sunny's Pub), signed-in players can write to the group from the chat
+bar (T, then Tab to **TG**), and a short digest of real game moments (wins, #1 records, arrivals) goes to the group
+at most every 2 minutes, with the download link. Only the server talks to Telegram; players never see the bot's
+token. Nothing in it is on chain. With no token set, the bridge is off and the server says nothing about it.
+
+**The token is a password.** Anyone who has it can post as your bot and read your group. Put it only in the
+server's environment file below. Never paste it into a chat (not even with Claude), an issue, a commit or a
+screenshot. If it ever leaks: @BotFather → `/revoke`, then put the new one in the file.
+
+1. **Make the bot.** In Telegram, open **@BotFather** (the blue tick one) → `/newbot` → a name (e.g. "Sunny's Pub
+   game") → a username ending in `bot`. BotFather answers with the token (`123456789:AA…`). Keep that message to
+   yourself.
+2. **Let it read the group.** Still in @BotFather: `/setprivacy` → pick your bot → **Disable**. (With privacy on, a
+   bot only sees commands, so nothing would reach the game.)
+3. **Add it to the group.** In Sunny's Pub: group info → Add members → your bot's username. It needs no admin
+   rights to read and post. If the group restricts who may post, allow the bot to send messages.
+4. **Put the token on the server.** On the box (the Linux service, §1 "On a Linux box"), edit the environment file
+   the service reads. It is root-only (mode 600) and outside git; the installer creates and keeps it:
+   ```bash
+   sudo nano /etc/dysnomia-server/env
+   ```
+   Find the `# TELEGRAM_BOT_TOKEN=` line the installer added, remove the `# ` and paste the token after `=` (no
+   quotes, no spaces). Leave `TELEGRAM_CHAT_ID` empty for now. Save, then rerun the installer, which restarts the
+   server and says which state the bridge is in:
+   ```bash
+   sudo bash /opt/dysnomia/game/tools/install-server-linux.sh
+   ```
+5. **Find the group's chat id.** Write any line in Sunny's Pub. With a token and no chat id the server relays
+   nothing; it only writes the chat ids its bot sees into its log:
+   ```bash
+   journalctl -u dysnomia-server -n 200 -o cat | grep "sees chat"
+   ```
+   It prints e.g. `this bot sees chat -1001234567890 (supergroup "Sunny's Pub")`. That number (with its minus sign)
+   is the chat id. The token never appears in the log.
+6. **Turn it on.** Back in `/etc/dysnomia-server/env`: `TELEGRAM_CHAT_ID=-1001234567890` (yours), save, and run
+   the installer again. It prints `Telegram bridge: on`. From now on only that chat is bridged; any other chat the
+   bot is added to is ignored.
+7. **Moderation.** `TELEGRAM_MUTE_IDS=111,222` in the same file (Telegram user ids) keeps those people's lines out
+   of the game; a restart applies it. Without a restart: one id per line in `/var/lib/dysnomia-server/telegram_mute.txt`
+   (re-read every minute). Other bots' messages never reach the game. In the game each player can also mute people
+   in F2 → Online & voice as before.
+
+Windows laptop (`server.bat`): put `set TELEGRAM_BOT_TOKEN=…` and `set TELEGRAM_CHAT_ID=…` lines in a file
+`server.local.bat` next to `server.bat` (git ignores it); `tools/server.sh` reads `server.local.env` the same way
+(`TELEGRAM_BOT_TOKEN=…` lines; `chmod 600` it). Steps 1–3 and 5–7 are the same.
+
+**What players get:**
+- **Read** (everyone, guests too): the chat dock's **Telegram** tab (press **J**), with each line as
+  "<name> · Telegram": a Telegram name is whatever its owner typed, never a LAU, and never gets a ✓. Players who
+  wrote from the game show as "<their chain name> (in game)". Photos, stickers and so on show as "[photo]",
+  "[sticker 🌻]"; an edit in Telegram replaces the line. The TV on the right wall of Sunny's Pub shows the latest lines.
+  Players who join later get the last 50.
+- **Write** (signed-in players only): in the chat bar, Tab cycles say → TG → post. The bot posts "<chain name> (in
+  game): text" as plain text: links are defanged (`scam[.]com`, `[://]`), `@mentions` and `/commands` are broken
+  up, markup is stripped. Limits: one line every 10 s and 30 an hour per wallet, 18 a minute for the whole group.
+  A guest who picks TG sees the steps to sign in (one free signature), not a refusal.
+- **Moments** (the digest): "enteh beat Bob at pool (2 Ⓐ stake, honour-bound)", "… set a new #1 on Void Lanes:
+  4,200 ✓", "… walked into Sunny's Pub at …", one bot post at most every 2 minutes, each arrival at most once per 3 h,
+  with "Open the game: https://enterdysnomia.com/download". Never about guests. A player can opt out in F2 →
+  Online & voice ("Post my game moments to Sunny's Pub on Telegram", on by default); the server keeps the choice
+  per wallet. A wager says "✓ paid" only when an event carries a verified payment; the server itself never does.
+
 ## 6. Limits (what protects your laptop)
 
 | Limit | Value |
@@ -217,6 +285,7 @@ signed-in counts per territory, and the boards. That is one extra connection. Pl
 | game moves | signed-in players of that game only; 3/s (burst 8); known moves only (an unknown one is a strike); integer arguments within ±100,000; 600 moves a game; a game with no move for 30 min is abandoned |
 | sign-in | 5 tries per connection; 4 signature checks a second for the whole server (each takes ~0.1 s, on a worker thread); more wait their turn (18 at once: all signed in within 3.2 s) |
 | timeouts | handshake 15 s, idle 75 s (clients ping every 15 s) |
+| Telegram (§5c) | writing: signed-in wallets only, 1 line / 10 s and 30 / hour per wallet, 18 / minute (1 / s) for the group, 8 waiting at most; the digest: 1 post / 2 min |
 
 Behind a tunnel, every connection arrives from `127.0.0.1`, so per-IP caps can't tell players apart.
 The per-connection token buckets do that work instead.
@@ -276,6 +345,8 @@ One WebSocket **binary** message is `[type u8][body]`, little-endian. The code i
   - `S_NOTICE {code, text}`
   - The activity feed (§8c, its own message numbers like bumps; the welcome lists `"events"`): `C_PLACE` (41)
     `{place, room}`, `C_CLAIM` (42) `{claim, room}`, and `S_EVENT` (105) `{ev: {k, w, n, …}}`.
+  - The Telegram bridge (§8d, its own numbers; the welcome lists `"telegram"` only when it is configured): `C_TG` (50)
+    `{text}`, `C_TG_PREFS` (51) `{moments}`, `S_TG` (110) `{line}`, `S_TG_HISTORY` (111) `{lines}`, `S_TG_STATUS` (112).
   - Invites and head-to-head games (the welcome lists `"invites"` in `features`; §8b): `C_ONLINE {req}` →
     `S_ONLINE {req, ok, players: [{wallet, name, room, busy}]}`; `C_INVITE {to, game, stake, room, door}`;
     `C_ANSWER {id, answer: accept|decline|cancel}`; each change → `S_INVITE {invite}` to both wallets; an accept
@@ -395,3 +466,43 @@ Kept apart from the core types (`scripts/net/net_bump.gd`, numbers chosen away f
   `C_STATE`), the sender's bucket (1 a second, burst 3; over it is throttling, not a strike) and the target's 1.5 s
   cooldown. The level is capped at a stumble: nobody is knocked down over the network.
 - Receivers: the bumped avatar stumbles; the bumped player staggers for at most 0.6 s (`BumpMath.STAGGER_MAX_S`).
+
+## 8d. The Telegram bridge (for developers)
+
+`scripts/net/telegram/`: `net_tg.gd` (`NetTg`, pure: wire, Telegram → game cleaning, labels, game → Telegram
+neutralising, token masking, moment lines), `tg_rate.gd` (`TgRate`, sliding windows), `tg_digest.gd` (`TgDigest`,
+the batch), `telegram_bridge.gd` (`TelegramBridge`, the server's Node: HTTPRequest long poll + send queue). The
+server wires it in `game_server.gd` (`_start_telegram`, `_tg_*`); clients: `NetClient` (`tg_line`, `tg_history`,
+`tg_status`, `send_tg`, `send_tg_prefs`), `Net` (`tg_lines`, `telegram_available`, `can_telegram`, `send_telegram`,
+`tg_speaker`, `set_tg_moments`, `telegram_changed`), `ChatFeed` (mode `telegram`), `ChatBar`, `ChatFeedPanel` (the
+Telegram tab), `PubTgScreen` (the pub's TV), `AccessGates` goal `telegram`.
+
+**Messages** (its own numbers, like bumps and events; the welcome lists `"telegram"` only when the bridge is configured):
+- `C_TG` (50) `{text}`: a signed-in player's line. Answered by `S_TG_STATUS` `{what: "send", ok, error, retry_s, code}`
+  (`code: "guest"` for a guest) when refused; when Telegram took it, every client gets it back as an `S_TG` line.
+- `C_TG_PREFS` (51) `{moments: bool}`: post my moments or not (signed-in only; kept in `<data>/telegram_prefs.json`);
+  answered by `S_TG_STATUS {what: "prefs", ok, moments}`. Clients send it after each sign-in.
+- `S_TG` (110) `{line}`, `S_TG_HISTORY` (111) `{lines}` (the last 50, right after the welcome), with a line
+  `{id (Telegram message_id), src: tg|game|bot, from, text (≤ 280), ts, edited, wallet (game lines)}`. An edit
+  re-sends the same `id`; clients replace it (`NetTg.merge`). Codes 52–54 and 113–114 are free for the bridge.
+
+**Server side:** `getUpdates` (POST JSON `{offset, timeout: 25, allowed_updates: [message, edited_message]}`), one
+at a time on its own HTTPRequest (never blocks a frame; back-off 5 s → 5 min on errors, 409/401 explained once in the
+log); `sendMessage` `{chat_id, text, disable_web_page_preview, link_preview_options}` (no `parse_mode`), one at a time,
+paced by the group's limit (18 / 60 s, 1 / s) and Telegram's own 429 `retry_after`. `max_redirects = 0`, and the base
+URL and the token are shape-checked before any request (a malformed URL would make the engine print it, token and
+all). Every log line goes through `NetTg.mask`. Config: environment only (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`,
+`TELEGRAM_API_BASE`, `TELEGRAM_MUTE_IDS`); `GameServer.tg_env` overrides it in tests. A player's line waits up to 4 s
+for the chain's name of its wallet (a server-side `LauNames`, read-only); then the short wallet. Moments: `_event`
+hands every event that went out to `TelegramBridge.moment` (kinds `result`, `record`, `daily_record`, `join`, `arrive`,
+`place`; never one with a guest or an opted-out wallet); `TgDigest` batches them (gather 15 s, gap 2 min, 6 lines,
+arrive/place once per 3 h per player, stale after 30 min) and formats them only when it posts (names are read by then).
+
+**Check it:** `godot --headless --path . -s res://tools/tg_selftest.gd` (its own servers and a mock Bot API,
+`tools/tg_mock_api.gd`, on 127.0.0.1; ~75 checks: off when unset, discovery, the wrong chat, edits, placeholders,
+cleaning, mutes and bots, guests refused, names, neutralising, plain text, per-wallet / group / 429 limits, opt-out,
+the digest, history for late joiners, malformed input, and the token in no log line, message or Telegram text);
+`tests/test_telegram.gd` (the pure rules). By hand / screenshots: `tools/tg_mock.gd` (a made-up group on
+127.0.0.1:18790 with a test token), a server started with `TELEGRAM_BOT_TOKEN=<that test token>
+TELEGRAM_CHAT_ID=-1001234567890 TELEGRAM_API_BASE=http://127.0.0.1:18790`, `tools/net_bot.gd -- --tg-say="…"`,
+then `screenshot.gd -- --net-url=… [--net-key=<test key>] --tg=dock|history|bar|tv` (the pub: `--scene=res://scenes/places/sunny_pub.tscn --view=tv`).

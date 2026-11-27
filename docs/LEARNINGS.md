@@ -932,6 +932,22 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
   buffer, the resampler interpolates its box filter (exact timing). Measure voice with `net_bot --talk/--record`;
   a game client's real mic path runs under PulseAudio null sinks (the audit doc says how).
 
+- **The Telegram bridge (2026-11-27; SERVER.md §5c owner steps, §8d protocol):** only the game SERVER talks to
+  Telegram (`TelegramBridge`: HTTPRequest long poll `getUpdates` + a paced `sendMessage` queue); the token comes from
+  its environment only (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, on the box `/etc/dysnomia-server/env`, root-only) and
+  goes through `NetTg.mask` before any log line. Unset = no bridge, no "telegram" feature, silent. Codes: C 50–54 and
+  S 110–114 are the bridge's (`C_TG` 50, `C_TG_PREFS` 51, `S_TG` 110, `S_TG_HISTORY` 111, `S_TG_STATUS` 112).
+  Truth contract: a Telegram name is free text, never a chain identity: always "<name> · Telegram", no ✓ (check
+  marks are stripped from it), never matched against LAU names or put in a `RoomFeed`; game lines show the chain's
+  name for the server-verified wallet + "(in game)". Everything says "free · not on chain". Game → Telegram:
+  signed-in only, plain text (no `parse_mode`), links/mentions/commands defanged (`NetTg.neutralise`: a bot's message
+  looks authoritative), 1 / 10 s and 30 / h per wallet, 18 / min for the group. Moments are real server events only
+  (`_event` → `TgDigest`), never guests, never an opted-out wallet; "✓ paid" only with a verified payment's block.
+  Two engine traps: `HTTPRequest` prints the URL (token included) when it cannot parse it, so the base URL and the
+  token are shape-checked first and `max_redirects = 0`; JSON numbers arrive as floats, so chat ids go through
+  `NetProto.int_of` before `str()`. Check: `tools/tg_selftest.gd` (mock Bot API `tools/tg_mock_api.gd`),
+  `tests/test_telegram.gd`.
+
 ## 19. Exchanges: the Swap Hall (PulseX) and the YUE Exchange (2026-11-24)
 
 - **PulseX addresses [live, block 28,136,888]** (each has code; each router's `factory()` returns its

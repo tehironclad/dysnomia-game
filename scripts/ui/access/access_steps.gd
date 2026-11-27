@@ -305,6 +305,8 @@ func gather() -> Dictionary:
 		f["border"] = _door_facts(ctx.get("border"), _reads.get("border"), String(ctx.get("border_name", "")))
 	if _needs("fair"):
 		f["fair"] = _fair_facts(ctx.get("fair", _reads.get("fair", {})))
+	if _needs("server") or _needs("server_sign_in"):
+		f["net"] = net_facts(get_node_or_null("/root/Net") if is_inside_tree() else null)
 	if ctx.has("tier"):
 		f["tier"] = ctx["tier"]
 	if ctx.has("extra"):
@@ -329,6 +331,14 @@ func gather() -> Dictionary:
 				else:
 					f[k] = r[k]
 	return f
+
+
+## The Net autoload → the game server facts AccessGates wants ({} without one).
+static func net_facts(n: Node) -> Dictionary:
+	if n == null or not n.has_method("is_online"):
+		return {"online": false, "telegram": false, "signed": false, "state": ""}
+	return {"online": n.is_online(), "telegram": n.has_method("telegram_available") and n.telegram_available(),
+		"signed": n.has_method("can_talk") and n.can_talk(), "state": String(n.sign_in_state()) if n.has_method("sign_in_state") else ""}
 
 
 ## A RoomState (the host's, or one read here) → the facts AccessGates wants.
@@ -545,7 +555,7 @@ func _set_status(t: String, c: Color = Color(0, 0, 0, 0)) -> void:
 
 # --- Actions ----------------------------------------------------------------------
 
-const BUILT_IN := ["connect", "reopen", "chain", "void", "yue", "front_door", "move_lau"]
+const BUILT_IN := ["connect", "reopen", "chain", "void", "yue", "front_door", "move_lau", "net_sign_in"]
 
 
 func _has_handler(act: String) -> bool:
@@ -577,6 +587,11 @@ func _run(act: String) -> void:
 			_busy = false
 		"void", "yue", "front_door":
 			_to_front_door("void" if act != "front_door" else "identity")
+		"net_sign_in":
+			var n := get_node_or_null("/root/Net")
+			if n != null and n.has_method("sign_in"):
+				n.sign_in()
+				_set_status("Sign-in: approve the free signature in your wallet window (not a transaction).", DeepFieldTheme.ICE)
 		"move_lau":
 			_busy = true
 			_render_key = ""

@@ -25,6 +25,7 @@ const STREET := 17.0
 const BAR_ZONE := Rect2(PubRoom.COUNTER_X0 - 0.6, PubRoom.COUNTER_Z + 0.4, PubRoom.COUNTER_X1 - PubRoom.COUNTER_X0 + 1.2, 2.6)
 
 var room: PubRoom
+var tg_screen: PubTgScreen  ## the TV: Sunny's Pub on Telegram, when the game server bridges it
 var life: PubLife
 var bar_menu: BarMenu
 var sunny: Node3D
@@ -57,6 +58,11 @@ func _ready() -> void:
 	sunny = life.sunny
 	_signs()
 	_deco.commit(self, "Deco")
+	tg_screen = PubTgScreen.new()
+	tg_screen.name = "TelegramTV"
+	tg_screen.position = PubRoom.TV_AT
+	tg_screen.rotation_degrees.y = PubRoom.TV_YAW_DEG
+	add_child(tg_screen)
 	var entries: Array = load("res://scripts/places/arcade_place.gd")._catalog().filter(func(e): return e.get("playable", true) and e.get("kind", "game") != "cartridge")
 	for i in mini(3, entries.size()):
 		add_cabinet(entries[i], Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3(-HX + 0.7, 0, -2.6 + i * 1.3)))
@@ -532,6 +538,7 @@ const VIEWS := {
 	"games": [Vector3(-2.0, 2.4, -3.0), Vector3(-8.0, 1.0, 3.0)],
 	"stools": [Vector3(-2.2, 1.55, -2.6), Vector3(-3.6, 1.1, -6.0)],
 	"cabinets": [Vector3(4.5, 1.7, 0.5), Vector3(-9.3, 1.8, -1.3)],
+	"tv": [Vector3(4.4, 1.8, -4.3), Vector3(9.8, 3.4, -4.9)],
 }
 
 
