@@ -432,10 +432,10 @@ func _fuzz(url: String) -> void:
 	var weird := [{}, [], [1, 2], "x", -1, 1e300, true, null, {"a": {}}]
 	var keys := ["req", "room", "name", "head", "acc", "body", "text", "board", "entry", "n", "to", "game", "stake",
 		"door", "id", "answer", "match", "op", "a", "winner", "digest", "token", "wallet", "sig", "host", "place", "claim",
-		"day", "attempt", "score", "log"]
+		"day", "attempt", "score", "log", "moments"]
 	var json_types := [NetProto.C_AUTH, NetProto.C_JOIN, NetProto.C_CHAT, NetProto.C_LB_SUBMIT, NetProto.C_LB_TOP,
 		NetProto.C_PROFILE, NetProto.C_INFO, NetProto.C_ONLINE, NetProto.C_INVITE, NetProto.C_ANSWER, NetProto.C_MOVE,
-		NetProto.C_RESULT, NetEvents.C_PLACE, NetEvents.C_CLAIM, NetDaily.C_DAILY_START, NetDaily.C_DAILY_SUBMIT, NetDaily.C_DAILY_BOARD]
+		NetProto.C_RESULT, NetEvents.C_PLACE, NetEvents.C_CLAIM, NetDaily.C_DAILY_START, NetDaily.C_DAILY_SUBMIT, NetDaily.C_DAILY_BOARD, NetTg.C_TG, NetTg.C_TG_PREFS]
 	var msgs: Array = []
 	for t in json_types:
 		for w in weird:

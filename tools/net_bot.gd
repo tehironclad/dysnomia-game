@@ -34,6 +34,9 @@ extends SceneTree
 ##                          ≥ 00:00 UTC, read from the chain), each with a scripted input pattern (varied by
 ##                          the key), waiting out the run's length, then send the input log for the server to
 ##                          replay; prints each result and the board. Needs a server that lists "daily".
+## Telegram (a server with the bridge, docs/SERVER.md §8d):
+##       [--tg-say="…"]     after signing in, send one line to the server's Telegram group (C_TG)
+##       [--tg-delay=S]     …S seconds after joining (default 1); it prints every Telegram line it gets
 ## It prints every event it gets ("[bot] event: …", in the feed's words) and every peer's
 ## name tag as this game would draw it ("[bot] tag: …"): the chain's LAU name for the
 ## verified wallet (read-only), the short wallet, or "guest".
@@ -86,6 +89,8 @@ func _run() -> void:
 	var record := ""
 	var stats := false
 	var daily := 0
+	var tg_say := ""
+	var tg_delay := 1.0
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		var v := kv[1] if kv.size() > 1 else ""
@@ -123,6 +128,8 @@ func _run() -> void:
 			"record": record = v
 			"stats": stats = true
 			"daily": daily = clampi(int(v), 1, 3)
+			"tg-say": tg_say = v
+			"tg-delay": tg_delay = float(v)
 	c = load("res://scripts/net/net_client.gd").new()
 	root.add_child(c)
 	c.signer_wallet = EthSign.address_of_private(key)
@@ -155,6 +162,11 @@ func _run() -> void:
 		while c.peers.is_empty() and Time.get_ticks_msec() - t0 < secs * 1000.0:
 			await process_frame
 		print("[bot] a player is here: acting")
+	if tg_say != "":
+		c.tg_status.connect(func(d): print("[bot] telegram %s: %s" % [d["what"], "ok" if d["ok"] else d["error"]]))
+		c.tg_line.connect(func(l): print("[bot] telegram line: %s: %s" % [NetTg.speaker(l), l["text"]]))
+		await create_timer(tg_delay).timeout
+		print("[bot] telegram: %s" % ("sent" if c.send_tg(tg_say) else "not sent (a server without the Telegram bridge)"))
 	if place != "" or claim != "":
 		await create_timer(1.5).timeout
 		if place != "":

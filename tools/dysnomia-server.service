@@ -13,7 +13,8 @@ User=dysnomia-server
 Group=dysnomia-server
 Environment=HOME=/opt/dysnomia
 WorkingDirectory=/opt/dysnomia/game
-# --name and anything else: /etc/dysnomia-server/env (SERVER_ARGS=...)
+# --name and anything else: /etc/dysnomia-server/env (SERVER_ARGS=...), which also holds the
+# Telegram bridge's TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (root-only, mode 600; docs/SERVER.md 5c)
 EnvironmentFile=-/etc/dysnomia-server/env
 ExecStart=/opt/dysnomia/godot/godot --headless --path /opt/dysnomia/game res://scenes/net/game_server.tscn -- --port=8787 --bind=127.0.0.1 --data=/var/lib/dysnomia-server $SERVER_ARGS
 Restart=always

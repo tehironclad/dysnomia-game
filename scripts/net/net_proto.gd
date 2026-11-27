@@ -176,6 +176,8 @@ static func size_ok(msg: PackedByteArray) -> bool:
 		return NetEvents.size_ok(msg)  # the activity feed: its own section (net_events.gd)
 	if NetDaily.SIZES.has(t):
 		return NetDaily.size_ok(msg)  # the daily challenge: its own section (net_daily.gd)
+	if NetTg.SIZES.has(t):
+		return NetTg.size_ok(msg)  # the Telegram bridge: its own section (telegram/net_tg.gd)
 	return MAX_SIZE.has(t) and msg.size() <= int(MAX_SIZE[t]) and msg.size() >= int(MIN_SIZE.get(t, 1))
 
 

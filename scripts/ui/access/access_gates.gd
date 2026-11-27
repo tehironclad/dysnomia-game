@@ -52,6 +52,7 @@ const GOALS := {
 	"yue_trade": {"title": "Trade at the YUE desk", "gates": ["wallet", "window", "chain"]},
 	"building": {"title": "Open this building", "gates": ["tier"]},
 	"vehicle": {"title": "Drive this vehicle", "gates": []},
+	"telegram": {"title": "Write to Sunny's Pub on Telegram (free, not on chain)", "gates": ["wallet", "window", "server", "server_sign_in"]},
 }
 
 ## Each gate: the step's title, a plain explanation, and the action that does it.
@@ -89,6 +90,12 @@ const GATES := {
 	"ready": {"title": "Ready to Beat (the four holdings)",
 		"explain": "META.Beat needs Fomalhaute and Fornax on your LAU, Tethys and qZů anywhere; without all four it reverts.",
 		"action": "front_door", "action_label": "See my holdings"},
+	"server": {"title": "Online: a game server that bridges Telegram",
+		"explain": "Telegram lines go through the game server's bot (free, nothing on chain). With no server, or one without the bridge, there is no Telegram here.",
+		"action": "", "action_label": ""},
+	"server_sign_in": {"title": "Sign in to the game server (one free signature)",
+		"explain": "The server must know which wallet you are, so the group sees your chain name. It is a personal_sign of a text the game builds: not a transaction, it approves and moves nothing.",
+		"action": "net_sign_in", "action_label": "Sign in"},
 	"tier": {"title": "This territory's development",
 		"explain": "Buildings open as a territory develops. Every Su or room line here adds Hypobar, and the total sets the tier.",
 		"action": "su", "action_label": "Su here"},
@@ -196,6 +203,8 @@ static func gate(id: String, f: Dictionary) -> Dictionary:
 			return _step(id, "todo", "The wallet is on chain %d." % cid)
 		"lau", "yue", "unbanned":
 			return _identity_gate(id, f)
+		"server", "server_sign_in":
+			return _server_gate(id, f)
 		"affection":
 			return _affection_gate(f)
 		"room", "border":
@@ -307,6 +316,32 @@ static func _identity_gate(id: String, f: Dictionary) -> Dictionary:
 		return _step(id, "todo", "Comes after your LAU.", "")
 	return _step(id, "done", "Your YUE: %s" % short(String(f.get("yue_addr", "")))) if bool(f.get("yue", false)) \
 		else _step(id, "todo", "No YUE for this wallet yet (CHAN.Yan).")
+
+
+## The game server's steps. Facts: net = {online: bool, telegram: bool, signed: bool,
+## state: Net.sign_in_state() ("" | prompt | signing | declined | signed)}.
+static func _server_gate(id: String, f: Dictionary) -> Dictionary:
+	var n: Dictionary = f.get("net", {})
+	if n.is_empty():
+		return _step(id, "checking", "Asking the game server…", "")
+	if id == "server":
+		if not bool(n.get("online", false)):
+			return _step(id, "todo", "No game server answers right now (single-player). The game keeps trying quietly.")
+		if not bool(n.get("telegram", false)):
+			return _step(id, "todo", "This game server does not bridge Telegram.")
+		return _step(id, "done", "Online, and the server bridges %s on Telegram." % NetTg.GROUP)
+	if bool(n.get("signed", false)):
+		return _step(id, "done", "Signed in: the server knows your wallet.")
+	if not bool(n.get("online", false)):
+		return _step(id, "unknown", "— (once a game server answers)", "")
+	if String(f.get("wallet", "")) == "" and String(f.get("signer", "")) == "":
+		return _step(id, "todo", "Comes after a wallet.", "")
+	match String(n.get("state", "")):
+		"signing", "prompt":
+			return _step(id, "checking", "Approve the free signature in your wallet window (not a transaction)…", "")
+		"declined":
+			return _step(id, "todo", "You said no to the sign-in earlier: Sign in asks once more.")
+	return _step(id, "todo", "One free signature (personal_sign), not a transaction.")
 
 
 static func _affection_gate(f: Dictionary) -> Dictionary:

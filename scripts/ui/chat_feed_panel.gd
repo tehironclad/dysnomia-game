@@ -51,6 +51,17 @@ var _style: StyleBoxFlat
 var _mouse_before := Input.MOUSE_MODE_CAPTURED
 var _keys := {}  # meta key → line (history hover)
 var _focus_key := ""  # a line the history was opened at (Alerts: a card line or a toast), highlighted
+## What the dock shows: "room" (this QING's chain lines) or "telegram" (the game server's
+## Telegram group, NetTg: free text, not on chain). The Telegram tab exists only while the
+## server bridges a group; 0 (`chat_source`) switches (ChatHud), and the bar's Telegram mode opens it.
+var source := "room"
+var tabs: HBoxContainer
+var tg_rows: VBoxContainer
+var _tab_room: Label
+var _tab_tg: Label
+var _tg_auto := false  # the bar's mode opened the Telegram tab (its other modes close it again)
+var _tg_seen := 0      # Telegram lines when the tab was last looked at
+const TG_BLUE := Color("#7cc7ff")
 
 
 func _init() -> void:
@@ -91,6 +102,20 @@ func _init() -> void:
 	unread_chip.add_theme_stylebox_override("normal", us)
 	unread_chip.visible = false
 	head_row.add_child(unread_chip)
+	tabs = HBoxContainer.new()
+	tabs.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tabs.add_theme_constant_override("separation", 6)
+	tabs.visible = false
+	col.add_child(tabs)
+	_tab_room = _tab_chip("ROOM · ON CHAIN")
+	tabs.add_child(_tab_room)
+	_tab_tg = _tab_chip("TELEGRAM · FREE")
+	tabs.add_child(_tab_tg)
+	tabs.add_child(DeepFieldTheme.key_chip(ControlsHelp.key_of("chat_source")))
+	var tl := Label.new()
+	tl.theme_type_variation = "MutedLabel"
+	tl.text = "switch"
+	tabs.add_child(tl)
 	sub = Label.new()
 	sub.theme_type_variation = "MutedLabel"
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -100,6 +125,11 @@ func _init() -> void:
 	rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	rows.add_theme_constant_override("separation", 4)
 	col.add_child(rows)
+	tg_rows = VBoxContainer.new()
+	tg_rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tg_rows.add_theme_constant_override("separation", 4)
+	tg_rows.visible = false
+	col.add_child(tg_rows)
 	own = VBoxContainer.new()
 	own.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(own)
@@ -115,8 +145,12 @@ func _init() -> void:
 func _build_foot() -> void:
 	for c in foot.get_children():
 		c.queue_free()
-	for kv in [[ControlsHelp.key_of("chat"), "talk"], [ControlsHelp.key_of("chat_history"), "history"],
-			["1–4", "quick line"], [ControlsHelp.key_of("chat_dock"), "fold"]]:
+	var keys := [[ControlsHelp.key_of("chat"), "talk"], [ControlsHelp.key_of("chat_history"), "history"],
+			["1–4", "quick line"], [ControlsHelp.key_of("chat_dock"), "fold"]]
+	if telegram_shown():
+		keys.insert(2, [ControlsHelp.key_of("chat_source"), "Telegram" if source == "room" else "room"])
+		keys.remove_at(3)  # the quick lines stay in the bar's own hint
+	for kv in keys:
 		foot.add_child(DeepFieldTheme.key_chip(String(kv[0])))
 		var l := Label.new()
 		l.theme_type_variation = "MutedLabel"
@@ -186,6 +220,182 @@ func _ready() -> void:
 	var cf := ConfigFile.new()
 	if cf.load(UI_PREFS) == OK and bool(cf.get_value("chat", "dock_folded", false)):
 		set_collapsed(true)
+	ChatFeed.mode_changed.connect(_on_mode)
+	var n := get_node_or_null("/root/Net")
+	if n != null and n.has_signal("telegram_changed"):
+		n.telegram_changed.connect(_on_telegram)
+
+
+# --- The Telegram tab (NetTg) --------------------------------------------------------------
+
+func _tab_chip(text: String) -> Label:
+	var l := Label.new()
+	l.theme_type_variation = "MonoLabel"
+	l.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
+	l.text = text
+	var s := StyleBoxFlat.new()
+	s.set_corner_radius_all(6)
+	s.content_margin_left = 8
+	s.content_margin_right = 8
+	s.content_margin_top = 1
+	s.content_margin_bottom = 1
+	l.add_theme_stylebox_override("normal", s)
+	return l
+
+
+## The server bridges a Telegram group: the dock has its tab.
+func telegram_shown() -> bool:
+	var n := get_node_or_null("/root/Net") if is_inside_tree() else null
+	return n != null and n.has_method("telegram_available") and n.telegram_available()
+
+
+func tg_lines() -> Array:
+	var n := get_node_or_null("/root/Net") if is_inside_tree() else null
+	return n.tg_lines if n != null and n.get("tg_lines") is Array else []
+
+
+func set_source(s: String) -> void:
+	source = "telegram" if s == "telegram" and telegram_shown() else "room"
+	if source == "telegram":
+		_tg_seen = tg_lines().size()
+	_refresh_tabs()
+	_build_foot()
+	_render_rows()
+	_refresh_header()
+	if history.visible:
+		_render_history()
+
+
+func toggle_source() -> void:
+	_tg_auto = false
+	set_source("room" if source == "telegram" else "telegram")
+
+
+func _on_mode(m: String) -> void:
+	if m == "telegram":
+		if source != "telegram":
+			_tg_auto = true
+			set_source("telegram")
+	elif _tg_auto:
+		_tg_auto = false
+		set_source("room")
+
+
+func _on_telegram() -> void:
+	if source == "telegram" and not telegram_shown():
+		set_source("room")  # the server went, or stopped bridging: quietly back
+		return
+	if source == "telegram":
+		_tg_seen = tg_lines().size()
+		_pulse = 1.0
+	_refresh_tabs()
+	_build_foot()
+	_render_rows()
+	_refresh_header()
+	if history.visible:
+		_render_history()
+
+
+func _refresh_tabs() -> void:
+	var shown := telegram_shown()
+	tabs.visible = shown and not collapsed
+	if not shown:
+		return
+	var unseen := maxi(0, tg_lines().size() - _tg_seen) if source == "room" else 0
+	_tab_tg.text = "TELEGRAM · FREE" + ("  ● %d" % unseen if unseen > 0 else "")
+	for pair in [[_tab_room, source == "room", tint], [_tab_tg, source == "telegram", TG_BLUE]]:
+		var l: Label = pair[0]
+		var on: bool = pair[1]
+		var c: Color = pair[2]
+		var sb := l.get_theme_stylebox("normal") as StyleBoxFlat
+		sb.bg_color = Color(c, 0.85) if on else Color(c, 0.12)
+		l.add_theme_color_override("font_color", DeepFieldTheme.BLACK if on else c.lerp(Color.WHITE, 0.2))
+
+
+## The newest Telegram lines (the same ROWS), each labelled as Telegram: the speaker
+## "<name> · Telegram" (or a player "(in game)", or the game's digest), never a ✓.
+func _render_tg_rows() -> void:
+	for c in tg_rows.get_children():
+		c.queue_free()
+	var ls := tg_lines()
+	var tail: Array = ls.slice(maxi(0, ls.size() - ROWS))
+	for i in tail.size():
+		var r := _make_tg_row(tail[i])
+		r.modulate.a = row_alpha(tail.size() - 1 - i, false)
+		tg_rows.add_child(r)
+	tg_rows.visible = not collapsed and not tail.is_empty()
+
+
+func _make_tg_row(l: Dictionary) -> Control:
+	var h := HBoxContainer.new()
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_theme_constant_override("separation", 10)
+	var badge := Label.new()
+	badge.text = "TG" if String(l.get("src", "")) != "game" else "◆"
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge.custom_minimum_size = Vector2(FACE_PX, FACE_PX)
+	badge.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	badge.add_theme_font_size_override("font_size", DeepFieldTheme.FS_CAPTION)
+	badge.add_theme_color_override("font_color", DeepFieldTheme.BLACK)
+	var bs := StyleBoxFlat.new()
+	bs.bg_color = tg_color(l)
+	bs.set_corner_radius_all(int(FACE_PX * 0.5))
+	badge.add_theme_stylebox_override("normal", bs)
+	h.add_child(badge)
+	var r := RichTextLabel.new()
+	r.bbcode_enabled = true
+	r.fit_content = true
+	r.scroll_active = false
+	r.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	r.add_theme_font_size_override("normal_font_size", DeepFieldTheme.FS_BODY)
+	r.add_theme_font_size_override("bold_font_size", DeepFieldTheme.FS_BODY)
+	r.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
+	r.add_theme_constant_override("outline_size", 3)
+	r.text = tg_bbcode(l, Net.tg_speaker(l))
+	h.add_child(r)
+	var age := Label.new()
+	age.theme_type_variation = "MonoLabel"
+	age.add_theme_color_override("font_color", DeepFieldTheme.DIM.lerp(DeepFieldTheme.MUTED, 0.5))
+	age.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	age.text = tg_age(l)
+	h.add_child(age)
+	return h
+
+
+## Pure: the colour a Telegram line's speaker is drawn in.
+static func tg_color(l: Dictionary) -> Color:
+	match String(l.get("src", "")):
+		"game":
+			return DeepFieldTheme.ICE
+		"bot":
+			return GOLD
+	return TG_BLUE
+
+
+## Pure: a Telegram row's BBCode: who (as NetTg.speaker says, never a badge), then the text.
+static func tg_bbcode(l: Dictionary, who: String) -> String:
+	return "[b][color=#%s]%s[/color][/b]  %s" % [tg_color(l).to_html(false), ChatLines.esc(who),
+		ChatLines.esc(NetTg.clip(String(l.get("text", "")), 160))]
+
+
+## Pure: "12:04 UTC" (and "edited"); "" when the time is unknown.
+static func tg_age(l: Dictionary) -> String:
+	var c := NetTg.clock(int(l.get("ts", 0)))
+	if bool(l.get("edited", false)):
+		return (c + " · edited") if c != "" else "edited"
+	return c
+
+
+## Pure: the line under the header on the Telegram tab.
+static func tg_state_line(available: bool, n: int) -> String:
+	if not available:
+		return "Telegram: — (no game server here bridges it)."
+	if n == 0:
+		return "%s on Telegram: nothing said since the server started. Lines show here as people write there." % NetTg.GROUP
+	return "%s on Telegram · free · not on chain · names are Telegram's, not LAUs" % NetTg.GROUP
 
 
 func bind_feed(f: RoomFeed) -> void:
@@ -283,6 +493,11 @@ func _is_own_shown(l: Dictionary) -> bool:
 ## The newest ROWS lines, oldest first; rows are kept per line so a new one can
 ## slide in while the others stay put.
 func _render_rows() -> void:
+	if source == "telegram":
+		rows.visible = false
+		_render_tg_rows()
+		return
+	tg_rows.visible = false
 	if _feed == null or not is_instance_valid(_feed):
 		return
 	var tail: Array = _feed.lines.slice(maxi(0, _feed.lines.size() - ROWS))
@@ -446,6 +661,18 @@ static func row_alpha(from_newest: int, fresh: bool) -> float:
 # --- Header and states --------------------------------------------------------------------------
 
 func _refresh_header() -> void:
+	if source == "telegram":
+		header.text = "TELEGRAM · %s" % NetTg.GROUP.to_upper()
+		header.add_theme_color_override("font_color", TG_BLUE)
+		stat.text = ""  # the line under the tabs says it: free, not on chain
+		stat.tooltip_text = "Relayed by the game server's Telegram bot. Nothing here is on chain; Telegram names are free text, never a LAU."
+		unread_chip.visible = false
+		sub.text = tg_state_line(telegram_shown(), tg_lines().size())
+		sub.visible = not collapsed
+		return
+	header.add_theme_color_override("font_color", tint.lerp(Color.WHITE, 0.35))
+	if tabs.visible:
+		_refresh_tabs()  # the unseen count on the Telegram tab
 	if _feed == null or not is_instance_valid(_feed):
 		header.text = "ROOM"
 		stat.text = ""
@@ -498,7 +725,9 @@ func mark_read() -> void:
 ## U: fold the dock to its header (the unread count shows there) or unfold it.
 func set_collapsed(c: bool) -> void:
 	collapsed = c
-	rows.visible = not c and rows.get_child_count() > 0
+	rows.visible = not c and rows.get_child_count() > 0 and source == "room"
+	tg_rows.visible = not c and tg_rows.get_child_count() > 0 and source == "telegram"
+	tabs.visible = not c and telegram_shown()
 	own.visible = not c
 	foot.visible = not c
 	if not c:
@@ -606,6 +835,15 @@ func _focus_index() -> int:
 
 
 func _render_history() -> void:
+	if source == "telegram":
+		(history.get_child(0).get_node("Title") as Label).text = "TELEGRAM · %s" % NetTg.GROUP.to_upper()
+		history_sub.text = "Relayed by the game server's Telegram bot: free, not on chain. A Telegram name is whatever its owner typed, never a LAU; players writing from the game show their chain name and \"(in game)\".\n%s" % tg_state_line(telegram_shown(), tg_lines().size())
+		_keys.clear()
+		var tp: PackedStringArray = []
+		for l in tg_lines():
+			tp.append("[color=#5d6578]%s[/color]  %s" % [ChatLines.esc(tg_age(l)), tg_bbcode(l, Net.tg_speaker(l))])
+		history_text.text = "\n".join(tp) if not tp.is_empty() else "[color=#5d6578]%s[/color]" % ChatLines.esc(tg_state_line(telegram_shown(), 0))
+		return
 	if _feed == null:
 		return
 	(history.get_child(0).get_node("Title") as Label).text = "ROOM · %s" % String(_feed.territory.get("name", _feed.qing)).to_upper()

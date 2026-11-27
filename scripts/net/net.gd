@@ -11,6 +11,8 @@ extends Node
 ##   is_online(), can_talk(), mute(wallet), unmute(wallet), is_muted(wallet)
 ##   sign_in(), sign_in_state(), can_sign_in(), announce_place(place, qing), claim(kind, qing)
 ##   names: LauNames (the chain's names for wallets), activity: NetActivity (the feed)
+##   Telegram (when the server bridges a group, NetTg): telegram_available(), can_telegram(),
+##   send_telegram(text), tg_lines, tg_speaker(line), set_tg_moments(on), signal telegram_changed
 ##
 ## Sign-in: once a wallet is connected and the server answers, the game signs in
 ## by itself: a saved session token for that server and wallet if there is one
@@ -28,6 +30,10 @@ signal status_changed(status: String)
 signal notice(text: String)
 signal voice_pcm(id: int, pcm: PackedFloat32Array, level: float)
 signal speaking_changed(on: bool)
+## The Telegram bridge (NetTg): lines came, went (offline) or the server's offer changed.
+signal telegram_changed
+## The server's answer to this player's Telegram line or choice: ok, and why not.
+signal telegram_status(ok: bool, text: String)
 
 const SETTINGS_PATH := "user://net.cfg"
 const DISCOVERY_PATH := "/api/game-server"
@@ -47,6 +53,7 @@ var mic_device := "Default"
 var voice_volume := 0.8
 var mute_others := false
 var muted := {}               # wallet → true (local only)
+var tg_moments := true        # the server may post my game moments to its Telegram group (F2 · Online)
 
 var client: NetClient
 var mic: Node
@@ -68,6 +75,10 @@ var declined := {}            # wallet → true: said no to the sign-in (asked a
 var _auto_key := ""           # the url|wallet|connection the automatic sign-in already ran for
 var _auto_waiting := false    # the prompt is showing; the wallet asks next
 var _last_sign_stage := ""    # the last Wallet.sign_message failure stage ("sign" = refused in the wallet)
+## The server's Telegram group, as it last told us (NetTg lines, oldest first; empty offline).
+## Free text from Telegram: never a chain fact, never a chain identity.
+var tg_lines: Array = []
+var tg_last := ""             # the last answer to a Telegram line ("" = none or it went through)
 
 
 func _ready() -> void:
@@ -90,6 +101,9 @@ func _ready() -> void:
 		notice.emit(text))
 	client.auth_changed.connect(_on_auth)
 	client.auth_failed.connect(_on_auth_failed)
+	client.tg_line.connect(_on_tg_line)
+	client.tg_history.connect(_on_tg_history)
+	client.tg_status.connect(_on_tg_status)
 	client.signer = _wallet_signer
 	names = LauNames.new()
 	names.name = "Names"
@@ -230,9 +244,13 @@ func _on_status(s: String) -> void:
 			client.join(_room, profile())
 		_auto_key = ""
 		_auto_check_soon()
+		telegram_changed.emit()
 	elif s == "offline":
 		_signing = false
 		_auto_waiting = false
+		if not tg_lines.is_empty():
+			tg_lines.clear()  # offline: no Telegram here (not "no lines")
+		telegram_changed.emit()
 		if _started and _retry_timer.is_stopped() and not _connecting:
 			_offline("no answer from " + resolved_url if resolved_url != "" else "offline")
 	status_changed.emit(s)
@@ -333,7 +351,10 @@ func _on_auth(w: String) -> void:
 		if client.token != "":
 			save_token(client.url, w, client.token)
 		refresh_profile()  # the name and head again, now as a signed-in player
+		if client.has_telegram():
+			client.send_tg_prefs(tg_moments)
 	_pending_chat.clear()
+	telegram_changed.emit()  # Telegram mode follows the sign-in
 
 
 func _on_auth_failed(reason: String) -> void:
@@ -479,6 +500,67 @@ func _on_chat(_id: int, w: String, nm: String, text: String, pos: Vector3) -> vo
 	chat_received.emit(w, nm, text, pos)
 
 
+# ── Telegram (the server's bridge; NetTg) ───────────────────────────────────
+
+## The server bridges a Telegram group (it said "telegram" in its welcome).
+func telegram_available() -> bool:
+	return client != null and client.has_telegram()
+
+
+## …and this player may write to it (signed in: the server knows the wallet).
+func can_telegram() -> bool:
+	return telegram_available() and client.wallet != ""
+
+
+## A line to the Telegram group. "" = sent (the server answers: S_TG brings it back once
+## Telegram took it, or telegram_status says why not); "guest" = sign in first (the caller
+## shows the steps); else why nothing was sent.
+func send_telegram(text: String) -> String:
+	if not telegram_available():
+		return "No Telegram here: this game server does not bridge one (or no server answers)."
+	if client.wallet == "":
+		return "guest"
+	if NetTg.outgoing_text(text) == "":
+		return "Nothing to send."
+	tg_last = ""
+	return "" if client.send_tg(text) else "Not sent: — (the connection dropped)."
+
+
+## Who a Telegram line is from, as every surface draws it ("<name> · Telegram", or the
+## chain's name for a game line's verified wallet + " (in game)").
+func tg_speaker(l: Dictionary) -> String:
+	return NetTg.speaker(l, func(w: String) -> String: return names.display(w) if names else NetProto.short_wallet(w))
+
+
+## F2 · Online: may the server post my game moments (wins, records, arrivals) to its group?
+func set_tg_moments(on: bool) -> void:
+	tg_moments = on
+	save_settings()
+	if can_telegram():
+		client.send_tg_prefs(on)
+
+
+func _on_tg_line(l: Dictionary) -> void:
+	tg_lines = NetTg.merge(tg_lines, l)
+	telegram_changed.emit()
+
+
+func _on_tg_history(ls: Array) -> void:
+	tg_lines = ls
+	telegram_changed.emit()
+
+
+func _on_tg_status(d: Dictionary) -> void:
+	if String(d["what"]) == "prefs":
+		if d["ok"]:
+			tg_moments = bool(d["moments"])
+		return
+	tg_last = "" if d["ok"] else String(d["error"])
+	telegram_status.emit(bool(d["ok"]), tg_last)
+	if not d["ok"] and tg_last != "":
+		notice.emit("Telegram: " + tg_last)
+
+
 # ── voice ──────────────────────────────────────────────────────────────────
 
 func _on_voice(id: int, codec: int, data: PackedByteArray) -> void:
@@ -579,6 +661,7 @@ func _load_settings() -> void:
 		muted[String(w)] = true
 	for w in c.get_value("net", "signin_declined", []):
 		declined[String(w)] = true
+	tg_moments = bool(c.get_value("telegram", "moments", tg_moments))
 
 
 func save_settings() -> void:
@@ -592,4 +675,5 @@ func save_settings() -> void:
 	c.set_value("voice", "device", mic_device)
 	c.set_value("voice", "volume", voice_volume)
 	c.set_value("voice", "mute_others", mute_others)
+	c.set_value("telegram", "moments", tg_moments)
 	c.save(SETTINGS_PATH)

@@ -255,6 +255,15 @@
   `--session=` views never write the baseline. Check: `tools/live_away.gd [-- --wallet=0x… --since=<block> | --stored]`.
   Shots: `--session=0x… --away-since=<block>` (front door, or a territory's arrival card), `--alert-replay=N` (a
   territory: real lines through the mention path), `--alert-panel`.
+- Telegram bridge (`scripts/net/telegram/`, `docs/SERVER.md` §5c owner steps + §8d, LEARNINGS §18): only the game SERVER
+  talks to Telegram (`TelegramBridge`; env `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`/`TELEGRAM_API_BASE`/`TELEGRAM_MUTE_IDS`,
+  on the box `/etc/dysnomia-server/env`, root-only; unset = off and silent). Never print, log or send the token (`NetTg.mask`).
+  Codes C 50–54 / S 110–114 (`NetTg`), welcome feature `"telegram"`. A Telegram name is never a chain identity ("<name> ·
+  Telegram", no ✓); game → Telegram is signed-in only, plain text, links/mentions defanged (`NetTg.neutralise`); moments =
+  real server events batched by `TgDigest` (never guests, opt-out F2 · Online). Client: `Net.tg_lines`/`send_telegram`,
+  chat bar mode TG (Tab), dock tab (0, `chat_source`), the pub TV (`PubTgScreen`). Check: `tools/tg_selftest.gd` (mock Bot
+  API `tools/tg_mock_api.gd`), `tests/test_telegram.gd`. Shots: `tools/tg_mock.gd` + a server with `TELEGRAM_API_BASE`
+  pointed at it + `net_bot.gd -- --tg-say=…`, then `screenshot.gd -- --net-url=… [--net-key=…] --tg=dock|history|bar|tv`.
 - Front door (`scripts/ui/front_door.gd`): the title screen over `FieldGlobe` (the moon + every QING; warm halo =
   developed, ice ring = yours, white ring = here; shared with the Field). Four doors (Connect · Explore · Continue to my
   QING · The Field), who-you-are, news + status strip. `open_panel(void|identity|guide|opps)`; shot `--open=`.

@@ -98,11 +98,16 @@ func _ready() -> void:
 	ChatFeed.outbox_changed.connect(_on_outbox)
 	ChatFeed.mode_changed.connect(func(_m): _refresh_mode())
 	ChatFeed.note_changed.connect(_refresh_mode)
+	var n := get_node_or_null("/root/Net")
+	if n != null and n.has_signal("telegram_status"):
+		n.telegram_status.connect(func(ok: bool, text: String):
+			if not ok and text != "" and visible:
+				_show_status("Telegram: " + text))
 	hint.text = hint_text()
 
 
 static func hint_text() -> String:
-	return "Enter send · Esc close (text kept) · %s/%s recall · %s say/post · %s… quick lines · %s history" % [
+	return "Enter send · Esc close (text kept) · %s/%s recall · %s say/Telegram/post · %s… quick lines · %s history" % [
 		ControlsHelp.key_of("chat_recall_prev"), ControlsHelp.key_of("chat_recall_next"), ControlsHelp.key_of("chat_mode"),
 		ControlsHelp.key_of("chat_quick_1"), ControlsHelp.key_of("chat_history")]
 
@@ -120,8 +125,8 @@ func open(prefill: String = "") -> void:
 	edit.text = prefill if prefill != "" else _kept
 	edit.caret_column = edit.text.length()
 	edit.grab_focus()
-	if not ChatFeed.can_say() and ChatFeed.mode == "say":
-		ChatFeed.set_mode("post")
+	if not ChatFeed.mode in ChatFeed.modes():
+		ChatFeed.set_mode("post")  # say without Net, Telegram without a bridging server
 	_refresh_mode()
 	_update_count()
 	_offer_join(_last_join_offer())
@@ -185,22 +190,44 @@ func _set_text(t: String) -> void:
 
 func _update_count() -> void:
 	var n := edit.text.length()
-	_count.text = "%d/%d" % [n, ChatDraft.MAX_LEN]
-	_count.add_theme_color_override("font_color", Color("#ffd27a") if n > ChatDraft.MAX_LEN - 20 else DeepFieldTheme.DIM)
+	var cap := NetTg.OUT_MAX if ChatFeed.mode == "telegram" else ChatDraft.MAX_LEN  # a Telegram line is capped shorter
+	_count.text = "%d/%d" % [n, cap]
+	_count.add_theme_color_override("font_color", Color("#ffd27a") if n > cap - 20 else DeepFieldTheme.DIM)
 
 
 func _refresh_mode() -> void:
-	var say: bool = ChatFeed.mode == "say"
-	mode_btn.text = "SAY" if say else "POST"
-	mode_btn.disabled = not ChatFeed.can_say()
-	mode_btn.tooltip_text = "Tab: say (free, not on chain) / post (on chain)" if ChatFeed.can_say() else "Posting only: no presence server here, so every line is a room line on chain."
-	mode_btn.add_theme_color_override("font_color", DeepFieldTheme.MUTED if say else DeepFieldTheme.ICE)
+	var m: String = ChatFeed.mode
+	var tg := m == "telegram"
+	var say := m == "say"
+	mode_btn.text = mode_label(m)
+	mode_btn.disabled = ChatFeed.modes().size() < 2
+	mode_btn.tooltip_text = ("Tab: %s" % " / ".join(PackedStringArray(ChatFeed.modes().map(func(x): return MODE_TIPS.get(x, x))))) if not mode_btn.disabled \
+		else "Posting only: no presence server here, so every line is a room line on chain."
+	mode_btn.add_theme_color_override("font_color", TG_BLUE if tg else (DeepFieldTheme.MUTED if say else DeepFieldTheme.ICE))
 	mode_btn.add_theme_color_override("font_disabled_color", DeepFieldTheme.ICE)
-	note.text = ChatFeed.say_note() if say else ChatFeed.post_note()
+	note.text = ChatFeed.telegram_note() if tg else (ChatFeed.say_note() if say else ChatFeed.post_note())
 	var room := ""
 	if ChatFeed.current:
 		room = String(ChatFeed.current.territory.get("name", ChatFeed.current.qing))
-	edit.placeholder_text = ("say something to everyone here (free)" if say else "a line to %s, written on chain forever" % room)
+	if tg:
+		edit.placeholder_text = "a line to %s on Telegram (free, not on chain)" % NetTg.GROUP
+	else:
+		edit.placeholder_text = ("say something to everyone here (free)" if say else "a line to %s, written on chain forever" % room)
+	_update_count()
+
+
+const TG_BLUE := Color("#7cc7ff")
+const MODE_TIPS := {"say": "say (free, not on chain)", "telegram": "Telegram (free, not on chain)", "post": "post (on chain)"}
+
+
+## Pure: the mode button's word.
+static func mode_label(m: String) -> String:
+	match m:
+		"say":
+			return "SAY"
+		"telegram":
+			return "TG"
+	return "POST"
 
 
 func _show_status(t: String) -> void:

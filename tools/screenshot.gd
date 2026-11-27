@@ -28,6 +28,9 @@ extends SceneTree
 ##       side's shot from the seat, through the server, rolling; result: accept,
 ##       confirm the stake, play to the end (this side stands), the panel over the table with the wager's
 ##       chain check. Nothing is signed on chain or paid)
+##       [--tg=dock|history|bar|tv --tg-text=…] (the Telegram bridge, with --net-url of a server pointed at
+##       tools/tg_mock.gd: wait for its Telegram lines, then the chat dock's Telegram tab, its history, the bar in
+##       Telegram mode (needs --net-key) or the pub's TV (with --view=tv). Nothing is sent)
 ##       [--activity=N] (online play, with --net-url: wait for N activity feed lines (bots make them) and the remote
 ##       players' name tags to be read from the chain; prints them. Debug builds: --net-lau-of=<test wallet>=<real wallet>
 ##       shows a test bot with a real wallet's LAU name, marked "(test)")
@@ -81,6 +84,8 @@ var _daily := ""  # card | board | play: today's challenge (DailyCard, DailyBoar
 var _away := false  # --away-since (read by Alerts itself): wait for the card
 var _alert_replay := 0
 var _alert_panel := false
+var _tg := ""  # dock | bar | history | tv: wait for the server's Telegram lines (--net-url + a bridging server), then show them
+var _tg_text := ""
 var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
@@ -143,6 +148,10 @@ func _initialize() -> void:
 			_alert_replay = int(a.substr(15))
 		elif a == "--alert-panel":
 			_alert_panel = true
+		elif a.begins_with("--tg="):
+			_tg = a.substr(5)
+		elif a.begins_with("--tg-text="):
+			_tg_text = a.substr(10)
 		elif a.begins_with("--access-fee="):
 			_access_fee = a.substr(13)
 		elif a.begins_with("--move="):
@@ -288,6 +297,8 @@ func _run() -> void:
 		await _activity_preview()
 	if _daily != "":
 		await _daily_preview()
+	if _tg != "":
+		await _tg_preview()
 	if _update != "":
 		for i in 10:
 			await process_frame
@@ -421,6 +432,31 @@ func _alerts_preview() -> void:
 		var p = current_scene.find_child("NotificationPanel", true, false) if current_scene else null
 		if p:
 			p.open()
+
+
+## The Telegram bridge (NetTg): waits for the game server's Telegram lines (a server with
+## TELEGRAM_* pointed at tools/tg_mock.gd), then shows them in the chat dock's Telegram tab
+## (dock), its history (history), the bar in Telegram mode (bar, --tg-text=…; needs --net-key
+## to be signed in) or just lets the pub's TV draw them (tv). Nothing is sent.
+func _tg_preview() -> void:
+	var net = root.get_node("Net")
+	var cf = root.get_node("ChatFeed")
+	var t0 := Time.get_ticks_msec()
+	while (net.tg_lines.size() < 3 or (_tg == "bar" and not net.can_telegram())) and Time.get_ticks_msec() - t0 < 180000:
+		await process_frame
+	print("[shot] telegram: %d lines, signed in: %s" % [net.tg_lines.size(), net.can_telegram()])
+	for i in 20:
+		await process_frame
+	if _tg == "tv":
+		return
+	cf.hud.feed.set_source("telegram")
+	if _tg == "history":
+		cf.hud.feed.toggle_history()
+	elif _tg == "bar":
+		cf.set_mode("telegram")
+		cf.hud.bar.open(_tg_text)
+	for i in 10:
+		await process_frame
 
 
 ## The activity feed (Net.activity): waits for `_activity` lines from the server and the

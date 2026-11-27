@@ -52,6 +52,9 @@ var chandelier_at := Vector3(ORDER_X, H - 0.85, -2.7)
 ## Knockable (KnockWorld) per stool, in `stools` order, then the barrel table's.
 var stool_knocks: Array = []
 var cue_stand_at := Vector3(8.95, 0, 3.6)
+## The Telegram TV on the right wall over the darts, facing the room (PubTgScreen, sunny_pub.gd).
+const TV_AT := Vector3(IN_X - 0.06, 3.5, -4.9)
+const TV_YAW_DEG := -90.0
 
 var _root: Node3D
 var _b: PubKit.Batch

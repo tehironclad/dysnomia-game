@@ -56,6 +56,11 @@ var stats := {"connections": 0, "auths": 0, "auth_failures": 0, "chats": 0, "voi
 	"bytes_in": 0, "bytes_out": 0, "kicked": 0, "throttled": 0, "refused": 0, "invites": 0, "matches": 0, "moves": 0}
 var invites := InviteBook.new()
 var matches := {}             # match id → record (see _open_match)
+## The Telegram bridge (NetTg, TelegramBridge): only when TELEGRAM_BOT_TOKEN is set in the
+## environment; null otherwise (and the welcome does not list "telegram").
+var telegram: TelegramBridge
+## The chain's names for wallets (read-only, LauNames), for what the server posts to Telegram.
+var names: LauNames
 ## This run of the server (random, in the welcome): invites and games live in memory only,
 ## so a client that sees a new boot knows the games it had here are gone.
 var boot_id := ""
@@ -137,7 +142,8 @@ func start() -> bool:
 	lb.add_verifier("daily:*", DailyServer.refuse_plain)
 	daily = DailyServer.new(self, data_dir.path_join("daily.json"))
 	_load_tokens()
-	boot_id = Crypto.new().generate_random_bytes(6).hex_encode()
+	_start_telegram()
+	boot_id =Crypto.new().generate_random_bytes(6).hex_encode()
 	var err := _tcp.listen(port, bind_address)
 	if err != OK:
 		log_line("ERROR cannot listen on %s:%d (error %d). Is another server running?" % [bind_address, port, err])
@@ -161,6 +167,8 @@ func stop() -> void:
 	_tcp.stop()
 	if daily:
 		daily.stop()
+	if telegram:
+		telegram.save_now()
 	if lb:
 		lb.save()
 	_save_tokens()
@@ -293,7 +301,9 @@ func _poll_peer(p: Peer, now: float) -> void:
 		# current clients build the text themselves from nonce + issued and their own host.
 		_send(p, NetProto.json_msg(NetProto.S_WELCOME, {"id": p.id, "nonce": p.nonce, "issued": p.issued, "server": NetProto.login_name(server_name),
 			"v": NetProto.VERSION, "login": NetProto.login_message(server_name, p.host, p.nonce, p.issued), "voice_radius": voice_radius, "boot": boot_id,
-			"features": NetProto.FEATURES + NetBump.FEATURES + NetEvents.FEATURES + NetDaily.FEATURES}))
+			"features": NetProto.FEATURES + NetBump.FEATURES + NetEvents.FEATURES + NetDaily.FEATURES + _tg_features()}))
+		if telegram and telegram.enabled():
+			_send(p, NetTg.history_msg(telegram.history))
 	var n := 0
 	while p.ws.get_available_packet_count() > 0 and n < 200:
 		n += 1
@@ -432,6 +442,13 @@ func _handle(p: Peer, msg: PackedByteArray, now: float) -> void:
 			_claim(p, msg, now)
 		NetDaily.C_DAILY_START, NetDaily.C_DAILY_SUBMIT, NetDaily.C_DAILY_BOARD:
 			daily.handle(p, msg, now)
+		NetTg.C_TG:
+			_tg_chat(p, msg, now)
+		NetTg.C_TG_PREFS:
+			if not p.b_ctrl.take(now):
+				_throttled(p, now)
+				return
+			_tg_prefs(p, msg)
 		NetProto.C_INFO:
 			if not p.b_ctrl.take(now):
 				_throttled(p, now)
@@ -1096,6 +1113,8 @@ func _event(ev: Dictionary, scope: String, room: String = "", except_id: int = -
 			if q.opened and q.wallet != "":
 				_send(q, msg)
 	stats["events"] = int(stats.get("events", 0)) + 1
+	if telegram:
+		telegram.moment(ev)  # a moment for the Telegram digest (it decides; never guests)
 	return true
 
 
@@ -1179,3 +1198,102 @@ func _events_housekeeping(now: float) -> void:
 	for k in _claimed.keys():  # one claim an hour each: older ones are forgotten (it grew forever)
 		if now - float(_claimed[k]) > 3600.0:
 			_claimed.erase(k)
+
+
+# ── the Telegram bridge (NetTg, TelegramBridge; docs/SERVER.md §8d) ───────────
+# Only this server talks to Telegram, with the token from its environment. Clients get
+# the group's lines (S_TG, and S_TG_HISTORY after the welcome) and signed-in players
+# send theirs (C_TG); nobody but this process ever sees the token.
+
+## Tests only: values used instead of the process environment (keys as in TelegramBridge).
+var tg_env := {}
+
+
+func _start_telegram() -> void:
+	var env := func(k: String) -> String: return String(tg_env[k]) if tg_env.has(k) else OS.get_environment(k)
+	var cfg := TelegramBridge.config_from_env(env)
+	if String(cfg["error"]) != "":
+		log_line("Telegram: " + String(cfg["error"]))
+	if String(cfg["token"]) == "":
+		return
+	if names == null and get_node_or_null("/root/Chain") != null:
+		names = LauNames.new()
+		names.name = "Names"
+		add_child(names)
+	telegram = TelegramBridge.new()
+	telegram.name = "Telegram"
+	telegram.data_dir = data_dir
+	telegram.configure(cfg)
+	telegram.log_fn = log_line
+	telegram.name_fn = _tg_name
+	telegram.place_fn = _tg_place
+	telegram.game_fn = func(g: String) -> String: return "pool" if g == "pool" else InviteBook.title_of(g)
+	telegram.line.connect(_tg_broadcast)
+	telegram.answer.connect(_tg_answer)
+	add_child(telegram)
+
+
+func _tg_features() -> Array:
+	return [NetTg.FEATURE] if telegram and telegram.enabled() else []
+
+
+## The chain's name for a wallet ({name, final}: final once the read is done or failed).
+func _tg_name(w: String) -> Dictionary:
+	if names == null:
+		return {"name": NetProto.short_wallet(w), "final": true}
+	var r := names.record(w)
+	return {"name": NetNames.shown(w, r), "final": String(r.get("state", "")) in ["ok", "none", "failed"]}
+
+
+## A QING's name from the registry snapshot (else its short address).
+func _tg_place(room: String) -> String:
+	var reg := get_node_or_null("/root/Registry")
+	if reg != null and reg.has_method("get_territory"):
+		var nm := String(reg.get_territory(room).get("name", ""))
+		if nm != "":
+			return nm
+	return NetProto.short_wallet(room)
+
+
+func _tg_broadcast(l: Dictionary) -> void:
+	var msg := NetTg.line_msg(l)
+	for q in _peers.values():
+		if q.opened:
+			_send(q, msg)
+
+
+func _tg_answer(id: int, d: Dictionary) -> void:
+	var p: Peer = _peers.get(id)
+	if p != null:
+		_send(p, NetTg.status_msg(d))
+
+
+## C_TG: a signed-in player's line to the Telegram group.
+func _tg_chat(p: Peer, msg: PackedByteArray, now: float) -> void:
+	if not p.b_chat.take(now):
+		stats["throttled"] += 1
+		_send(p, NetTg.status_msg({"what": "send", "ok": false, "error": "Slow down.", "retry_s": 2}))
+		return
+	if telegram == null or not telegram.enabled():
+		_send(p, NetTg.status_msg({"what": "send", "ok": false, "error": "This server has no Telegram bridge."}))
+		return
+	var r := telegram.submit(p.id, p.wallet, NetProto.str_of(NetProto.json_body(msg).get("text", "")), now)
+	if not r.get("ok", false):
+		r["what"] = "send"
+		_send(p, NetTg.status_msg(r))
+
+
+## C_TG_PREFS: post this wallet's moments to Telegram or not (signed-in players only).
+func _tg_prefs(p: Peer, msg: PackedByteArray) -> void:
+	if telegram == null or not telegram.enabled():
+		return
+	if p.wallet == "":
+		_send(p, NetTg.status_msg({"what": "prefs", "ok": false, "error": "Sign in first.", "code": "guest"}))
+		return
+	var b := NetProto.json_body(msg)
+	if not (b.get("moments") is bool):
+		_strike(p, "bad telegram prefs")
+		return
+	telegram.set_moments(p.wallet, bool(b["moments"]))
+	log_line("telegram prefs %s: moments %s" % [p.wallet, "on" if b["moments"] else "off"])
+	_send(p, NetTg.status_msg({"what": "prefs", "ok": true, "moments": telegram.moments_on(p.wallet)}))

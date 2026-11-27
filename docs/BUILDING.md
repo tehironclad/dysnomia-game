@@ -38,7 +38,9 @@ that fails to parse makes `-s` tools hang, so run `check.sh` first.
 | `tools/boot_territory.gd` | loads a territory headlessly and prints the HUD card; should show no errors |
 | `tools/update_snapshot.gd` | refreshes `assets/data/territories.json` from the chain |
 | `tools/net_selftest.gd [-- --url=ws://…]` | game server end to end with scripted clients (no chain; local only) |
-| `tools/net_bot.gd -- --url=ws://…` | a scripted remote player (signs in with a test key, walks up, chats) |
+| `tools/net_bot.gd -- --url=ws://…` | a scripted remote player (signs in with a test key, walks up, chats; `--tg-say=…` writes to a bridged Telegram group) |
+| `tools/tg_selftest.gd [-- --port=N]` | the Telegram bridge end to end: its own servers + a mock Bot API on 127.0.0.1 (no Telegram, no chain) |
+| `tools/tg_mock.gd [-- --port=18790]` | the mock Bot API as its own process (a made-up group, a test token) for screenshots and trying the bridge |
 
 Run each with `godot --headless --path . -s res://<tool>`.
 

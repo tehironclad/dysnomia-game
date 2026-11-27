@@ -15,7 +15,9 @@
 #   4. Godot 4.6.1 (headless; checked against the release's SHA512-SUMS.txt)
 #   5. the project's import (the first one takes a while)
 #   6. dysnomia-server.service, enabled and (re)started on 127.0.0.1:8787;
-#      if the Entropy pulse node runs here, it is pointed at this server
+#      if the Entropy pulse node runs here, it is pointed at this server.
+#      Its environment file /etc/dysnomia-server/env (SERVER_ARGS, and the Telegram
+#      bridge's TELEGRAM_* settings) is kept across runs, root-only (mode 600).
 set -euo pipefail
 
 REPO_SLUG="${REPO_SLUG:-tehironclad/dysnomia-game}"
@@ -129,7 +131,19 @@ fi
 step "6/6  dysnomia-server.service"
 if [ ! -f "$ETC_DIR/env" ]; then
   printf '# Extra arguments for the game server (docs/SERVER.md, the options table).\nSERVER_ARGS=--name=%s\n' "$NAME" >"$ETC_DIR/env"
-  chmod 0644 "$ETC_DIR/env"
+fi
+# The Telegram bridge (docs/SERVER.md 5c) reads its settings from this same file. It is kept
+# (never overwritten), outside git, readable by root only: systemd reads it before the server
+# starts, and the service account itself can't. Placeholders are added once, commented out.
+if ! grep -q 'TELEGRAM_BOT_TOKEN' "$ETC_DIR/env"; then
+  printf '\n# Telegram bridge (docs/SERVER.md 5c). Fill these in here (never in git, never in a chat),\n# remove the "# ", then run this script again.\n# TELEGRAM_BOT_TOKEN=\n# TELEGRAM_CHAT_ID=\n# TELEGRAM_MUTE_IDS=\n' >>"$ETC_DIR/env"
+fi
+chown root:root "$ETC_DIR/env"
+chmod 0600 "$ETC_DIR/env"
+if grep -q '^TELEGRAM_BOT_TOKEN=..*' "$ETC_DIR/env"; then
+  if grep -q '^TELEGRAM_CHAT_ID=..*' "$ETC_DIR/env"; then tg=on; else tg=discover; fi
+else
+  tg=off
 fi
 if ! cmp -s "$GAME_DIR/tools/dysnomia-server.service" "$UNIT"; then
   install -m 0644 "$GAME_DIR/tools/dysnomia-server.service" "$UNIT"
@@ -144,6 +158,20 @@ for _ in $(seq 1 30); do
 done
 if [ "$up" = yes ]; then note "listening on ws://127.0.0.1:8787"
 else warn "no 'listening' line yet: journalctl -u dysnomia-server -n 50"; fi
+# The Telegram bridge: say which state it is in (never the token itself).
+case "$tg" in
+  on)
+    sleep 2
+    if journalctl -u dysnomia-server -n 80 -o cat --no-pager 2>/dev/null | grep -q "Telegram bridge on"; then
+      note "Telegram bridge: on (token and chat id set in $ETC_DIR/env)"
+    else
+      warn "Telegram bridge: set in $ETC_DIR/env but not on yet: journalctl -u dysnomia-server -n 50 | grep -i telegram"
+    fi ;;
+  discover)
+    note "Telegram bridge: token set, no TELEGRAM_CHAT_ID yet. Write a line in your group, then:"
+    note "  journalctl -u dysnomia-server -n 200 -o cat | grep 'sees chat'" ;;
+  *) note "Telegram bridge: off (docs/SERVER.md 5c to turn it on)" ;;
+esac
 
 # The Entropy pulse node on the same box reads this server's live counts.
 if [ -f /etc/pulse-node/env ] && ! grep -q '^PULSE_NODE_GAME_URL=' /etc/pulse-node/env; then
