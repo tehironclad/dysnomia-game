@@ -11,6 +11,25 @@ Dysnomia. Download it at **https://enterdysnomia.com/download**, or build it you
 - **Builds come from this repo.** GitHub Actions builds each release from a commit here
   ([`release.yml`](.github/workflows/release.yml)); the download page lists that commit and each file's SHA-256.
 
+### First launch on a Mac or Windows
+The builds aren't signed with an Apple or Microsoft certificate yet, so the first launch shows a warning.
+That is about the missing certificate, not the file: check its SHA-256 against the download page.
+
+**Mac (once):**
+1. Unzip it and drag **Dysnomia** into **Applications**.
+2. Double-click it. When macOS says it can't be opened, click **Done** (not Move to Bin).
+3. Open **System Settings → Privacy & Security**, scroll to the bottom, and next to "Dysnomia was blocked"
+   click **Open Anyway**. Enter your Mac password, then click **Open Anyway** again.
+
+On macOS 14 or older, right-click Dysnomia → **Open** → **Open** also works. If macOS says the app "is damaged",
+run this once in Terminal, then open it again:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Dysnomia.app
+```
+
+**Windows:** if SmartScreen says "Windows protected your PC", click **More info → Run anyway**.
+
 ### Build it yourself
 1. Install [Godot 4.6.1](https://godotengine.org/download/archive/4.6.1-stable/) (standard, not .NET).
 2. Clone this repo and open `project.godot`, then press F5. Or run `./play.sh` / `play.bat`.
