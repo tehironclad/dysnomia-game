@@ -282,7 +282,9 @@ func get_receipt(tx_hash: String) -> Dictionary:
 	return await request("eth_getTransactionReceipt", [tx_hash])
 
 
-func get_logs(address: String, topics: Array, from_block: int, to_block: int) -> Dictionary:
+## `address` is one emitter or an Array of them (eth_getLogs takes a list: one call for
+## many rooms, e.g. Alerts' tail of every room you belong to).
+func get_logs(address, topics: Array, from_block: int, to_block: int) -> Dictionary:
 	return await request("eth_getLogs", [{
 		"address": address, "topics": topics,
 		"fromBlock": "0x%x" % from_block, "toBlock": "0x%x" % to_block,

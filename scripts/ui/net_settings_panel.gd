@@ -1,7 +1,8 @@
 class_name NetSettingsPanel
 extends PanelContainer
 ## Settings → "Online & voice" (Net): the game server, sign-in, the mic
-## (off by default, push-to-talk), voice volume and the local mute list.
+## (off by default, push-to-talk), voice volume and the local mute list; and
+## Notifications (Alerts' AlertPrefs): each alert kind, the sound, the taskbar flash.
 
 var _online: CheckBox
 var _url: LineEdit
@@ -12,6 +13,7 @@ var _device: OptionButton
 var _volume: HSlider
 var _mute_all: CheckBox
 var _people: VBoxContainer
+var _alert_boxes := {}  # kind | "sound" | "flash" → CheckBox
 
 
 func _ready() -> void:
@@ -63,6 +65,7 @@ func _ready() -> void:
 	col.add_child(note)
 	_people = VBoxContainer.new()
 	col.add_child(_people)
+	_build_alerts(col)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	col.add_child(row)
@@ -80,6 +83,42 @@ func _ready() -> void:
 	close_btn.pressed.connect(func(): visible = false)
 	row.add_child(close_btn)
 	_load()
+
+
+## Notifications: saved at once (user://alerts.cfg), no Apply needed.
+func _build_alerts(col: VBoxContainer) -> void:
+	col.add_child(HSeparator.new())
+	var t := Label.new()
+	t.theme_type_variation = "DisplayLabel"
+	t.add_theme_font_size_override("font_size", DeepFieldTheme.FS_LEAD)
+	t.text = "NOTIFICATIONS"
+	col.add_child(t)
+	var note := Label.new()
+	note.theme_type_variation = "MutedLabel"
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size = Vector2(520, 0)
+	note.text = "A toast, the bell (%s) and a short sound. Repeats merge; your own lines never alert. Saved on this computer at once." % ControlsHelp.key_of("notifications")
+	col.add_child(note)
+	var prefs: AlertPrefs = Alerts.prefs
+	for k in AlertGate.KINDS:
+		_alert_box(col, k, String(AlertPrefs.LABELS[k]), prefs.on(k))
+	_alert_box(col, "sound", "Sound with an alert", prefs.sound)
+	_alert_box(col, "flash", "Flash the taskbar when the game window is not focused", prefs.flash)
+
+
+func _alert_box(col: VBoxContainer, key: String, text: String, on: bool) -> void:
+	var b := CheckBox.new()
+	b.text = text
+	b.button_pressed = on
+	b.toggled.connect(func(v: bool):
+		var prefs: AlertPrefs = Alerts.prefs
+		match key:
+			"sound": prefs.sound = v
+			"flash": prefs.flash = v
+			_: prefs.set_kind(key, v)
+		prefs.save_prefs())
+	col.add_child(b)
+	_alert_boxes[key] = b
 
 
 func _row(grid: GridContainer, label: String, control: Control) -> void:

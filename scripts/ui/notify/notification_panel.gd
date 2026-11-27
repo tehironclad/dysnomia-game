@@ -8,15 +8,14 @@ extends CanvasLayer
 ## logs for wagers). Added as one node by the HUD and by places:
 ##   add_child(NotificationPanel.new())
 ## With no game server it says so: invites need the server; the game is single-player.
+## On top: "while you were away" (Alerts' AwayCard: what changed since your last visit on
+## this computer; click a line to go there). Toasts are Alerts' (AlertOverlay), one stack.
 
 const W := 500.0
-const TOAST_S := 7.0
 const GAMES := ["pool", "cards"]
 
 var _bell: Bell
-var _toast: PanelContainer
-var _toast_label: Label
-var _toast_t := 0.0
+var _away: AwayCard
 var _panel: PanelContainer
 var _status: Label
 var _sign_in: Button
@@ -56,12 +55,12 @@ func _ready() -> void:
 	root.add_child(_bell)
 	if _dock_slot != null and is_instance_valid(_dock_slot):
 		dock_bell(_dock_slot)
-	_build_toast(root)
 	_build_panel(root)
 	Invites.notes_changed.connect(_mark_dirty)
 	Invites.match_changed.connect(func(_id): _mark_dirty())
 	Invites.online_changed.connect(_mark_dirty)
 	Invites.note_added.connect(_on_note)
+	Alerts.away_changed.connect(_refresh_away)
 	var net := get_node_or_null("/root/Net")
 	if net and net.activity:
 		net.activity.added.connect(func(_it): _mark_dirty())
@@ -71,6 +70,8 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	_unguard()
+	if _panel != null and _panel.visible:
+		Alerts.panel_shown(false)
 
 
 var _dock_slot: Control = null
@@ -113,8 +114,9 @@ func open(game: String = "") -> void:
 	_was_mouse = Input.get_mouse_mode()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	_panel.visible = true
-	_toast.visible = false
 	_msg.text = ""
+	_refresh_away()
+	Alerts.panel_shown(true)  # the toasts and the arrival card step aside: the panel has them
 	Invites.refresh_online()
 	_rebuild()
 	Invites.mark_all_read()
@@ -125,6 +127,7 @@ func close() -> void:
 		return
 	_unguard()
 	_panel.visible = false
+	Alerts.panel_shown(false)
 	Input.set_mouse_mode(_was_mouse)
 
 
@@ -138,11 +141,6 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
-	if _toast.visible:
-		_toast_t -= delta
-		_toast.modulate.a = clampf(_toast_t, 0.0, 1.0)
-		if _toast_t <= 0.0:
-			_toast.visible = false
 	_tick += delta
 	if _tick >= 1.0:
 		_tick = 0.0
@@ -168,14 +166,17 @@ func _refresh_bell() -> void:
 	_bell.queue_redraw()
 
 
-func _on_note(x: Dictionary) -> void:
+## The toast is Alerts' (AlertOverlay: merged, paced, with the sound); here only the bell.
+func _on_note(_x: Dictionary) -> void:
 	if _panel.visible:
 		Invites.mark_all_read()
+
+
+## "While you were away": the card while it is read or ready (nothing on a first visit).
+func _refresh_away() -> void:
+	if _away == null:
 		return
-	_toast_label.text = "%s\n%s opens the notifications" % [x["text"], ControlsHelp.key_of("notifications")]
-	_toast_t = TOAST_S
-	_toast.modulate.a = 1.0
-	_toast.visible = true
+	_away.set_card(Alerts.away_state, Alerts.away_card)
 
 
 ## The game of the table you are sitting at, if any.
@@ -221,26 +222,6 @@ func _button(parent: Control, text: String, cb: Callable) -> Button:
 	return b
 
 
-func _build_toast(root: Control) -> void:
-	_toast = PanelContainer.new()
-	_toast.add_theme_stylebox_override("panel", DeepFieldTheme.panel_style(Color(DeepFieldTheme.ICE, 0.45)))
-	_toast.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)  # clear of the HUD and the table's numbers
-	_toast.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_toast.offset_left = -470
-	_toast.offset_right = -22
-	_toast.offset_top = -150
-	_toast.offset_bottom = -110
-	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_toast.visible = false
-	root.add_child(_toast)
-	_toast_label = Label.new()
-	_toast_label.theme_type_variation = "MonoLabel"
-	_toast_label.add_theme_font_size_override("font_size", 13)
-	_toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_toast_label.custom_minimum_size = Vector2(430, 0)
-	_toast.add_child(_toast_label)
-
-
 func _build_panel(root: Control) -> void:
 	_panel = PanelContainer.new()
 	var sb := DeepFieldTheme.panel_style(Color(DeepFieldTheme.ICE, 0.35))
@@ -275,6 +256,11 @@ func _build_panel(root: Control) -> void:
 		get_node("/root/Net").sign_in()
 		_msg.text = "Approve the free signature in your wallet window (not a transaction).")
 	_msg = _label(col, "", "MonoLabel", 12, DeepFieldTheme.ICE)
+	_away = AwayCard.new(false, W - 40)
+	_away.dismissable = false
+	_away.go.connect(func(t): Alerts.go(t))
+	col.add_child(_away)
+	_refresh_away()
 	col.add_child(HSeparator.new())
 	_label(col, "INVITE A PLAYER ONLINE", "DisplayLabel", 13, DeepFieldTheme.ICE)
 	var row := HBoxContainer.new()

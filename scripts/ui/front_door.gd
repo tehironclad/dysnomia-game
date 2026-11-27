@@ -59,6 +59,8 @@ var _update: PanelContainer  ## the "new version" notice (hidden until UpdateChe
 var _update_text: Label
 var _update_ver := ""
 var _update_preview := false
+var _away: AwayCard  ## "while you were away" (Alerts), top of the right column
+var _featured: PanelContainer  ## the sky's QING card: hidden while the away card shows (room for it)
 
 
 func _ready() -> void:
@@ -74,11 +76,13 @@ func _ready() -> void:
 	_build_update()
 	Session.changed.connect(_refresh_identity)
 	Session.lead_changed.connect(_on_leads)
+	Alerts.away_changed.connect(_refresh_away)
 	Wallet.connected.connect(func(_a): _set_status(""))
 	Registry.updated.connect(func(_n): _refresh_news())
 	_refresh_identity()
 	_refresh_news()
 	_refresh_strip()
+	_refresh_away()
 	if not Registry.catching_up:
 		Registry.catch_up()
 	World.start()
@@ -341,6 +345,11 @@ func _build_right() -> void:
 	_summary = VBoxContainer.new()
 	_summary.add_theme_constant_override("separation", 10)
 	_right.add_child(_summary)
+	_away = AwayCard.new(false, RIGHT_W)
+	_away.max_body_h = 300.0  # the lines scroll: the identity below stays on screen
+	_away.go.connect(func(t): Alerts.go(t))
+	_away.dismissed.connect(func(): Alerts.dismiss_away())
+	_summary.add_child(_away)
 	var idp := PanelContainer.new()
 	_summary.add_child(idp)
 	var col := VBoxContainer.new()
@@ -701,6 +710,7 @@ func _build_bottom() -> void:
 	fc.offset_bottom = -124
 	fc.custom_minimum_size = Vector2(RIGHT_W, 0)
 	add_child(fc)
+	_featured = fc
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
 	fc.add_child(row)
@@ -820,6 +830,18 @@ func _refresh_news() -> void:
 	if _lead_news != "":
 		parts.append(_lead_news)
 	_news.text = "NEWS\n" + "\n".join(parts)
+
+
+## "While you were away" (Alerts): reading → the card → hidden once dismissed. The sky's
+## QING card steps aside while it shows, so the column can hold it.
+func _refresh_away() -> void:
+	if _away == null:
+		return
+	_away.set_card("hidden" if Alerts.away_dismissed else Alerts.away_state, Alerts.away_card)
+	if _featured:
+		_featured.visible = not _away.visible
+	if _sum_qings:
+		_sum_qings.visible = not _away.visible  # the card names your QINGs (click to warp); room for both
 
 
 func _on_leads(lost: Array, gained: Array, block: int) -> void:

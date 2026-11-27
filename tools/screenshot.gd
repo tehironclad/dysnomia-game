@@ -29,6 +29,11 @@ extends SceneTree
 ##       [--activity=N] (online play, with --net-url: wait for N activity feed lines (bots make them) and the remote
 ##       players' name tags to be read from the chain; prints them. Debug builds: --net-lau-of=<test wallet>=<real wallet>
 ##       shows a test bot with a real wallet's LAU name, marked "(test)")
+##       [--away-since=<block>] (with --session: the "while you were away" card, the baseline read from the chain
+##       at that block, labelled PREVIEW; front door: the right column; a territory: the arrival card. Nothing stored)
+##       [--alert-replay=N] (a territory with --session: the room's real lines (N, read further back if needed) pass
+##       through the mention alert again; a line naming the session's LAU makes the real toast, marked "replayed")
+##       [--alert-panel] (the notification panel open: the away card at its top)
 ## With --qing, the territory is loaded from the chain first (read-only).
 
 var _out := ""
@@ -61,6 +66,9 @@ var _access_fee := ""
 var _invite := ""  # panel | seated | result
 var _activity := 0  # wait for this many activity feed lines (online play: --net-url + bots)
 var _update := ""  # the front door: preview the update notice for this version
+var _away := false  # --away-since (read by Alerts itself): wait for the card
+var _alert_replay := 0
+var _alert_panel := false
 var _flash := false  # preview a head on the player (local only), e.g. alien or rat:crown  # a scene panel with toggle(): guide | help  # su | room | beat | void: open that move's panel (previews only)
 
 
@@ -113,6 +121,12 @@ func _initialize() -> void:
 			_invite = a.substr(9)
 		elif a.begins_with("--update="):
 			_update = a.substr(9)
+		elif a.begins_with("--away-since="):
+			_away = true
+		elif a.begins_with("--alert-replay="):
+			_alert_replay = int(a.substr(15))
+		elif a == "--alert-panel":
+			_alert_panel = true
 		elif a.begins_with("--access-fee="):
 			_access_fee = a.substr(13)
 		elif a == "--classic":
@@ -253,6 +267,8 @@ func _run() -> void:
 			await process_frame
 		if current_scene and current_scene.has_method("preview_update"):
 			current_scene.preview_update(_update)
+	if _away or _alert_replay > 0 or _alert_panel:
+		await _alerts_preview()
 	for i in _frames:
 		await process_frame
 	await RenderingServer.frame_post_draw
@@ -285,6 +301,39 @@ func _chat_preview() -> void:
 	elif _chat == "history":
 		cf.hud.feed.toggle_history()
 
+
+
+## "While you were away" and the alerts (Alerts): waits for the card (read from the chain:
+## the baseline at --away-since's block), replays the room's real lines through the mention
+## alert, opens the notification panel. Nothing is signed or stored.
+func _alerts_preview() -> void:
+	var al = root.get_node("Alerts")
+	var t0 := Time.get_ticks_msec()
+	if _away:
+		while al.away_state != "ready" and Time.get_ticks_msec() - t0 < 300000:
+			await process_frame
+		print("[shot] away card: %s" % al.away_state)
+		for line in load("res://scripts/state/away_diff.gd").lines(al.away_card):
+			print("[shot]   ", line)
+	if _alert_replay > 0:
+		var cf = root.get_node("ChatFeed")
+		while (cf.current == null or not cf.current.is_loaded()) and Time.get_ticks_msec() - t0 < 300000:
+			await process_frame
+		while (current_scene == null or current_scene.get("is_built") == false) and Time.get_ticks_msec() - t0 < 300000:
+			await process_frame
+		print("[shot] room read (%d lines), territory built · %.0f s" % [cf.current.lines.size() if cf.current else -1, (Time.get_ticks_msec() - t0) / 1000.0])
+		if cf.current:
+			await cf.current.ensure_history(_alert_replay)
+			var hits: int = al.replay_lines(_alert_replay)
+			print("[shot] replayed %d real lines: %d named %s" % [mini(_alert_replay, cf.current.lines.size()), hits, root.get_node("Session").player.username if root.get_node("Session").player else "—"])
+		for i in 3:
+			await process_frame  # a toast lives AlertGate.LIFE_S: pass --frames=1 on a slow renderer
+	if _alert_panel:
+		for i in 20:
+			await process_frame
+		var p = current_scene.find_child("NotificationPanel", true, false) if current_scene else null
+		if p:
+			p.open()
 
 
 ## The activity feed (Net.activity): waits for `_activity` lines from the server and the

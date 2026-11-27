@@ -1084,3 +1084,34 @@ Distilled from the site's audit rounds. Each was a real bug there, so each is a 
 - **Check:** `tools/e2e_wallet.sh` (rebinding, cross-origin page, unlimited approve, foreign text, tampered tx),
   `tools/net_selftest.gd` (relayed and expired sign-ins, hashed tokens), `tests/test_wallet_path.gd`,
   `tests/test_net_proto.gd`, `tests/test_invites.gd`, `tests/test_exchanges.gd`.
+
+## 23. While you were away, and alerts (2026-11-27)
+
+- **What is remembered** (this computer only, `user://away.cfg`, one baseline per wallet, `AwayStore`): the head block of
+  the visit; per room you belong to the block its lines were read up to (`seen`) and its newest line (`last`); your
+  QINGs' Σ YUE.Bar(QING).Hypobar over known players, tier and whether you lead; your YUE.Bar at every QING with bars;
+  the registry's count and NewQing cursor. It moves during the visit (Session's 60 s bar reads, the room tail, the
+  registry, boards every 10 min) and is written at least once a minute and on quit. A failed read never overwrites a
+  section (never store an outage). "Your rooms" = QINGs where your YUE has bars (biggest first; every Su or room line
+  leaves one), then any your wallet founded, then last visit's; ≤ 24 rooms, boards for the first 12.
+- **The card** (`AwayDiff.compute`, pure): mentions (a line naming your Username, `ChatLines.mentions`, never your own:
+  same Aura = same creator wallet; site lines have no Aura → Soul), new lines by others per room (count + latest),
+  leads taken/lost, tier/Hypobar growth, your bar changes ("first bars" where there were none), new QINGs (NewQing logs
+  after the last cursor; a stopped read makes the count a floor "N+"). Each entry has its block or tx and a target
+  (warp; the room history scrolled to the line). Per failed section one "—" line; nothing changed = "Quiet since block N";
+  first visit = no card. Measured 2026-11-27 for `0x18f6…3111` (`tools/live_away.gd -- --since=25840000`, archive reads at
+  that block): 2 real mentions (Noumenon in enter teh QING, blocks 25,840,884 and 25,843,757), 175 new lines in Zürich,
+  RatKing Town → Capital (59.9 M → 1.14 G Hypobar), 3 leads taken, first bars at RatKing, 681 new QINGs. Since block
+  28,136,322 (≈ 3 days): only Zürich +38,690 Hypobar and 1 new QING (Everest92): the rooms were quiet.
+- **Budget:** room lines for every room come from ONE `eth_getLogs` with an address list (`Rpc.get_logs`/`LogScanner.scan`
+  take an Array), windowed; the live tail repeats it every 30 s. Not one RoomFeed per room (`ChatFeed.follow` keeps
+  only the current room's feed alive, and N feeds would be N calls every 8 s).
+- **Alerts** (`Alerts`, `AlertGate`, `AlertOverlay`): a toast (merged per kind and place within 20 s: "3 new mentions in
+  Qingston"; ≤ 3 new toasts at once, then one per 4 s, held ones follow), a note under the bell (`Invites.add_note`), a
+  sound (gap 3 s; the dock already chimes for a mention in the room on screen), and `DisplayServer.window_request_attention()`
+  when the window is unfocused (gap 30 s). Godot has no native OS notification: none is faked. Kinds: mention, invite (and
+  Join me), arrival in your QINGs (the server's "arrive" event), lost crown (`Session.lead_changed`; the first read of a
+  launch is the card's). Toggles + sound + flash: F2 · Online & voice → Notifications (`user://alerts.cfg`).
+- **Not available, so not shown:** invites you missed while offline (the game server keeps invites in memory for 90 s
+  and only for connected players) and who visited your QING while you were away (server events are live only; no
+  history). The card says nothing about them rather than guess.

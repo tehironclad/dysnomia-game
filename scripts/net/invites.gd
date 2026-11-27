@@ -217,6 +217,20 @@ func _note(kind: String, text: String, ref: String, game: String, read: bool) ->
 	return x
 
 
+## A note from elsewhere (Alerts: a mention, an arrival, a lost crown), unread, under the
+## bell and in the panel's list. `extra` fields ride on the note (e.g. {alerts: true, go}).
+func add_note(kind: String, text: String, ref: String = "", extra: Dictionary = {}) -> Dictionary:
+	_n += 1
+	var x := {"n": _n, "kind": kind, "text": text, "at": int(Time.get_unix_time_from_system()), "read": false, "ref": ref, "game": ""}
+	x.merge(extra)
+	notes.append(x)
+	if notes.size() > MAX_NOTES:
+		notes = notes.slice(notes.size() - MAX_NOTES)
+	notes_changed.emit()
+	note_added.emit(x)
+	return x
+
+
 static func game_title(game: String) -> String:
 	return InviteBook.title_of(game)
 
