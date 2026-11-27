@@ -32,9 +32,14 @@ on:
         description: "Upload to the public download bucket (else build only: the zips stay a private artifact)"
         type: boolean
         default: false
+      host:
+        description: "Where players download the files: r2 (Cloudflare bucket) or github (a GitHub Release on this repo; the repo must be public). latest.json always goes to R2, where the site reads it."
+        type: choice
+        options: [r2, github]
+        default: r2
 
 permissions:
-  contents: read
+  contents: write  # a GitHub Release when host = github (runs only from a v* tag or a manual run by someone with write access)
 
 env:
   GODOT_VERSION: "4.6.1"
@@ -122,9 +127,13 @@ jobs:
         env:
           V: ${{ steps.v.outputs.version }}
           PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          HOST: ${{ inputs.host || 'r2' }}
         run: |
           case "$PUBLIC_BASE" in https://*) ;; *) echo "R2_PUBLIC_BASE_URL must be https://"; exit 1;; esac
-          python3 - "$V" "$PUBLIC_BASE" "$GITHUB_SHA" <<'EOF'
+          # Files live at <base>/<name>: the bucket's releases/<v>/ folder, or this repo's release v<v>
+          if [ "$HOST" = github ]; then FILES="https://github.com/$GITHUB_REPOSITORY/releases/download/v$V"
+          else FILES="${PUBLIC_BASE%/}/releases/$V"; fi
+          python3 - "$V" "$FILES" "$GITHUB_SHA" <<'EOF'
           import hashlib, json, os, sys, datetime
           v, base, sha = sys.argv[1], sys.argv[2].rstrip("/"), sys.argv[3]
           files = []
@@ -139,9 +148,9 @@ jobs:
               plat = "windows" if "windows" in name else "macos" if "macos" in name else "linux"
               files.append({"platform": plat, "kind": kind, "name": name, "size": os.path.getsize(p),
                             "sha256": hashlib.sha256(open(p, "rb").read()).hexdigest(),
-                            "url": f"{base}/releases/{v}/{name}"})
+                            "url": f"{base}/{name}"})
           json.dump({"version": v, "commit": sha, "published": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-                     "files": files, "sums": f"{base}/releases/{v}/SHA256SUMS"},
+                     "files": files, "sums": f"{base}/SHA256SUMS"},
                     open("dist/latest.json", "w"), indent=2)
           EOF
           cat dist/latest.json
@@ -151,9 +160,21 @@ jobs:
           name: dysnomia-${{ steps.v.outputs.version }}
           path: dist/
 
+      - name: GitHub Release (host = github; the repo must be public, or players couldn't download)
+        if: (inputs.host || 'r2') == 'github' && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && inputs.publish))
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          [ "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" = "false" ] || { echo "The repo is private: make it public first, or publish with host = r2"; exit 1; }
+          gh release create "v$V" dist/*.zip dist/*.exe dist/SHA256SUMS dist/latest.json \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Dysnomia $V" \
+            --notes "Download: https://enterdysnomia.com/download (checks the SHA-256 for you). Built by this workflow from commit $GITHUB_SHA. A community project: not made, endorsed or run by the creator of Dysnomia."
+
       - name: Upload to R2 (a v* tag, or a manual run from master with publish ticked)
         if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && inputs.publish)
         env:
+          HOST: ${{ inputs.host || 'r2' }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
@@ -162,7 +183,8 @@ jobs:
           B: ${{ secrets.R2_BUCKET }}
         run: |
           EP="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          aws s3 cp dist/ "s3://$B/releases/$V/" --recursive --exclude latest.json --endpoint-url "$EP"
+          # host = github: the files are on the GitHub Release; R2 keeps only latest.json (the site reads it there)
+          [ "$HOST" = github ] || aws s3 cp dist/ "s3://$B/releases/$V/" --recursive --exclude latest.json --endpoint-url "$EP"
           # latest.json last, so the site never points at files that aren't there yet
           aws s3 cp dist/latest.json "s3://$B/latest.json" --endpoint-url "$EP" \
             --cache-control "no-cache" --content-type "application/json"

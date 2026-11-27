@@ -74,6 +74,11 @@ The build's version shows in the front door's status strip (BUILD) and at the to
 - [ ] The wallet relay starts and opens the browser page. The page carries the session token, and a
       page without it is refused.
 - [ ] Publish SHA-256 checksums next to the binaries, and reproduce one build from the tag.
+- [ ] Where the files live (`release.yml` input `host`): `r2` (the Cloudflare bucket) or `github` (a GitHub
+      Release `v<version>` on this repo, made by the workflow; it refuses while the repo is private). `latest.json`
+      always goes to R2, where the site's `/api/download-manifest` reads it; that API accepts links only under the
+      bucket's `releases/<v>/` or this repo's `releases/download/v<v>/`, and the download page shows "Read the code"
+      only for a GitHub-hosted release.
 - [ ] Run the security checks in [`WALLET_TESTS.md`](WALLET_TESTS.md) (rebinding Host, framing, exact approvals,
       the sign-in text) with a real wallet. See [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) for what is still open
       (release signing).
