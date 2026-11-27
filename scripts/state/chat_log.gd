@@ -82,6 +82,18 @@ const _LOOK := {"а": "a", "в": "b", "е": "e", "ё": "e", "к": "k", "м": "m"
 ## none): lower case, invisible characters dropped, Cyrillic/Greek lookalikes
 ## mapped to Latin, and I/l/1, 0/o, rn/m, vv/w folded in names of 3+ letters.
 static func normalize(name: String) -> String:
+	var t := fold_case(name)
+	if t.length() >= 3:
+		for ch in ["i", "1", "|", "!", "¡", "ı"]:
+			t = t.replace(ch, "l")
+		t = t.replace("0", "o").replace("rn", "m").replace("vv", "w")
+	return t
+
+
+## The first half of normalize: lower case, invisible characters dropped,
+## Cyrillic/Greek lookalikes mapped to Latin, whitespace collapsed (no I/l/1
+## folding, which only applies to whole names of 3+ letters).
+static func fold_case(name: String) -> String:
 	var s := ""
 	for ch in name.to_lower():
 		var c := ch.unicode_at(0)
@@ -93,10 +105,6 @@ static func normalize(name: String) -> String:
 	var parts := s.split(" ", false)
 	var t := " ".join(parts).strip_edges()
 	t = t.replace("\t", " ").replace("\n", " ")
-	if t.length() >= 3:
-		for ch in ["i", "1", "|", "!", "¡", "ı"]:
-			t = t.replace(ch, "l")
-		t = t.replace("0", "o").replace("rn", "m").replace("vv", "w")
 	return t
 
 

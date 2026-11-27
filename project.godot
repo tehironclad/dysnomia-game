@@ -34,6 +34,7 @@ GameManager="*res://scripts/autoload/game_manager.gd"
 Net="*res://scripts/net/net.gd"
 ChatFeed="*res://scripts/autoload/chat_feed.gd"
 Invites="*res://scripts/net/invites.gd"
+Alerts="*res://scripts/autoload/alerts.gd"
 
 [audio]
 

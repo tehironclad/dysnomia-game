@@ -19,7 +19,8 @@ func _init(p_rpc: Rpc) -> void:
 
 ## Returns {ok, logs: Array, scanned_to: int}. On failure, `logs` holds what
 ## was read so far and `scanned_to` the last fully scanned block (a floor).
-func scan(address: String, topics: Array, from_block: int, to_block: int) -> Dictionary:
+## `address` is one emitter or an Array of emitters (one eth_getLogs for all of them).
+func scan(address, topics: Array, from_block: int, to_block: int) -> Dictionary:
 	var logs: Array = []
 	var cursor := from_block
 	var window := max_window

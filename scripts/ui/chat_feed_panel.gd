@@ -50,6 +50,7 @@ var _pulse := 0.0
 var _style: StyleBoxFlat
 var _mouse_before := Input.MOUSE_MODE_CAPTURED
 var _keys := {}  # meta key → line (history hover)
+var _focus_key := ""  # a line the history was opened at (Alerts: a card line or a toast), highlighted
 
 
 func _init() -> void:
@@ -567,7 +568,41 @@ func toggle_history() -> void:
 		history.create_tween().tween_property(history, "modulate:a", 1.0, 0.18)
 	else:
 		Input.set_mouse_mode(_mouse_before if _mouse_before != Input.MOUSE_MODE_VISIBLE else Input.MOUSE_MODE_CAPTURED)
+		_focus_key = ""
+		history_text.scroll_following = true
 	_refresh_header()
+
+
+## Opens the history scrolled to one line (its key: tx:log index), highlighted. Reads
+## further back first when that line is older than what is loaded.
+func open_history_at(key: String, block: int = -1) -> void:
+	if _feed == null:
+		return
+	_focus_key = key
+	var found := _feed.lines.any(func(l): return ChatLines.key(l) == key)
+	if not found and block > 0:
+		await _feed.ensure_history(maxi(_feed.loaded_limit * 2, 200))
+	if not history.visible:
+		toggle_history()
+	else:
+		_render_history()
+	history_text.scroll_following = false
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var i := _focus_index()
+	if i >= 0:
+		history_text.scroll_to_paragraph(i)
+
+
+## The paragraph of the focused line in the history ("" none: -1).
+func _focus_index() -> int:
+	if _focus_key == "" or _feed == null:
+		return -1
+	var off := 1 if (not _feed.is_loaded() and _feed.lines.is_empty()) or _feed.lines.is_empty() else 0
+	for i in _feed.lines.size():
+		if ChatLines.key(_feed.lines[i]) == _focus_key:
+			return i + off
+	return -1
 
 
 func _render_history() -> void:
@@ -587,7 +622,9 @@ func _render_history() -> void:
 	for l in _feed.lines:
 		_keys[ChatLines.key(l)] = l
 		var b := ChatLines.bbcode(l, true, true, 400)
-		if is_mention(l):
+		if _focus_key != "" and ChatLines.key(l) == _focus_key:
+			b = "[bgcolor=#a8e6ff40]%s[/bgcolor]" % b
+		elif is_mention(l):
 			b = "[bgcolor=#ffd27a22]%s[/bgcolor]" % b
 		parts.append(b)
 	history_text.text = "\n".join(parts)

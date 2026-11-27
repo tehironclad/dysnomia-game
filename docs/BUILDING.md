@@ -34,6 +34,7 @@ that fails to parse makes `-s` tools hang, so run `check.sh` first.
 | `tools/live_readiness.gd [-- --n=12 --wallet=0x…]` | identity and WORLD readiness for real players |
 | `tools/live_moves.gd [-- --wallet=0x… --qing=0x…]` | Su and Beat previews, the door, room and Void lines, World watch |
 | `tools/live_chat.gd [-- --qing=0x… --player=0x…]` | the HUD feed for a room; the chat bar with no wallet, a fake wallet and a real player read-only (each stops at its precondition); one-line and 3-line batch simulations and gas |
+| `tools/live_away.gd [-- --wallet=0x… --since=<block> \| --stored]` | the real "while you were away" card for a wallet: the baseline read from the chain at `--since` (default ≈ 3 days ago) or the one stored on this computer, compared with now (read-only, nothing stored) |
 | `tools/boot_territory.gd` | loads a territory headlessly and prints the HUD card; should show no errors |
 | `tools/update_snapshot.gd` | refreshes `assets/data/territories.json` from the chain |
 | `tools/net_selftest.gd [-- --url=ws://…]` | game server end to end with scripted clients (no chain; local only) |

@@ -245,12 +245,56 @@ static func speaker_color(l: Dictionary) -> Color:
 
 
 ## Whether `text` names `who` (your Username): case-insensitive, as a whole
-## word or after an @. Names shorter than 2 letters never match.
+## word or after an @. Names shorter than 2 letters never match. Also folded
+## the way the site compares names (ChatLog.normalize: lookalike letters,
+## invisible characters, I/l/1, 0/o, rn/m, vv/w), word by word, so "@RatKlng"
+## and a Cyrillic "Еnteh" name you too.
 static func mentions(text: String, who: String) -> bool:
 	var n := who.strip_edges().to_lower()
 	if n.length() < 2:
 		return false
-	var t := text.to_lower()
+	return _mentions_plain(text.to_lower(), n) or _mentions_folded(text, who.strip_edges())
+
+
+const _EDGE_PUNCT := "…“”‘’«»¡¿·"
+
+
+## Word by word (a name of k words is matched against every k consecutive words),
+## each word stripped of the punctuation around it, compared after ChatLog.normalize.
+static func _mentions_folded(text: String, who: String) -> bool:
+	var target := ChatLog.normalize(who)
+	if target.length() < 2:
+		return false
+	var k := ChatLog.fold_case(who).split(" ", false).size()
+	var words: PackedStringArray = []
+	for w in ChatLog.fold_case(text).split(" ", false):
+		var x := _strip_punct(w)
+		if x != "":
+			words.append(x)
+	for i in range(0, words.size() - k + 1):
+		var cand := " ".join(words.slice(i, i + k))
+		if ChatLog.normalize(cand) == target:
+			return true
+	return false
+
+
+static func _strip_punct(w: String) -> String:
+	var a := 0
+	var b := w.length()
+	while a < b and _punct(w.unicode_at(a)):
+		a += 1
+	while b > a and _punct(w.unicode_at(b - 1)):
+		b -= 1
+	return w.substr(a, b - a)
+
+
+static func _punct(c: int) -> bool:
+	if c < 128:
+		return not ((c >= 48 and c <= 57) or (c >= 97 and c <= 122) or (c >= 65 and c <= 90) or c == 95)
+	return _EDGE_PUNCT.contains(String.chr(c))
+
+
+static func _mentions_plain(t: String, n: String) -> bool:
 	var from := 0
 	while true:
 		var i := t.find(n, from)

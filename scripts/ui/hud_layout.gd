@@ -9,7 +9,9 @@ extends RefCounted
 ##                 (NOTIFY_SLOT, at the very corner), the block clock; under
 ##                 it, WHAT TO DO HERE: the act tracker
 ##   bottom-left   THE ROOM: the QING's chat dock (and the bar, T)
-##   bottom-right  THE KEYS: what the main keys do
+##   bottom-right  THE KEYS: what the main keys do; above them, ALERTS: the
+##                 toasts (a mention, an invite, an arrival, a lost crown) and the
+##                 arrival's "while you were away" card (AlertOverlay)
 ## The middle stays the world's: the wallet chip and the ticker top-centre,
 ## celebrations under them, the prompt bottom-centre.
 
@@ -31,6 +33,7 @@ const LEFT_MAX_H := 330  # the territory card
 const ACTIVITY_MAX_H := 250  # the activity feed: a header and NetEvents.FEED_MAX lines
 const RIGHT_MAX_H := 620
 const DOCK_MAX_H := 380
+const ALERTS_TOP := MARGIN + RIGHT_MAX_H + GAP  # under the right column (the act tracker's room)
 
 
 ## Pure: each block's rectangle on a `view`-sized canvas (for tests and tools).
@@ -46,4 +49,5 @@ static func slots(view: Vector2 = Vector2(1920, 1080)) -> Dictionary:
 		"room": Rect2(MARGIN, h - DOCK_BOTTOM - DOCK_MAX_H, DOCK_W, DOCK_MAX_H),
 		"prompt": Rect2((w - TICKER_W) * 0.5, h - PROMPT_BOTTOM - 52, TICKER_W, 52),
 		"keys": Rect2(w - MARGIN - 880, h - MARGIN - KEYS_H, 880, KEYS_H),
+		"alerts": Rect2(w - MARGIN - COL_W, ALERTS_TOP, COL_W, h - MARGIN - KEYS_H - GAP - ALERTS_TOP),
 	}

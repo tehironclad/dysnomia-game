@@ -242,6 +242,19 @@
   S 115–119, feature `"daily"`, board `daily:<day>`, event `daily_record`). Front door card `DailyCard` → `DailyPlay`
   (`scenes/ui/daily_play.tscn`), board `DailyBoard`, today's cabinet "★ TODAY ★", a HUD tracker line. Live check:
   `tools/live_daily.gd`. Shots: `--daily=card|board|play`.
+
+- While you were away + alerts (autoload `Alerts`, LEARNINGS §24): `AwayStore` keeps one baseline per wallet in
+  `user://away.cfg`; `AwayRead` reads now (your bars, your rooms' boards, ONE eth_getLogs over every room you belong to,
+  the registry); pure `AwayDiff.compute` → the card (only what changed, each with block/tx; "—" per failed section, which
+  keeps its old baseline; "Quiet since block N"; first visit = no card). `AwayCard` draws it (front door right column,
+  the notification panel, compact on arrival); a click warps / opens the room history at the line
+  (`ChatFeedPanel.open_history_at`). Alerts: mentions (current feed + a 30 s multi-room tail), invites (Invites notes),
+  arrivals in your QINGs (server "arrive"), lost crowns (`Session.lead_changed`) → `AlertGate` (merge/pace) →
+  `AlertOverlay` toasts (HudLayout "alerts" slot) + a note under the bell (`Invites.add_note`) + sound + taskbar flash
+  when unfocused. Prefs: F2 · Online & voice → Notifications (`AlertPrefs`, `user://alerts.cfg`). Tool runs (`-s`) and
+  `--session=` views never write the baseline. Check: `tools/live_away.gd [-- --wallet=0x… --since=<block> | --stored]`.
+  Shots: `--session=0x… --away-since=<block>` (front door, or a territory's arrival card), `--alert-replay=N` (a
+  territory: real lines through the mention path), `--alert-panel`.
 - Front door (`scripts/ui/front_door.gd`): the title screen over `FieldGlobe` (the moon + every QING; warm halo =
   developed, ice ring = yours, white ring = here; shared with the Field). Four doors (Connect · Explore · Continue to my
   QING · The Field), who-you-are, news + status strip. `open_panel(void|identity|guide|opps)`; shot `--open=`.
